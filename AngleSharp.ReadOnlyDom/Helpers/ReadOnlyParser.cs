@@ -7,7 +7,7 @@ using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.Helpers;
 
-public static class ParserExtensions
+public static class ReadOnlyParser
 {
     private static Func<IBrowsingContext, IDomConstructionElementFactory<ReadOnlyDocument, ReadOnlyHtmlElement>> _service = _ => new ReadOnlyDomConstructionFactory();
     public static readonly IConfiguration DefaultConfig = Configuration.Default.With(_service);

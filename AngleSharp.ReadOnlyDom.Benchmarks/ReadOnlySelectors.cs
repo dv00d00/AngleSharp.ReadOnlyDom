@@ -17,7 +17,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
 [Config(typeof(Config))]
 [MemoryDiagnoser]
-public class ReadOnlySelectors
+public class ReadOnlySelectorsBenchmark
 {
     private class Config : ManualConfig
     {
@@ -30,9 +30,16 @@ public class ReadOnlySelectors
         }
     }
 
-    private readonly IHtmlDocument document = new HtmlParser().ParseDocument(StaticHtml.Github);
-    private readonly IReadOnlyDocument documentReadonly = new HtmlParser().ParseReadOnlyDocument(new PrefetchedTextSource(StaticHtml.Github));
+    private readonly IHtmlDocument document = 
+        new HtmlParser(default, ReadOnlyParser.DefaultContext)
+        .ParseDocument(StaticHtml.Github);
+    
+    private readonly IReadOnlyDocument documentReadonly = 
+        new HtmlParser(default, ReadOnlyParser.DefaultContext)
+        .ParseReadOnlyDocument(new PrefetchedTextSource(StaticHtml.Github));
+    
     private readonly StringBuilder sb = new StringBuilder(512);
+    
     private readonly Stack<IReadOnlyNode> stack = new Stack<IReadOnlyNode>();
 
     private static readonly Func<IReadOnlyNode, Boolean>[] _selectors = {

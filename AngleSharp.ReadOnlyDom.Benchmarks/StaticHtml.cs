@@ -3159,7 +3159,17 @@ public class StaticHtml
           <tbody class="d-block">
             <tr class="d-block">
               <td class="d-block comment-body markdown-body  js-comment-body">
-                  <p dir="auto">Consider the following (real) scenario: a web service returns a binary content (file) of arbitrary length (up to hundreds of MB) as a base64-encoded <strong>value of a JSON property</strong> of a JSON document. With current implementation I have to read whole <strong>property value</strong> into memory before I can start processing it. Needless to explain what the consequences of this are, especially related to LOH (though, memory pooling inside the library may make this less painful). What I'd like to have is ability to open a <strong>property value</strong> as a stream (or, maybe, some lower lever object such as pipe reader) and read the value in a streamed fashion as bytes without allocating huge amount of memory. I'm not sure if this should go into <code class="notranslate">Utf8JsonReader</code> or (planned?) <code class="notranslate">JsonStreamReader</code>, but you got the idea. The same should probably be considered for writers.</p>
+                  <p dir="auto">                          
+                        HI!      Consider the following (real) scenario: a web service returns a binary content (file) of arbitrary length (up to hundreds of MB) as a base64-encoded <strong>value of a JSON property</strong> of a JSON document. With current implementation I have to read whole <strong>property value</strong> into memory before I can start processing it. Needless to explain what the consequences of this are, especially related to LOH (though, memory pooling inside the library may make this less painful). What I'd like to have is ability to open a <strong>property value</strong> as a stream (or, maybe, some lower lever object such as pipe reader) and read the value in a streamed fashion as bytes without allocating huge amount of memory. I'm not sure if this should go into <code class="notranslate">Utf8JsonReader</code> or (planned?) <code class="notranslate">JsonStreamReader</code>, but you got the idea. The same should probably be considered for writers.
+                        
+                        
+                        
+                        
+                        
+                        
+                        BYE!
+                        
+                        </p>
               </td>
             </tr>
               <tr class="d-block pl-3 pr-3 pb-3 js-comment-body-error" hidden>

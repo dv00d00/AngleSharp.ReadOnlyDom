@@ -14,10 +14,6 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
     {
         static async Task Main(String[] args)
         {
-            await Task.CompletedTask;
-
-            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-
             if (args.Length > 0)
             {
                 BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
@@ -25,7 +21,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
             }
 
             var html = new PrefetchedTextSource(StaticHtml.Github);
-            var parser = new HtmlParser();
+            var parser = new HtmlParser(new HtmlParserOptions(), ReadOnlyParser.DefaultContext);
             using var doc = parser.ParseReadOnlyDocument(html, new FirstTagAndAllChildren("body").Loop);
             var sb = new StringBuilder();
 
@@ -34,7 +30,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
                     n => n.Tag("div") && n.Class("edit-comment-hide"),
                     n => n.Tag("tr") && n.Class("d-block"),
                     n => n.Tag("td") && n.Class("comment-body"))
-                .Select(n => n.GetTextContent(sb))
+                .Select(n => n.GetTextContent(sb, trimMode: TrimMode.Ends))
                 .ToList();
 
             foreach (var comment in comments)

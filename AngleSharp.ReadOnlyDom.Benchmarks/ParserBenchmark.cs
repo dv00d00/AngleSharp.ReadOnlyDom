@@ -130,7 +130,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
 
         [ParamsSource(nameof(GetSources))] public UrlTest UrlTest { get; set; }
 
-        private readonly IBrowsingContext _context = ParserExtensions.DefaultContext;
+        private readonly IBrowsingContext _context = ReadOnlyParser.DefaultContext;
 
         [Benchmark]
         public Boolean ReadonlyFiltered()

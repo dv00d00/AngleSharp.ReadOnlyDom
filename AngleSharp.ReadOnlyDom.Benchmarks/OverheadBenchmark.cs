@@ -37,14 +37,12 @@ public class OverheadBenchmark
         public override string ToString() => Display;
     }
 
-    private HtmlParser parser = new HtmlParser();
-
     [GlobalSetup]
     public void Setup()
     {
         HtmlEntityProvider.Resolver.GetSymbol("test");
         MimeTypeNames.FromExtension(".txt");
-        parser = new HtmlParser(It!.Options);
+        
     }
 
     [ParamsSource(nameof(GetTasks))] public HtmlTask? It { get; set; }
@@ -67,7 +65,8 @@ public class OverheadBenchmark
     [Benchmark(Baseline = true)]
     public void V1()
     {
-        var doc = parser.ParseDocument(It!.Html);
+        var htmlParser = new HtmlParser(It!.Options, ReadOnlyParser.DefaultContext);
+        var doc = htmlParser.ParseDocument(It!.Html);
         doc.Dispose();
     }
 
@@ -75,7 +74,8 @@ public class OverheadBenchmark
     public void V2()
     {
         var source = new PrefetchedTextSource(It!.Html);
-        var doc = parser.ParseReadOnlyDocument(source);
+        var htmlParser = new HtmlParser(It!.Options, ReadOnlyParser.DefaultContext);
+        var doc = htmlParser.ParseReadOnlyDocument(source);
         doc.Dispose();
     }
 

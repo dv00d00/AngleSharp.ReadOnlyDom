@@ -22,7 +22,7 @@
 
   <ItemGroup>
     <Reference Include="AngleSharp">
-      <HintPath>..\..\..\source\repos\AngleSharp\src\AngleSharp\bin\Release\net8.0\AngleSharp.dll</HintPath>
+      <HintPath>..\..\..\source\repos\AngleSharp-OG\src\AngleSharp\bin\Release\net8.0\AngleSharp.dll</HintPath>
     </Reference>
   </ItemGroup>
 

@@ -7,6 +7,13 @@ using Microsoft.Extensions.ObjectPool;
 
 namespace AngleSharp.ReadOnlyDom.Helpers;
 
+public enum TrimMode
+{
+    None,
+    Ends,
+    TextNodes
+}
+
 public static class QueryHelpers
 {
     public static IEnumerable<IReadOnlyNode> AllDescendants(this IReadOnlyNode node, String tag = null)
@@ -95,7 +102,7 @@ public static class QueryHelpers
 
     private static readonly ObjectPool<StringBuilder> _sbPool = ObjectPool.Create(new StringBuilderPooledObjectPolicy());
 
-    public static String GetTextContent(this IReadOnlyNode node, Boolean trim = false)
+    public static String GetTextContent(this IReadOnlyNode node, TrimMode trim = TrimMode.None)
     {
         var sb = _sbPool.Get();
         try
@@ -108,21 +115,28 @@ public static class QueryHelpers
         }
     }
 
-    public static String GetTextContent(this IReadOnlyNode node, StringBuilder sb, Boolean trim = false)
+    public static String GetTextContent(this IReadOnlyNode node, StringBuilder sb, TrimMode trimMode = TrimMode.None)
     {
         var text = node.AllDescendants().OfType<IReadOnlyTextNode>();
         int i = 0;
         foreach (var textNode in text)
         {
             var span = textNode.Content.Memory.Span;
-            sb.Append(trim && i == 0 ? span.TrimStart() : span);
+            span = trimMode switch
+            {
+                TrimMode.Ends => i == 0 ? span.TrimStart() : span,
+                TrimMode.TextNodes => span.Trim(),
+                _ => span
+            };
+
+            sb.Append(span);
             i++;
         }
 
-        if (trim)
+        if (trimMode == TrimMode.Ends)
         {
             int j;
-            for (j = sb.Length - 1; j > 0 && sb[j].IsWhiteSpaceCharacter(); j++)
+            for (j = sb.Length - 1; j > 0 && sb[j].IsWhiteSpaceCharacter(); j--)
             {
             }
 
@@ -133,6 +147,7 @@ public static class QueryHelpers
         }
        
         var tmp = sb.ToString();
+        sb.Clear();
         return tmp;
     }
 
