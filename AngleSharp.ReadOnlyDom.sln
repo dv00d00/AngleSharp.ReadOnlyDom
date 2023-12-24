@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AngleSharp.ReadOnlyDom", "AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj", "{7C25423F-B8A5-41F1-B8DE-FDA1E918B4EE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AngleSharp.ReadOnlyDom.Benchmarks", "AngleSharp.ReadOnlyDom.Benchmarks\AngleSharp.ReadOnlyDom.Benchmarks.csproj", "{768AFFDD-F0E9-4109-A8AF-6E3DB395A0C2}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7C25423F-B8A5-41F1-B8DE-FDA1E918B4EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7C25423F-B8A5-41F1-B8DE-FDA1E918B4EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7C25423F-B8A5-41F1-B8DE-FDA1E918B4EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7C25423F-B8A5-41F1-B8DE-FDA1E918B4EE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{768AFFDD-F0E9-4109-A8AF-6E3DB395A0C2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{768AFFDD-F0E9-4109-A8AF-6E3DB395A0C2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{768AFFDD-F0E9-4109-A8AF-6E3DB395A0C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{768AFFDD-F0E9-4109-A8AF-6E3DB395A0C2}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
