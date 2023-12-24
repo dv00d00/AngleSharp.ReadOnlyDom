@@ -1,6 +1,7 @@
 ﻿using AngleSharp.Common;
 using AngleSharp.Html.Construction;
-using AngleSharp.ReadOnly.Html;
+
+namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 
 internal class ReadOnlyAttr : IReadOnlyAttr, IConstructableAttr
 {

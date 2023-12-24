@@ -1,11 +1,10 @@
+using AngleSharp.Common;
+using AngleSharp.Dom;
+using AngleSharp.Html.Construction;
+using AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 using AngleSharp.Text;
 
-namespace AngleSharp.Html.Parser;
-
-using System.Collections.Generic;
-using AngleSharp.Dom;
-using Common;
-using Construction;
+namespace AngleSharp.ReadOnlyDom.ReadOnly;
 
 internal interface IReadOnlyConstructionFactory :  IDomConstructionElementFactory<ReadOnlyDocument, ReadOnlyHtmlElement>;
 

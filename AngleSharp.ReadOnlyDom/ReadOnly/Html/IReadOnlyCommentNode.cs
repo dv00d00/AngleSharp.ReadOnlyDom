@@ -1,6 +1,6 @@
-﻿namespace AngleSharp.ReadOnly.Html;
+﻿using AngleSharp.Common;
 
-using Common;
+namespace AngleSharp.ReadOnlyDom.ReadOnly.Html;
 
 public interface IReadOnlyCommentNode
 {

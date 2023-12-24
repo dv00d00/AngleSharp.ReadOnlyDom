@@ -1,8 +1,7 @@
-﻿using System.IO;
-using AngleSharp;
-using AngleSharp.Common;
+﻿using AngleSharp.Common;
 using AngleSharp.Dom;
-using AngleSharp.ReadOnly.Html;
+
+namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 
 internal class ReadOnlyComment : ReadOnlyCharacterData, IReadOnlyCommentNode
 {

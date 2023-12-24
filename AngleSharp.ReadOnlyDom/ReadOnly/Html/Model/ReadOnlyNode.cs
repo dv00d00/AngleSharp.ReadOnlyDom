@@ -2,7 +2,6 @@
 using AngleSharp.Dom;
 using AngleSharp.Html.Construction;
 using AngleSharp.Html.Parser.Tokens.Struct;
-using AngleSharp.ReadOnly.Html;
 
 namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 

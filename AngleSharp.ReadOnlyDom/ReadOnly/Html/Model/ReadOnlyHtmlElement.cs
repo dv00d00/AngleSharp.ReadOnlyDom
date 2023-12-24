@@ -1,8 +1,8 @@
-﻿using System;
-using AngleSharp.Common;
+﻿using AngleSharp.Common;
 using AngleSharp.Dom;
 using AngleSharp.Html.Construction;
-using AngleSharp.ReadOnly.Html;
+
+namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 
 class ReadOnlyHtmlElement : ReadOnlyElement, IConstructableSvgElement, IConstructableMathElement, IReadOnlyElement
 {

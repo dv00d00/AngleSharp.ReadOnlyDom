@@ -1,13 +1,11 @@
-﻿namespace AngleSharp.Benchmarks.UserCode;
-
-using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Buffers;
 using System.Text;
-using Common;
+using AngleSharp.Common;
+using AngleSharp.ReadOnlyDom.ReadOnly.Html;
+using AngleSharp.Text;
 using Microsoft.Extensions.ObjectPool;
-using ReadOnly.Html;
+
+namespace AngleSharp.ReadOnlyDom.Helpers;
 
 public static class QueryHelpers
 {
@@ -113,24 +111,27 @@ public static class QueryHelpers
     public static String GetTextContent(this IReadOnlyNode node, StringBuilder sb, Boolean trim = false)
     {
         var text = node.AllDescendants().OfType<IReadOnlyTextNode>();
+        int i = 0;
         foreach (var textNode in text)
         {
-            sb.Append(textNode.Content.Memory.Span);
+            var span = textNode.Content.Memory.Span;
+            sb.Append(trim && i == 0 ? span.TrimStart() : span);
+            i++;
         }
 
-        if (trim && sb.Length > 0)
+        if (trim)
         {
-            var arr = ArrayPool<Char>.Shared.Rent(sb.Length);
-            try
+            int j;
+            for (j = sb.Length - 1; j > 0 && sb[j].IsWhiteSpaceCharacter(); j++)
             {
-                sb.CopyTo(0, arr, 0, sb.Length);
-                return arr.AsSpan(0, sb.Length).Trim().ToString();
             }
-            finally
+
+            if (j != sb.Length - 1)
             {
-                ArrayPool<Char>.Shared.Return(arr);
+                sb.Remove(j + 1, sb.Length - j - 1);
             }
         }
+       
         var tmp = sb.ToString();
         return tmp;
     }

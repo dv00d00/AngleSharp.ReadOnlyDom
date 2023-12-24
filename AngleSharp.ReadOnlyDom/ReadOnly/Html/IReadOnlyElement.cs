@@ -1,7 +1,7 @@
-﻿namespace AngleSharp.ReadOnly.Html;
+﻿using AngleSharp.Common;
+using AngleSharp.Dom;
 
-using Common;
-using Dom;
+namespace AngleSharp.ReadOnlyDom.ReadOnly.Html;
 
 public interface IReadOnlyElement : IReadOnlyNode
 {

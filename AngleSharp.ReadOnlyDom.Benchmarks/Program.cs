@@ -1,29 +1,15 @@
-#nullable enable
 using System;
+using System.Linq;
 using System.Text;
-using AngleSharp.Benchmarks.UserCode.Filters;
+using System.Threading.Tasks;
+using AngleSharp.Html.Parser;
+using AngleSharp.ReadOnlyDom.Filters;
+using AngleSharp.ReadOnlyDom.Helpers;
+using AngleSharp.Text;
 using BenchmarkDotNet.Running;
 
-namespace AngleSharp.Benchmarks
+namespace AngleSharp.ReadOnlyDom.Benchmarks
 {
-    using System.Buffers;
-    using System.Collections;
-    using System.Collections.Concurrent;
-    using System.Collections.Generic;
-    using System.Diagnostics.CodeAnalysis;
-    using System.Linq;
-    using System.Net.Http;
-    using System.Numerics;
-    using System.Threading.Tasks;
-    using Css.Dom;
-    using Css.Parser;
-    using Dom;
-    using Html.Parser;
-    using Microsoft.IO;
-    using ReadOnly.Html;
-    using Text;
-    using UserCode;
-
     static class Program
     {
         static async Task Main(String[] args)

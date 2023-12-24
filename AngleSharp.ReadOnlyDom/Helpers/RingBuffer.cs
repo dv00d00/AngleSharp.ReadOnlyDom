@@ -1,6 +1,6 @@
 ﻿using System.Numerics;
 
-namespace AngleSharp.Benchmarks.UserCode;
+namespace AngleSharp.ReadOnlyDom.Helpers;
 
 public class RingBuffer<T> where T : struct, INumber<T>
 {

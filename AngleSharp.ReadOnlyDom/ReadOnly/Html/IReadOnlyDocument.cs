@@ -1,6 +1,4 @@
-﻿namespace AngleSharp.ReadOnly.Html;
-
-using System;
+﻿namespace AngleSharp.ReadOnlyDom.ReadOnly.Html;
 
 public interface IReadOnlyDocument : IReadOnlyNode, IDisposable
 {

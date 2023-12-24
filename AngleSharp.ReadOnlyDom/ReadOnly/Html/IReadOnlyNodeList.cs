@@ -1,7 +1,4 @@
-﻿namespace AngleSharp.ReadOnly.Html;
-
-using System;
-using System.Collections.Generic;
+﻿namespace AngleSharp.ReadOnlyDom.ReadOnly.Html;
 
 public interface IReadOnlyNodeList : IEnumerable<IReadOnlyNode>
 {

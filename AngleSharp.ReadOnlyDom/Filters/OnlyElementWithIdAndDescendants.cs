@@ -2,9 +2,9 @@
 using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 
-namespace AngleSharp.Benchmarks.UserCode.Filters;
+namespace AngleSharp.ReadOnlyDom.Filters;
 
-public struct OnlyElementWithId
+public struct OnlyElementWithIdAndDescendants
 {
     private readonly String _id;
     private readonly String _tag;
@@ -12,7 +12,7 @@ public struct OnlyElementWithId
     private Int32 _depth;
     private Boolean _started;
 
-    public OnlyElementWithId(String tag, String id)
+    public OnlyElementWithIdAndDescendants(String tag, String id)
     {
         _tag = tag;
         _id = id;

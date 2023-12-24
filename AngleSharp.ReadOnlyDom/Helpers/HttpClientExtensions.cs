@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using Microsoft.IO;
 
-namespace AngleSharp.Benchmarks.UserCode;
+namespace AngleSharp.ReadOnlyDom.Helpers;
 
 public static class HttpClientExtensions
 {

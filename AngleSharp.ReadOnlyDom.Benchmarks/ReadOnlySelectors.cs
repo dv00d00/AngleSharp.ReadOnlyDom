@@ -1,24 +1,23 @@
-﻿namespace AngleSharp.Benchmarks;
-
-using System;
-using System.Collections;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using AngleSharp.Html.Dom;
+using AngleSharp.Html.Parser;
+using AngleSharp.ReadOnlyDom.Helpers;
+using AngleSharp.ReadOnlyDom.ReadOnly.Html;
+using AngleSharp.Text;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Engines;
 using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
-using Html.Dom;
-using Html.Parser;
-using ReadOnly.Html;
-using Text;
-using UserCode;
+
+namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
 [Config(typeof(Config))]
 [MemoryDiagnoser]
-public class SelectorsOverheadBenchmark
+public class ReadOnlySelectors
 {
     private class Config : ManualConfig
     {

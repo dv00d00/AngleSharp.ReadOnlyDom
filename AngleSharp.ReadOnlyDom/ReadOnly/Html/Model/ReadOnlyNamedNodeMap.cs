@@ -1,10 +1,8 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Collections;
 using AngleSharp.Common;
 using AngleSharp.Html.Construction;
-using AngleSharp.ReadOnly.Html;
+
+namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 
 internal class ReadOnlyNamedNodeMap : IConstructableNamedNodeMap, IReadOnlyNamedNodeMap
 {

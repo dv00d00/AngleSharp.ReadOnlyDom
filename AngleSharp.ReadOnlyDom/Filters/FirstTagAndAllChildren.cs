@@ -1,7 +1,7 @@
 ﻿using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 
-namespace AngleSharp.Benchmarks.UserCode.Filters;
+namespace AngleSharp.ReadOnlyDom.Filters;
 
 public struct FirstTagAndAllChildren
 {

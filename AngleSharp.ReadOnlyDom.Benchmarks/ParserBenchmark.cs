@@ -1,24 +1,18 @@
-using AngleSharp.Benchmarks.UserCode;
-using AngleSharp.Benchmarks.UserCode.Filters;
+using System;
+using System.Collections.Generic;
+using AngleSharp.Html.Parser;
+using AngleSharp.Html.Parser.Tokens.Struct;
+using AngleSharp.ReadOnlyDom.Filters;
+using AngleSharp.ReadOnlyDom.Helpers;
+using AngleSharp.Text;
+using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Engines;
+using BenchmarkDotNet.Environments;
+using BenchmarkDotNet.Jobs;
 
-namespace AngleSharp.Benchmarks
+namespace AngleSharp.ReadOnlyDom.Benchmarks
 {
-    using System;
-    using System.Collections.Frozen;
-    using System.Linq;
-    using BenchmarkDotNet.Engines;
-    using BenchmarkDotNet.Environments;
-    using BenchmarkDotNet.Jobs;
-    using Html;
-    using Text;
-    using System.Collections.Generic;
-    using Html.Parser;
-    using BenchmarkDotNet.Attributes;
-    using BenchmarkDotNet.Configs;
-    using Dom;
-    using Html.Parser.Tokens.Struct;
-    using HtmlAgilityPack;
-
     [Config(typeof(Config))]
     [MemoryDiagnoser]
     public class ParserBenchmark
@@ -30,12 +24,11 @@ namespace AngleSharp.Benchmarks
                 AddJob(Job.ShortRun
                     .WithRuntime(CoreRuntime.Core80)
                     .WithStrategy(RunStrategy.Throughput)
-
                 );
             }
         }
 
-        public static readonly HtmlParserOptions HtmlParserOptions = new HtmlParserOptions()
+        public static readonly HtmlParserOptions HtmlParserOptions = new()
         {
             IsStrictMode = false,
             IsScripting = false,
@@ -76,44 +69,44 @@ namespace AngleSharp.Benchmarks
 
             websites.Include(
                 new[]{
-                "http://www.amazon.com",
-                "http://www.blogspot.com",
-                "http://www.smashing.com",
-                "http://www.youtube.com",
-                "http://www.weibo.com",
-                "http://www.yahoo.com",
-                "http://www.google.com",
-                "http://www.linkedin.com",
-                "http://www.pinterest.com",
-                "http://news.google.com",
-                "http://www.baidu.com",
-                "http://www.codeproject.com",
-                "http://www.ebay.com",
-                "http://www.msn.com",
-
-                "http://www.qq.com",
-                "http://www.florian-rappl.de",
-                "http://www.stackoverflow.com",
-
-                "http://www.live.com",
-                "http://www.taobao.com",
-                "http://www.huffingtonpost.com",
-                "http://www.wordpress.org",
-                "http://www.myspace.com",
-                "http://www.flickr.com",
-                "http://www.godaddy.com",
-                "http://www.reddit.com",
-
-                "http://peacekeeper.futuremark.com",
-                "http://www.pcmag.com",
-                "http://www.sitepoint.com",
-                "http://html5test.com",
-                "http://www.spiegel.de",
-                "http://www.tmall.com",
-                "http://www.sohu.com",
-                "http://www.vk.com",
-                "http://www.wordpress.com",
-                "http://www.bing.com",
+                // "http://www.amazon.com",
+                // "http://www.blogspot.com",
+                // "http://www.smashing.com",
+                // "http://www.youtube.com",
+                // "http://www.weibo.com",
+                // "http://www.yahoo.com",
+                // "http://www.google.com",
+                // "http://www.linkedin.com",
+                // "http://www.pinterest.com",
+                // "http://news.google.com",
+                // "http://www.baidu.com",
+                // "http://www.codeproject.com",
+                // "http://www.ebay.com",
+                // "http://www.msn.com",
+                //
+                // "http://www.qq.com",
+                // "http://www.florian-rappl.de",
+                // "http://www.stackoverflow.com",
+                //
+                // "http://www.live.com",
+                // "http://www.taobao.com",
+                // "http://www.huffingtonpost.com",
+                // "http://www.wordpress.org",
+                // "http://www.myspace.com",
+                // "http://www.flickr.com",
+                // "http://www.godaddy.com",
+                // "http://www.reddit.com",
+                //
+                // "http://peacekeeper.futuremark.com",
+                // "http://www.pcmag.com",
+                // "http://www.sitepoint.com",
+                // "http://html5test.com",
+                // "http://www.spiegel.de",
+                // "http://www.tmall.com",
+                // "http://www.sohu.com",
+                // "http://www.vk.com",
+                // "http://www.wordpress.com",
+                // "http://www.bing.com",
 
                 "http://www.nbc.com",
                 "http://www.ask.com",
@@ -137,13 +130,13 @@ namespace AngleSharp.Benchmarks
 
         [ParamsSource(nameof(GetSources))] public UrlTest UrlTest { get; set; }
 
-        IBrowsingContext context = BrowsingContext.New(Configuration.Default);
+        private readonly IBrowsingContext _context = ParserExtensions.DefaultContext;
 
         [Benchmark]
         public Boolean ReadonlyFiltered()
         {
             var filter = new FirstTagAndAllChildren("body");
-            var parser = new HtmlParser(HtmlParserOptions, context);
+            var parser = new HtmlParser(HtmlParserOptions, _context);
             using var source = new PrefetchedTextSource(UrlTest.Source);
             using var document = parser.ParseReadOnlyDocument(source, filter.Loop);
             return false;
@@ -152,7 +145,7 @@ namespace AngleSharp.Benchmarks
         [Benchmark]
         public Boolean Readonly()
         {
-            var parser = new HtmlParser(DefaultOptions, context);
+            var parser = new HtmlParser(DefaultOptions, _context);
             using var source = new PrefetchedTextSource(UrlTest.Source);
             using var document = parser.ParseReadOnlyDocument(source);
             return false;
@@ -161,7 +154,7 @@ namespace AngleSharp.Benchmarks
         [Benchmark(Baseline = true)]
         public Boolean Default()
         {
-            var parser = new HtmlParser(DefaultOptions, context);
+            var parser = new HtmlParser(DefaultOptions, _context);
             using var document = parser.ParseDocument(UrlTest.Source);
             return false;
         }

@@ -1,6 +1,6 @@
 ﻿using System.Buffers;
 
-namespace AngleSharp.Benchmarks.UserCode;
+namespace AngleSharp.ReadOnlyDom.Helpers;
 
 public static class ArrayPoolExtensions
 {

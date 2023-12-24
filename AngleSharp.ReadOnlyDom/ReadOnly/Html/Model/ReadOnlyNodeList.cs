@@ -1,7 +1,7 @@
 ﻿using System.Collections;
 using AngleSharp.Html.Construction;
-using AngleSharp.ReadOnly.Html;
-using AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
+
+namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 
 internal class ReadOnlyNodeList : IConstructableNodeList, IReadOnlyNodeList
 {

@@ -1,13 +1,8 @@
-﻿using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using AngleSharp.Common;
-using AngleSharp.Dom;
+﻿using AngleSharp.Dom;
 using AngleSharp.Html.Construction;
-using AngleSharp.ReadOnly.Html;
-using AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 using AngleSharp.Text;
+
+namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 
 internal class ReadOnlyDocument : ReadOnlyNode, IConstructableDocument, IReadOnlyDocument
 {

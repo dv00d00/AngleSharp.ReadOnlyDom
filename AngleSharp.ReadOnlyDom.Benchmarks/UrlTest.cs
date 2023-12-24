@@ -4,7 +4,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace AngleSharp.Benchmarks
+namespace AngleSharp.ReadOnlyDom.Benchmarks
 {
     public sealed class UrlTest
     {

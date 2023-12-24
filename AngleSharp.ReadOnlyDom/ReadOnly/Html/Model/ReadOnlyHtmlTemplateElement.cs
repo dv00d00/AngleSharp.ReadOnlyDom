@@ -2,6 +2,8 @@
 using AngleSharp.Dom;
 using AngleSharp.Html.Construction;
 
+namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
+
 class ReadOnlyHtmlTemplateElement : ReadOnlyHtmlElement, IConstructableTemplateElement
 {
     public ReadOnlyHtmlTemplateElement(ReadOnlyDocument? owner, StringOrMemory prefix = default)

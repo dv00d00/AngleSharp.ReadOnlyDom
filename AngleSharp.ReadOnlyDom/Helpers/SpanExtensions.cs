@@ -1,4 +1,4 @@
-﻿namespace AngleSharp.Benchmarks.UserCode;
+﻿namespace AngleSharp.ReadOnlyDom.Helpers;
 
 internal static class SpanExtensions
 {

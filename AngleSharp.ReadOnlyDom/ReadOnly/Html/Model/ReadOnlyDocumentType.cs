@@ -1,8 +1,7 @@
-﻿using System.IO;
-using AngleSharp;
-using AngleSharp.Common;
+﻿using AngleSharp.Common;
 using AngleSharp.Dom;
-using AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
+
+namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 
 internal class ReadOnlyDocumentType : ReadOnlyNode
 {

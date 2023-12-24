@@ -1,12 +1,9 @@
-﻿using System;
-using System.IO;
-using AngleSharp;
-using AngleSharp.Common;
+﻿using AngleSharp.Common;
 using AngleSharp.Dom;
 using AngleSharp.Html.Construction;
 using AngleSharp.Html.Parser.Tokens.Struct;
-using AngleSharp.ReadOnly.Html;
-using AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
+
+namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 
 internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
 {

@@ -1,8 +1,6 @@
-﻿namespace AngleSharp.ReadOnly.Html;
+﻿using AngleSharp.Common;
 
-using System;
-using System.Collections.Generic;
-using Common;
+namespace AngleSharp.ReadOnlyDom.ReadOnly.Html;
 
 public interface IReadOnlyNamedNodeMap : IEnumerable<IReadOnlyAttr>
 {

@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace AngleSharp.Benchmarks
+namespace AngleSharp.ReadOnlyDom.Benchmarks
 {
     public sealed class UrlTests
     {

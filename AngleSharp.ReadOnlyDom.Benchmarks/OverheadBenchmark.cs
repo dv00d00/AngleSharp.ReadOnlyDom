@@ -1,19 +1,18 @@
-﻿using AngleSharp.Benchmarks.UserCode;
-
-namespace AngleSharp.Benchmarks;
-
-using System;
+﻿using System;
 using System.Collections.Generic;
+using AngleSharp.Html;
+using AngleSharp.Html.Parser;
+using AngleSharp.Html.Parser.Tokens.Struct;
+using AngleSharp.Io;
+using AngleSharp.ReadOnlyDom.Helpers;
+using AngleSharp.Text;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Engines;
 using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
-using Html;
-using Html.Parser;
-using Html.Parser.Tokens.Struct;
-using Io;
-using Text;
+
+namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
 [Config(typeof(Config))]
 [MemoryDiagnoser]
@@ -52,15 +51,15 @@ public class OverheadBenchmark
 
     public IEnumerable<HtmlTask> GetTasks()
     {
-        // yield return new HtmlTask { Display = "br", Html = "<br/>", Options = default};
-        // yield return new HtmlTask { Display = "table", Html = StaticHtml.HtmlTable, Options = default};
-        // yield return new HtmlTask { Display = "table tabbed", Html = StaticHtml.HtmlTableTabbed, Options = default};
+        yield return new HtmlTask { Display = "br", Html = "<br/>", Options = default};
+        yield return new HtmlTask { Display = "table", Html = StaticHtml.HtmlTable, Options = default};
+        yield return new HtmlTask { Display = "table tabbed", Html = StaticHtml.HtmlTableTabbed, Options = default};
         yield return new HtmlTask { Display = "table TABBED", Html = StaticHtml.HtmlTableTabbedSoMuch, Options = default};
         yield return new HtmlTask { Display = "github", Html = StaticHtml.Github, Options = default};
-
-        // yield return new HtmlTask { Display = "br *", Html = "<br/>", Options = Custom };
-        // yield return new HtmlTask { Display = "table *", Html = StaticHtml.HtmlTable, Options = Custom };
-        // yield return new HtmlTask { Display = "table tabbed *", Html = StaticHtml.HtmlTableTabbed, Options = Custom };
+        
+        yield return new HtmlTask { Display = "br *", Html = "<br/>", Options = Custom };
+        yield return new HtmlTask { Display = "table *", Html = StaticHtml.HtmlTable, Options = Custom };
+        yield return new HtmlTask { Display = "table tabbed *", Html = StaticHtml.HtmlTableTabbed, Options = Custom };
         yield return new HtmlTask { Display = "table TABBED *", Html = StaticHtml.HtmlTableTabbedSoMuch, Options = Custom };
         yield return new HtmlTask { Display = "github *", Html = StaticHtml.Github, Options = Custom };
     }

@@ -2,6 +2,8 @@
 using AngleSharp.Dom;
 using AngleSharp.Html.Construction;
 
+namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
+
 class ReadOnlyHtmlMeta : ReadOnlyHtmlElement, IConstructableMetaElement
 {
     public ReadOnlyHtmlMeta(ReadOnlyDocument? owner, StringOrMemory prefix = default)

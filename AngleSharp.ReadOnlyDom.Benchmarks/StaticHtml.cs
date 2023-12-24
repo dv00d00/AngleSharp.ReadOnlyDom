@@ -1,5 +1,4 @@
-﻿#nullable enable
-namespace AngleSharp.Benchmarks;
+﻿namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
 public class StaticHtml
 {
