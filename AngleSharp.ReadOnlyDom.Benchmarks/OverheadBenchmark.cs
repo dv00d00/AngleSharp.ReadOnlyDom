@@ -1,4 +1,5 @@
-﻿#nullable enable
+﻿using AngleSharp.Benchmarks.UserCode;
+
 namespace AngleSharp.Benchmarks;
 
 using System;
@@ -9,11 +10,9 @@ using BenchmarkDotNet.Engines;
 using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
 using Html;
-using Html.Dom;
 using Html.Parser;
 using Html.Parser.Tokens.Struct;
 using Io;
-using ReadOnly.Html;
 using Text;
 
 [Config(typeof(Config))]

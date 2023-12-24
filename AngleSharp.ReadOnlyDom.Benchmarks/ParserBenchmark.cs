@@ -1,3 +1,6 @@
+using AngleSharp.Benchmarks.UserCode;
+using AngleSharp.Benchmarks.UserCode.Filters;
+
 namespace AngleSharp.Benchmarks
 {
     using System;

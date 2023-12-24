@@ -5,6 +5,7 @@
     <SignAssembly>false</SignAssembly>
     <LangVersion>preview</LangVersion>
     <WarningsAsErrors>false</WarningsAsErrors>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
   
   <ItemGroup>
@@ -23,6 +24,14 @@
     <Reference Include="AngleSharp">
       <HintPath>..\..\..\source\repos\AngleSharp\src\AngleSharp\bin\Release\net8.0\AngleSharp.dll</HintPath>
     </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="UserCode\" />
   </ItemGroup>
 
 </Project>
