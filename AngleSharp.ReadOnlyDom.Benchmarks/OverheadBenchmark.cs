@@ -73,9 +73,8 @@ public class OverheadBenchmark
     [Benchmark]
     public void V2()
     {
-        var source = new PrefetchedTextSource(It!.Html);
         var htmlParser = new HtmlParser(It!.Options, ReadOnlyParser.DefaultContext);
-        var doc = htmlParser.ParseReadOnlyDocument(source);
+        var doc = htmlParser.ParseReadOnlyDocument(It!.Html);
         doc.Dispose();
     }
 

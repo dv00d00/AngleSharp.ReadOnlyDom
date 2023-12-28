@@ -6,12 +6,12 @@ namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 
 internal class ReadOnlyDocument : ReadOnlyNode, IConstructableDocument, IReadOnlyDocument
 {
-    public ReadOnlyDocument(IReadOnlyTextSource source) : base(null, "#document", NodeType.Document)
+    public ReadOnlyDocument(TextSource source) : base(null, "#document", NodeType.Document)
     {
         Source = source;
     }
 
-    public IReadOnlyTextSource Source { get; set; }
+    public TextSource Source { get; set; }
 
     public IDisposable? Builder { get; set; }
 

@@ -20,9 +20,8 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
                 return;
             }
 
-            var html = new PrefetchedTextSource(StaticHtml.Github);
             var parser = new HtmlParser(new HtmlParserOptions(), ReadOnlyParser.DefaultContext);
-            using var doc = parser.ParseReadOnlyDocument(html, new FirstTagAndAllChildren("body").Loop);
+            using var doc = parser.ParseReadOnlyDocument(StaticHtml.Github, new FirstTagAndAllChildren("body").Loop);
             var sb = new StringBuilder();
 
             var comments = doc?

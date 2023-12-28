@@ -34,7 +34,7 @@ internal sealed class ReadOnlyDomConstructionFactory : IReadOnlyConstructionFact
 
     public ReadOnlyHtmlElement CreateUnknown(ReadOnlyDocument document, StringOrMemory tagName) => new(document, tagName);
     
-    public ReadOnlyDocument CreateDocument(IReadOnlyTextSource source, IBrowsingContext? context = null) => new(source);
+    public ReadOnlyDocument CreateDocument(TextSource source, IBrowsingContext? context = null) => new(source);
 
     public IConstructableNode CreateDocumentType(
         ReadOnlyDocument document,

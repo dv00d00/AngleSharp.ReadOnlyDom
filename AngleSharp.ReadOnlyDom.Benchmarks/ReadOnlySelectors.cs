@@ -1,12 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Helpers;
 using AngleSharp.ReadOnlyDom.ReadOnly.Html;
-using AngleSharp.Text;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Engines;
@@ -30,17 +27,8 @@ public class ReadOnlySelectorsBenchmark
         }
     }
 
-    private readonly IHtmlDocument document = 
-        new HtmlParser(default, ReadOnlyParser.DefaultContext)
-        .ParseDocument(StaticHtml.Github);
-    
-    private readonly IReadOnlyDocument documentReadonly = 
-        new HtmlParser(default, ReadOnlyParser.DefaultContext)
-        .ParseReadOnlyDocument(new PrefetchedTextSource(StaticHtml.Github));
-    
-    private readonly StringBuilder sb = new StringBuilder(512);
-    
-    private readonly Stack<IReadOnlyNode> stack = new Stack<IReadOnlyNode>();
+    private readonly IHtmlDocument document = new HtmlParser(default, ReadOnlyParser.DefaultContext).ParseDocument(StaticHtml.Github);
+    private readonly IReadOnlyDocument documentReadonly = new HtmlParser(default, ReadOnlyParser.DefaultContext).ParseReadOnlyDocument(StaticHtml.Github);
 
     private static readonly Func<IReadOnlyNode, Boolean>[] _selectors = {
         n => n.TagClass("div", "edit-comment-hide"),
