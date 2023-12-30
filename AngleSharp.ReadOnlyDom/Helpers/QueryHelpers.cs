@@ -190,14 +190,14 @@ public static class QueryHelpers
         int i = chain.Length - 2;
 
         // find that all items in chain match distinct parent nodes
-        while (i > 0 && node.Parent != null)
+        while (i >= 0 && node.Parent != null)
         {
             node = node.Parent;
-            if (!chain[i](node))
+            if (chain[i](node))
                 i--;
         }
 
-        return i == 0;
+        return i < 0;
     }
 
     private static IEnumerable<IReadOnlyNode> ChainInner(
