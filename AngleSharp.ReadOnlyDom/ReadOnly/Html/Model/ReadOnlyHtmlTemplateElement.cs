@@ -4,23 +4,38 @@ using AngleSharp.Html.Construction;
 
 namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 
-class ReadOnlyHtmlTemplateElement : ReadOnlyHtmlElement, IConstructableTemplateElement
+class ReadOnlyHtmlTemplateElement : ReadOnlyHtmlElement, IConstructableTemplateElement, IReadOnlyTemplateElement
 {
     public ReadOnlyHtmlTemplateElement(ReadOnlyDocument? owner, StringOrMemory prefix = default)
         : base(owner, TagNames.Template, prefix, NodeFlags.Special | NodeFlags.Scoped | NodeFlags.HtmlTableScoped | NodeFlags.HtmlTableSectionScoped)
     {
     }
 
+    private ReadOnlyNodeList Content { get; set; } = new ReadOnlyNodeList();
+    IReadOnlyNodeList IReadOnlyTemplateElement.Content => Content;
+
     public void PopulateFragment()
     {
+        while (ChildNodes.Length > 0)
+        {
+            var node = ChildNodes[0];
+            RemoveNode(0, node);
+            node.Parent = this;
+            Content.Add(node);
+        }
     }
 
-    public override IConstructableNode ShallowCopy()
+    public IConstructableNode ShallowCopy()
     {
         var readOnlyElement = new ReadOnlyHtmlTemplateElement(Owner)
         {
-            _childNodes = _childNodes
+            Content = Content,
         };
+        
+        if (_attributes != null)
+            foreach (var attribute in _attributes)
+                readOnlyElement.SetOwnAttribute(attribute.Name, attribute.Value);
+        
         return readOnlyElement;
     }
 }

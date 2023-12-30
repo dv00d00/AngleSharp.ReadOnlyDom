@@ -5,15 +5,15 @@ namespace AngleSharp.ReadOnlyDom.Helpers;
 public class RingBuffer<T> where T : struct, INumber<T>
 {
     private readonly T[] _buffer;
-    private Int32 _end;
+    private int _end;
 
-    public RingBuffer(Int32 capacity)
+    public RingBuffer(int capacity)
     {
         _buffer = new T[capacity];
         _end = 0;
     }
 
-    public Int32 Count => Math.Min(_buffer.Length, _end);
+    public int Count => Math.Min(_buffer.Length, _end);
 
     public void Add(T item)
     {

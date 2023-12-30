@@ -28,9 +28,39 @@ internal sealed class ReadOnlyDomConstructionFactory : IReadOnlyConstructionFact
 
     public ReadOnlyHtmlElement CreateNoScript(ReadOnlyDocument document, bool scripting) => new(document, TagNames.NoScript, default, NodeFlags.Special);
 
-    public IConstructableMathElement CreateMath(ReadOnlyDocument document, StringOrMemory name = default) => new ReadOnlyHtmlElement(document, TagNames.Math);
+    public IConstructableMathElement CreateMath(ReadOnlyDocument document, StringOrMemory name = default)
+    {
+        switch (name)
+        {
+            case var mn when mn.Equals(TagNames.Mn):
+            case var mo when mo.Equals(TagNames.Mo):
+            case var mi when mi.Equals(TagNames.Mi):
+            case var ms when ms.Equals(TagNames.Ms):
+            case var mtext when mtext.Equals(TagNames.Mtext):
+                return new ReadOnlyMathElement(document, name, default, NodeFlags.MathTip | NodeFlags.Special | NodeFlags.Scoped);
 
-    public IConstructableSvgElement CreateSvg(ReadOnlyDocument document, StringOrMemory name = default) => new ReadOnlyHtmlElement(document, TagNames.Svg);
+            case var annotationXml when annotationXml.Equals(TagNames.AnnotationXml):
+                return new ReadOnlyMathElement(document, name, default,
+                    NodeFlags.Special | NodeFlags.Scoped);
+
+            default:
+                return new ReadOnlyMathElement(document, name);
+        }
+    }
+
+    public IConstructableSvgElement CreateSvg(ReadOnlyDocument document, StringOrMemory name = default)
+    {
+        switch (name)
+        {
+            case var desc when desc.Equals(TagNames.Desc):
+            case var foreignObject when foreignObject.Equals(TagNames.ForeignObject):
+            case var title when title.Equals(TagNames.Title):
+                return new ReadOnlySvgElement(document, name, default,
+                    NodeFlags.HtmlTip | NodeFlags.Special | NodeFlags.Scoped);
+            default:
+                return new ReadOnlySvgElement(document, name);
+        }
+    }
 
     public ReadOnlyHtmlElement CreateUnknown(ReadOnlyDocument document, StringOrMemory tagName) => new(document, tagName);
     

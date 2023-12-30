@@ -5,12 +5,12 @@ namespace AngleSharp.ReadOnlyDom.Filters;
 
 public struct FirstTagAndAllChildren
 {
-    private readonly String _tag;
+    private readonly string _tag;
 
-    private Int32 _depth;
-    private Boolean _started;
+    private int _depth;
+    private bool _started;
 
-    public FirstTagAndAllChildren(String tag)
+    public FirstTagAndAllChildren(string tag)
     {
         _tag = tag;
         _depth = 0;

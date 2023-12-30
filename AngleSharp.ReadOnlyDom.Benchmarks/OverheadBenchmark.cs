@@ -100,7 +100,7 @@ public class OverheadBenchmark
         SkipRCDataText = true,
         SkipProcessingInstructions = true,
         DisableElementPositionTracking = true,
-        ShouldEmitAttribute = static (ref StructHtmlToken _, ReadOnlyMemory<Char> n) =>
+        ShouldEmitAttribute = static (ref StructHtmlToken _, ReadOnlyMemory<char> n) =>
         {
             var s = n.Span;
             return s.Length switch

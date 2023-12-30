@@ -10,3 +10,8 @@ public interface IReadOnlyElement : IReadOnlyNode
     IReadOnlyNamedNodeMap Attributes { get; }
     ISourceReference? SourceReference { get; }
 }
+
+public interface IReadOnlyTemplateElement : IReadOnlyElement
+{
+    IReadOnlyNodeList Content { get; } 
+}

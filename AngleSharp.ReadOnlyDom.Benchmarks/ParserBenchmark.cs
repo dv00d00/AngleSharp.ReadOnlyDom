@@ -51,7 +51,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
             SkipRCDataText = true,
             SkipProcessingInstructions = true,
             DisableElementPositionTracking = true,
-            ShouldEmitAttribute = static (ref StructHtmlToken _, ReadOnlyMemory<Char> n) =>
+            ShouldEmitAttribute = static (ref StructHtmlToken _, ReadOnlyMemory<char> n) =>
             {
                 var s = n.Span;
                 return s.Length switch
@@ -131,7 +131,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
         private readonly IBrowsingContext _context = ReadOnlyParser.DefaultContext;
 
         [Benchmark]
-        public Boolean Trimmed()
+        public bool BodyRO()
         {
             var filter = new FirstTagAndAllChildren("body");
             var parser = new HtmlParser(HtmlParserOptions, _context);
@@ -139,24 +139,24 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
             return false;
         }
 
-        [Benchmark]
-        public Boolean Readonly()
-        {
-            var parser = new HtmlParser(DefaultOptions, _context);
-            using var document = parser.ParseReadOnlyDocument(UrlTest.Source);
-            return false;
-        }
+        // [Benchmark]
+        // public Boolean Readonly()
+        // {
+        //     var parser = new HtmlParser(DefaultOptions, _context);
+        //     using var document = parser.ParseReadOnlyDocument(UrlTest.Source);
+        //     return false;
+        // }
         
-        [Benchmark]
-        public Boolean DefaultSTS()
-        {
-            var parser = new HtmlParser(DefaultOptions, _context);
-            using var _ = parser.ParseDocument<Document, Element>(new TextSource(new StringTextSource(UrlTest.Source)));
-            return false;
-        }
+        // [Benchmark]
+        // public Boolean DefaultSTS()
+        // {
+        //     var parser = new HtmlParser(DefaultOptions, _context);
+        //     using var _ = parser.ParseDocument<Document, Element>(new TextSource(new StringTextSource(UrlTest.Source)));
+        //     return false;
+        // }
         
         [Benchmark(Baseline = true)]
-        public Boolean Default()
+        public bool Default()
         {
             var parser = new HtmlParser(DefaultOptions, _context);
             using var document = parser.ParseDocument(UrlTest.Source);

@@ -11,16 +11,16 @@ class ReadOnlyHtmlScript : ReadOnlyHtmlElement, IConstructableScriptElement
     {
     }
 
-    Boolean IConstructableScriptElement.Prepare(IConstructableDocument document) => false;
+    bool IConstructableScriptElement.Prepare(IConstructableDocument document) => false;
     
     Task IConstructableScriptElement.RunAsync(CancellationToken cancel) => Task.CompletedTask;
 
-    public override IConstructableNode ShallowCopy()
+    public IConstructableNode ShallowCopy()
     {
-        var readOnlyElement = new ReadOnlyHtmlScript(Owner)
-        {
-            _childNodes = _childNodes
-        };
-        return readOnlyElement;
+        var readOnlyHtmlScript = new ReadOnlyHtmlScript(Owner);
+        if (_attributes != null)
+            foreach (var attribute in _attributes)
+                readOnlyHtmlScript.SetOwnAttribute(attribute.Name, attribute.Value);
+        return readOnlyHtmlScript;
     }
 }

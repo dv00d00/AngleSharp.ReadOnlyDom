@@ -4,7 +4,7 @@ namespace AngleSharp.ReadOnlyDom.Helpers;
 
 public static class ArrayPoolExtensions
 {
-    internal static Lease<T> Borrow<T>(this ArrayPool<T> pool, Int32 length)
+    internal static Lease<T> Borrow<T>(this ArrayPool<T> pool, int length)
     {
         var arr = ArrayPool<T>.Shared.Rent(length);
         return new Lease<T>(ArrayPool<T>.Shared, arr, length);
@@ -14,16 +14,16 @@ public static class ArrayPoolExtensions
     {
         private readonly ArrayPool<T> _owner;
         private readonly T[] _data;
-        private readonly Int32 _requestedLength;
+        private readonly int _requestedLength;
 
-        public Lease(ArrayPool<T> owner, T[] data, Int32 requestedLength)
+        public Lease(ArrayPool<T> owner, T[] data, int requestedLength)
         {
             _owner = owner;
             _data = data;
             _requestedLength = requestedLength;
         }
 
-        public Int32 RequestedLength => _requestedLength;
+        public int RequestedLength => _requestedLength;
 
         public T[] Data => _data;
 

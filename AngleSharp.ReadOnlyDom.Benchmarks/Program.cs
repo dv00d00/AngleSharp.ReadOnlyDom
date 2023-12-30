@@ -12,7 +12,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
 {
     static class Program
     {
-        static async Task Main(String[] args)
+        static async Task Main(string[] args)
         {
             if (args.Length > 0)
             {

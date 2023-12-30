@@ -30,7 +30,7 @@ public class ReadOnlySelectorsBenchmark
     private readonly IHtmlDocument document = new HtmlParser(default, ReadOnlyParser.DefaultContext).ParseDocument(StaticHtml.Github);
     private readonly IReadOnlyDocument documentReadonly = new HtmlParser(default, ReadOnlyParser.DefaultContext).ParseReadOnlyDocument(StaticHtml.Github);
 
-    private static readonly Func<IReadOnlyNode, Boolean>[] _selectors = {
+    private static readonly Func<IReadOnlyNode, bool>[] _selectors = {
         n => n.TagClass("div", "edit-comment-hide"),
         n => n.TagClass("tr", "d-block"),
         n => n.TagClass("td", "comment-body")

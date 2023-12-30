@@ -7,10 +7,10 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
     public sealed class UrlTests
     {
         readonly List<UrlTest> _tests;
-        readonly Boolean _buffer;
-        readonly String _extension;
+        readonly bool _buffer;
+        readonly string _extension;
 
-        public UrlTests(String extension, Boolean withBuffer = true)
+        public UrlTests(string extension, bool withBuffer = true)
         {
             _tests = new List<UrlTest>();
             _buffer = withBuffer;
@@ -19,7 +19,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
 
         public List<UrlTest> Tests => _tests;
 
-        public async Task<UrlTests> Include(params String[] urls)
+        public async Task<UrlTests> Include(params string[] urls)
         {
             var tasks = new Task[urls.Length];
 
@@ -32,7 +32,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
             return this;
         }
 
-        public async Task<UrlTests> Include(String url)
+        public async Task<UrlTests> Include(string url)
         {
             var test = await UrlTest.For(url, _extension, _buffer).ConfigureAwait(false);
             _tests.Add(test);

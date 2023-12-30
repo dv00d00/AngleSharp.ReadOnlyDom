@@ -8,7 +8,7 @@ internal static class SpanExtensions
     /// <param name="span">The span to split</param>
     /// <param name="sentinel">The sentinel to split the span on.</param>
     /// <returns>An enumerator over the span segments.</returns>
-    public static StringSplitEnumerator Split(this ReadOnlySpan<Char> span, ReadOnlySpan<Char> sentinel) =>
+    public static StringSplitEnumerator Split(this ReadOnlySpan<char> span, ReadOnlySpan<char> sentinel) =>
         new(span, sentinel);
 
     /// <summary>
@@ -17,21 +17,21 @@ internal static class SpanExtensions
     /// <param name="span">The span to split</param>
     /// <param name="sentinel">The sentinel to split the span on.</param>
     /// <returns>An enumerator over the span segments.</returns>
-    public static MemStringSplitEnumerator Split(this ReadOnlyMemory<Char> span, ReadOnlySpan<Char> sentinel) =>
+    public static MemStringSplitEnumerator Split(this ReadOnlyMemory<char> span, ReadOnlySpan<char> sentinel) =>
         new(span, sentinel);
 
     internal ref struct StringSplitEnumerator
     {
-        private readonly ReadOnlySpan<Char> _sentinel;
-        private ReadOnlySpan<Char> _span;
+        private readonly ReadOnlySpan<char> _sentinel;
+        private ReadOnlySpan<char> _span;
 
-        public StringSplitEnumerator(ReadOnlySpan<Char> span, ReadOnlySpan<Char> sentinel)
+        public StringSplitEnumerator(ReadOnlySpan<char> span, ReadOnlySpan<char> sentinel)
         {
             _span = span;
             _sentinel = sentinel;
         }
 
-        public Boolean MoveNext()
+        public bool MoveNext()
         {
             while (true)
             {
@@ -61,23 +61,23 @@ internal static class SpanExtensions
             }
         }
 
-        public ReadOnlySpan<Char> Current { get; private set; }
+        public ReadOnlySpan<char> Current { get; private set; }
 
         public readonly StringSplitEnumerator GetEnumerator() => this;
     }
 
     internal ref struct MemStringSplitEnumerator
     {
-        private readonly ReadOnlySpan<Char> _sentinel;
-        private ReadOnlyMemory<Char> _mem;
+        private readonly ReadOnlySpan<char> _sentinel;
+        private ReadOnlyMemory<char> _mem;
 
-        public MemStringSplitEnumerator(ReadOnlyMemory<Char> mem, ReadOnlySpan<Char> sentinel)
+        public MemStringSplitEnumerator(ReadOnlyMemory<char> mem, ReadOnlySpan<char> sentinel)
         {
             _mem = mem;
             _sentinel = sentinel;
         }
 
-        public Boolean MoveNext()
+        public bool MoveNext()
         {
             while (true)
             {
@@ -107,7 +107,7 @@ internal static class SpanExtensions
             }
         }
 
-        public ReadOnlyMemory<Char> Current { get; private set; }
+        public ReadOnlyMemory<char> Current { get; private set; }
 
         public readonly MemStringSplitEnumerator GetEnumerator() => this;
     }

@@ -1,32 +1,26 @@
-﻿using AngleSharp.Dom;
+﻿using AngleSharp.Common;
+using AngleSharp.Dom;
 using AngleSharp.Html.Construction;
 using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 
-internal class ReadOnlyDocument : ReadOnlyNode, IConstructableDocument, IReadOnlyDocument
+internal class ReadOnlyDocument : ReadOnlyHtmlElement, IConstructableDocument, IReadOnlyDocument, IConstructableElement
 {
-    public ReadOnlyDocument(TextSource source) : base(null, "#document", NodeType.Document)
+    public ReadOnlyDocument(TextSource source) : base(null, "#document")
     {
         Source = source;
     }
 
     public TextSource Source { get; set; }
-
     public IDisposable? Builder { get; set; }
-
     public QuirksMode QuirksMode { get; set; }
 
-    public IConstructableElement Head => _ChildNodes.OfType<ReadOnlyHtmlElement>().First(n => n.NodeName.Memory.Span.SequenceEqual("head"));
-
-    public IConstructableElement DocumentElement => _ChildNodes.OfType<ReadOnlyHtmlElement>().First(n => n.NodeName.Memory.Span.SequenceEqual("document"));
-
-    IReadOnlyElement IReadOnlyDocument.Body => _ChildNodes.OfType<ReadOnlyHtmlElement>().First(n => n.NodeName.Memory.Span.SequenceEqual("body"));
-
-    IReadOnlyElement IReadOnlyDocument.Head => _ChildNodes.OfType<ReadOnlyHtmlElement>().First(n => n.NodeName.Memory.Span.SequenceEqual("head"));
-
+    public IConstructableElement DocumentElement => this;
+    public IConstructableElement Head => _ChildNodes.OfType<IConstructableElement>().First(n => n.LocalName == "head");
+    IReadOnlyElement IReadOnlyDocument.Body => _ChildNodes.OfType<IReadOnlyElement>().First(n => n.LocalName == "body");
+    IReadOnlyElement IReadOnlyDocument.Head => _ChildNodes.OfType<IReadOnlyElement>().First(n => n.LocalName == "head");
     IReadOnlyNode? IReadOnlyNode.Parent => _parent as IReadOnlyNode;
-
     IReadOnlyNodeList IReadOnlyNode.ChildNodes => _ChildNodes;
 
     public bool IsLoading => false;

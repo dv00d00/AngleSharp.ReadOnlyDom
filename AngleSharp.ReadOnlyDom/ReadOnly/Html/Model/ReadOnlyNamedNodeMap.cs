@@ -32,7 +32,7 @@ internal class ReadOnlyNamedNodeMap : IConstructableNamedNodeMap, IReadOnlyNamed
         }
     }
 
-    public Int32 Length => _attributes.Count;
+    public int Length => _attributes.Count;
 
     public bool SameAs(IConstructableNamedNodeMap? attributes)
     {

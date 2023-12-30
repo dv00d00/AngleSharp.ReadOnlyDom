@@ -16,7 +16,7 @@ public enum TrimMode
 
 public static class QueryHelpers
 {
-    public static IEnumerable<IReadOnlyNode> AllDescendants(this IReadOnlyNode node, String tag = null)
+    public static IEnumerable<IReadOnlyNode> AllDescendants(this IReadOnlyNode node, string tag = null)
     {
         for (var i = 0; i < node.ChildNodes.Length; i++)
         {
@@ -29,14 +29,14 @@ public static class QueryHelpers
                     yield return next;
         }
 
-        static Boolean IsTag(IReadOnlyNode node, String tag)
+        static bool IsTag(IReadOnlyNode node, string tag)
         {
             if (tag == null) return true;
             return node is IReadOnlyElement e && e.LocalName.Memory.Span.SequenceEqual(tag);
         }
     }
 
-    public static Boolean Id(this IReadOnlyNode node, ReadOnlySpan<Char> id)
+    public static bool Id(this IReadOnlyNode node, ReadOnlySpan<char> id)
     {
         var element = node as IReadOnlyElement;
         if (element == null)
@@ -52,7 +52,7 @@ public static class QueryHelpers
         return false;
     }
 
-    public static Boolean Class(this IReadOnlyNode node, ReadOnlySpan<Char> className)
+    public static bool Class(this IReadOnlyNode node, ReadOnlySpan<char> className)
     {
         var element = node as IReadOnlyElement;
         if (element == null)
@@ -72,7 +72,7 @@ public static class QueryHelpers
         return false;
     }
 
-    public static Boolean Attr(this IReadOnlyNode node, StringOrMemory name, String value = null)
+    public static bool Attr(this IReadOnlyNode node, StringOrMemory name, string value = null)
     {
         var element = node as IReadOnlyElement;
         var attr = element?.Attributes[name];
@@ -84,7 +84,7 @@ public static class QueryHelpers
         return value == null || attr.Value == value;
     }
 
-    public static Boolean Tag(this IReadOnlyNode node, StringOrMemory name)
+    public static bool Tag(this IReadOnlyNode node, StringOrMemory name)
     {
         var element = node as IReadOnlyElement;
         if (element == null)
@@ -95,14 +95,14 @@ public static class QueryHelpers
         return element.LocalName == name;
     }
 
-    public static Boolean TagClass(this IReadOnlyNode node, StringOrMemory tag, StringOrMemory className)
+    public static bool TagClass(this IReadOnlyNode node, StringOrMemory tag, StringOrMemory className)
     {
         return node.Tag(tag) && node.Class(className);
     }
 
     private static readonly ObjectPool<StringBuilder> _sbPool = ObjectPool.Create(new StringBuilderPooledObjectPolicy());
 
-    public static String GetTextContent(this IReadOnlyNode node, TrimMode trim = TrimMode.None)
+    public static string GetTextContent(this IReadOnlyNode node, TrimMode trim = TrimMode.None)
     {
         var sb = _sbPool.Get();
         try
@@ -115,7 +115,7 @@ public static class QueryHelpers
         }
     }
 
-    public static String GetTextContent(this IReadOnlyNode node, StringBuilder sb, TrimMode trimMode = TrimMode.None)
+    public static string GetTextContent(this IReadOnlyNode node, StringBuilder sb, TrimMode trimMode = TrimMode.None)
     {
         var text = node.AllDescendants().OfType<IReadOnlyTextNode>();
         int i = 0;
@@ -153,12 +153,12 @@ public static class QueryHelpers
 
     private static readonly ObjectPool<Stack<IReadOnlyNode>> _stackPool = new DefaultObjectPool<Stack<IReadOnlyNode>>(new DefaultPooledObjectPolicy<Stack<IReadOnlyNode>>());
 
-    public static IEnumerable<IReadOnlyNode> QueryAll(this IReadOnlyNode node, params Func<IReadOnlyNode, Boolean>[] chain)
+    public static IEnumerable<IReadOnlyNode> QueryAll(this IReadOnlyNode node, params Func<IReadOnlyNode, bool>[] chain)
     {
         var stack = _stackPool.Get();
         try
         {
-            foreach (var result in node.ChainInner(stack, chain.AsMemory()))
+            foreach (var result in node.ChainInner(stack, chain))
             {
                 yield return result;
             }
@@ -170,19 +170,22 @@ public static class QueryHelpers
         }
     }
 
-    public static IReadOnlyNode QueryOne(this IReadOnlyNode node, params Func<IReadOnlyNode, Boolean>[] chain)
+    public static IReadOnlyNode? QueryOne(this IReadOnlyNode node, params Func<IReadOnlyNode, bool>[] chain)
     {
         return node.QueryAll(chain).FirstOrDefault();
     }
     
-    private static Boolean ChainMatches(this IReadOnlyNode node, ReadOnlyMemory<Func<IReadOnlyNode, Boolean>> chain)
+    private static bool ChainMatches(this IReadOnlyNode node, Func<IReadOnlyNode, bool>[] chain)
     {
         if (chain.Length == 0)
-            return false;
+            return true;
 
-        var last = chain.Span[chain.Length - 1];
+        var last = chain[^1];
         if (!last(node))
             return false;
+
+        if (chain.Length == 1)
+            return true;
 
         int i = chain.Length - 2;
 
@@ -190,7 +193,7 @@ public static class QueryHelpers
         while (i > 0 && node.Parent != null)
         {
             node = node.Parent;
-            if (!chain.Span[i](node))
+            if (!chain[i](node))
                 i--;
         }
 
@@ -200,7 +203,7 @@ public static class QueryHelpers
     private static IEnumerable<IReadOnlyNode> ChainInner(
         this IReadOnlyNode parent,
         Stack<IReadOnlyNode> stack,
-        ReadOnlyMemory<Func<IReadOnlyNode, Boolean>> chain)
+        Func<IReadOnlyNode, bool>[] chain)
     {
         stack.Push(parent);
 

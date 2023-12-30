@@ -12,10 +12,9 @@ internal class ReadOnlyNodeList : IConstructableNodeList, IReadOnlyNodeList
         _nodes = new List<ReadOnlyNode>(2);
     }
 
-    public Int32 Length => _nodes.Count;
-
-    public IConstructableNode this[Int32 index] => _nodes[index];
-    IReadOnlyNode IReadOnlyNodeList.this[Int32 index] => (_nodes[index] as IReadOnlyNode)!;
+    public int Length => _nodes.Count;
+    public IConstructableNode this[int index] => _nodes[index];
+    IReadOnlyNode IReadOnlyNodeList.this[int index] => _nodes[index];
 
     IEnumerator<IReadOnlyNode> IEnumerable<IReadOnlyNode>.GetEnumerator()
     {
@@ -39,8 +38,12 @@ internal class ReadOnlyNodeList : IConstructableNodeList, IReadOnlyNodeList
 
     public void Remove(IConstructableNode node)
     {
-        node.Parent = null;
         _nodes.Remove((ReadOnlyNode)node);
+    }
+    
+    public void RemoveAt(Int32 idx)
+    {
+        _nodes.RemoveAt(idx);
     }
 
     public void Clear()

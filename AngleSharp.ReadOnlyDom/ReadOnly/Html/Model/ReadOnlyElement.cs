@@ -10,25 +10,24 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
     protected static readonly ReadOnlyNamedNodeMap EmptyAttributes = new ReadOnlyNamedNodeMap();
 
     protected ReadOnlyNamedNodeMap? _attributes;
+    protected ISourceReference? _sourceReference;
 
     public StringOrMemory LocalName
     {
         get => NodeName;
-        internal set {}
     }
 
     public StringOrMemory NamespaceUri
     {
         get => StringOrMemory.Empty;
-        internal set {}
     }
 
     public IConstructableNamedNodeMap Attributes => _attributes ?? EmptyAttributes;
-
+    
     public ISourceReference? SourceReference
     {
-        get => null;
-        set {}
+        get => _sourceReference;
+        set => _sourceReference = value;
     }
 
     /// <inheritdoc />
@@ -58,7 +57,7 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
         return _attributes?[name] != null;
     }
 
-    public void SetAttribute(String? ns, StringOrMemory name, StringOrMemory value)
+    public void SetAttribute(string? ns, StringOrMemory name, StringOrMemory value)
     {
         _attributes ??= new ReadOnlyNamedNodeMap();
         var attr = _attributes[name];

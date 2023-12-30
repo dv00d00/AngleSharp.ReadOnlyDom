@@ -6,13 +6,13 @@ namespace AngleSharp.ReadOnlyDom.Filters;
 
 public struct OnlyElementWithIdAndDescendants
 {
-    private readonly String _id;
-    private readonly String _tag;
+    private readonly string _id;
+    private readonly string _tag;
 
-    private Int32 _depth;
-    private Boolean _started;
+    private int _depth;
+    private bool _started;
 
-    public OnlyElementWithIdAndDescendants(String tag, String id)
+    public OnlyElementWithIdAndDescendants(string tag, string id)
     {
         _tag = tag;
         _id = id;

@@ -16,12 +16,12 @@ class ReadOnlyHtmlMeta : ReadOnlyHtmlElement, IConstructableMetaElement
         // do nothing
     }
 
-    public override IConstructableNode ShallowCopy()
+    public IConstructableNode ShallowCopy()
     {
-        var readOnlyElement = new ReadOnlyHtmlMeta(Owner)
-        {
-            _childNodes = _childNodes
-        };
+        var readOnlyElement = new ReadOnlyHtmlMeta(Owner);
+        if (_attributes != null)
+            foreach (var attribute in _attributes)
+                readOnlyElement.SetOwnAttribute(attribute.Name, attribute.Value);
         return readOnlyElement;
     }
 }

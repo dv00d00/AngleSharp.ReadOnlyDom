@@ -4,6 +4,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AngleSharp.ReadOnlyDom", "A
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AngleSharp.ReadOnlyDom.Benchmarks", "AngleSharp.ReadOnlyDom.Benchmarks\AngleSharp.ReadOnlyDom.Benchmarks.csproj", "{768AFFDD-F0E9-4109-A8AF-6E3DB395A0C2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AngleSharp.ReadOnlyDom.Tests", "AngleSharp.ReadOnlyDom.Tests\AngleSharp.ReadOnlyDom.Tests.csproj", "{306A8958-B2F7-406D-BA78-28DD9E4FB8E3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{768AFFDD-F0E9-4109-A8AF-6E3DB395A0C2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{768AFFDD-F0E9-4109-A8AF-6E3DB395A0C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{768AFFDD-F0E9-4109-A8AF-6E3DB395A0C2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{306A8958-B2F7-406D-BA78-28DD9E4FB8E3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{306A8958-B2F7-406D-BA78-28DD9E4FB8E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{306A8958-B2F7-406D-BA78-28DD9E4FB8E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{306A8958-B2F7-406D-BA78-28DD9E4FB8E3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
