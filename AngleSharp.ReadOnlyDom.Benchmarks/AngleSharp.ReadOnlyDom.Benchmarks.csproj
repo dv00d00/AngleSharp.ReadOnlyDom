@@ -30,8 +30,4 @@
     <ProjectReference Include="..\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="UserCode\" />
-  </ItemGroup>
-
 </Project>

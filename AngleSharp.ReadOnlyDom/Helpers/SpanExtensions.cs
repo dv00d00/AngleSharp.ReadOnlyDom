@@ -1,4 +1,6 @@
-﻿namespace AngleSharp.ReadOnlyDom.Helpers;
+﻿using System.Buffers;
+
+namespace AngleSharp.ReadOnlyDom.Helpers;
 
 internal static class SpanExtensions
 {
@@ -9,6 +11,15 @@ internal static class SpanExtensions
     /// <param name="sentinel">The sentinel to split the span on.</param>
     /// <returns>An enumerator over the span segments.</returns>
     public static StringSplitEnumerator Split(this ReadOnlySpan<char> span, ReadOnlySpan<char> sentinel) =>
+        new(span, sentinel);
+
+    /// <summary>
+    /// Splits the span by the given sentinel, removing empty segments.
+    /// </summary>
+    /// <param name="span">The span to split</param>
+    /// <param name="sentinel">The sentinel to split the span on.</param>
+    /// <returns>An enumerator over the span segments.</returns>
+    public static StringSplitEnumeratorSearchValues Split(this ReadOnlySpan<char> span, SearchValues<char> sentinel) =>
         new(span, sentinel);
 
     /// <summary>
@@ -111,4 +122,51 @@ internal static class SpanExtensions
 
         public readonly MemStringSplitEnumerator GetEnumerator() => this;
     }
+
+    internal ref struct StringSplitEnumeratorSearchValues
+    {
+        private readonly SearchValues<char> _sentinel;
+        private ReadOnlySpan<char> _span;
+
+        public StringSplitEnumeratorSearchValues(ReadOnlySpan<char> span, SearchValues<char> sentinel)
+        {
+            _span = span;
+            _sentinel = sentinel;
+        }
+
+        public bool MoveNext()
+        {
+            while (true)
+            {
+                if (_span.Length == 0)
+                {
+                    return false;
+                }
+
+                var index = _span.IndexOfAny(_sentinel);
+                if (index < 0)
+                {
+                    Current = _span;
+                    _span = default;
+                }
+                else
+                {
+                    Current = _span[..index];
+                    _span = _span[(index + 1)..];
+                }
+
+                if (Current.Length == 0)
+                {
+                    continue;
+                }
+
+                return true;
+            }
+        }
+
+        public ReadOnlySpan<char> Current { get; private set; }
+
+        public readonly StringSplitEnumeratorSearchValues GetEnumerator() => this;
+    }
+
 }

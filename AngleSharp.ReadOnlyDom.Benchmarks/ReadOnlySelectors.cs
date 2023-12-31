@@ -27,7 +27,7 @@ public class ReadOnlySelectorsBenchmark
         }
     }
 
-    private readonly IHtmlDocument document = new HtmlParser(default, ReadOnlyParser.DefaultContext).ParseDocument(StaticHtml.Github);
+    private readonly IHtmlDocument document = new HtmlParser().ParseDocument(StaticHtml.Github);
     private readonly IReadOnlyDocument documentReadonly = new HtmlParser(default, ReadOnlyParser.DefaultContext).ParseReadOnlyDocument(StaticHtml.Github);
 
     private static readonly Func<IReadOnlyNode, bool>[] _selectors = {

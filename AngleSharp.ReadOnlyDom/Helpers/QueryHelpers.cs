@@ -16,23 +16,21 @@ public enum TrimMode
 
 public static class QueryHelpers
 {
-    public static IEnumerable<IReadOnlyNode> AllDescendants(this IReadOnlyNode node, string tag = null)
+    private static readonly ObjectPool<StringBuilder> _sbPool = 
+        ObjectPool.Create(new StringBuilderPooledObjectPolicy());
+
+    private static readonly ObjectPool<Stack<IReadOnlyNode>> _stackPool = 
+        new DefaultObjectPool<Stack<IReadOnlyNode>>(new DefaultPooledObjectPolicy<Stack<IReadOnlyNode>>());
+
+    public static IEnumerable<IReadOnlyNode> AllDescendants(this IReadOnlyNode node)
     {
         for (var i = 0; i < node.ChildNodes.Length; i++)
         {
             var child = node.ChildNodes[i];
-            if (IsTag(child, tag))
-                yield return child;
+            yield return child;
 
             foreach (var next in child.AllDescendants())
-                if (IsTag(next, tag))
-                    yield return next;
-        }
-
-        static bool IsTag(IReadOnlyNode node, string tag)
-        {
-            if (tag == null) return true;
-            return node is IReadOnlyElement e && e.LocalName.Memory.Span.SequenceEqual(tag);
+                yield return next;
         }
     }
 
@@ -51,6 +49,7 @@ public static class QueryHelpers
 
         return false;
     }
+    private static readonly SearchValues<char> _whitespaces = SearchValues.Create("\t\n\r\f ");
 
     public static bool Class(this IReadOnlyNode node, ReadOnlySpan<char> className)
     {
@@ -65,7 +64,7 @@ public static class QueryHelpers
         if (classAttr.Value == className)
             return true;
 
-        foreach (var part in classAttr.Value.Memory.Span.Split(" "))
+        foreach (var part in classAttr.Value.Memory.Span.Split(_whitespaces))
             if (part.SequenceEqual(className))
                 return true;
 
@@ -95,12 +94,15 @@ public static class QueryHelpers
         return element.LocalName == name;
     }
 
+    public static bool TagId(this IReadOnlyNode node, StringOrMemory name, StringOrMemory id)
+    {
+       return node.Tag(name) && node.Id(id);
+    }
+
     public static bool TagClass(this IReadOnlyNode node, StringOrMemory tag, StringOrMemory className)
     {
         return node.Tag(tag) && node.Class(className);
     }
-
-    private static readonly ObjectPool<StringBuilder> _sbPool = ObjectPool.Create(new StringBuilderPooledObjectPolicy());
 
     public static string GetTextContent(this IReadOnlyNode node, TrimMode trim = TrimMode.None)
     {
@@ -150,8 +152,6 @@ public static class QueryHelpers
         sb.Clear();
         return tmp;
     }
-
-    private static readonly ObjectPool<Stack<IReadOnlyNode>> _stackPool = new DefaultObjectPool<Stack<IReadOnlyNode>>(new DefaultPooledObjectPolicy<Stack<IReadOnlyNode>>());
 
     public static IEnumerable<IReadOnlyNode> QueryAll(this IReadOnlyNode node, params Func<IReadOnlyNode, bool>[] chain)
     {
