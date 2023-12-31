@@ -5,5 +5,5 @@ namespace AngleSharp.ReadOnlyDom.ReadOnly.Html;
 public interface IReadOnlyAttr
 {
     public StringOrMemory Name { get; }
-    public StringOrMemory Value { get; internal set; }
+    public StringOrMemory Value { get; }
 }

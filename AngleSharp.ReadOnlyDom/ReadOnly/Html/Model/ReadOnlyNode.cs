@@ -6,9 +6,8 @@ using AngleSharp.Html.Parser.Tokens.Struct;
 namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 
 internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrintable
-
 {
-    protected static readonly ReadOnlyNodeList EmptyChildNodes = new ReadOnlyNodeList();
+    private static readonly ReadOnlyNodeList EmptyChildNodes = new ReadOnlyNodeList();
     private static ReadOnlySpan<char> WhiteSpace => " \t\r\n".AsSpan();
     
     protected readonly NodeFlags _flags;
@@ -17,7 +16,6 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrint
     protected StringOrMemory _nodeName;
 
     public NodeFlags Flags => _flags;
-
     protected ReadOnlyNodeList _ChildNodes => _childNodes ?? EmptyChildNodes;
     IReadOnlyNode? IReadOnlyNode.Parent => _parent as IReadOnlyNode;
     IReadOnlyNodeList IReadOnlyNode.ChildNodes => _ChildNodes;
@@ -58,16 +56,16 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrint
 
     public void InsertNode(int idx, IConstructableNode childNode)
     {
-        _childNodes ??= new ReadOnlyNodeList();
         childNode.Parent = this;
+        _childNodes ??= new ReadOnlyNodeList();
         _childNodes?.Insert(idx, childNode);
     }
 
-    public void AddNode(IConstructableNode node)
+    public void AddNode(IConstructableNode childNode)
     {
+        childNode.Parent = this;
         _childNodes ??= new ReadOnlyNodeList();
-        node.Parent = this;
-        _childNodes.Add(node);
+        _childNodes.Add(childNode);
     }
 
     public void AppendText(StringOrMemory text, bool emitWhiteSpaceOnly = false)
@@ -76,6 +74,7 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrint
         {
             return;
         }
+        
         AddNode(new ReadOnlyTextNode(Owner, text));
     }
 
@@ -85,22 +84,15 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrint
         {
             return;
         }
-
         _childNodes ??= new ReadOnlyNodeList();
-        var readOnlyTextNode = new ReadOnlyTextNode(Owner, text)
-        {
-            Parent = this
-        };
+        var readOnlyTextNode = new ReadOnlyTextNode(Owner, text) { Parent = this };
         _childNodes.Insert(idx, readOnlyTextNode);
     }
 
     public void AddComment(ref StructHtmlToken token)
     {
         _childNodes ??= new ReadOnlyNodeList();
-        var readOnlyTextNode = new ReadOnlyComment(Owner, token.Data)
-        {
-            Parent = this
-        };
+        var readOnlyTextNode = new ReadOnlyComment(Owner, token.Data) { Parent = this };
         _childNodes.Add(readOnlyTextNode);
     }
 
@@ -110,7 +102,7 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrint
         {
             return;
         }
-
+        
         foreach (var node in _childNodes)
         {
             ((ReadOnlyNode)node).Print(writer);

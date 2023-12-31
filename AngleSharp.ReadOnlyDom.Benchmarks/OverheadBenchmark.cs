@@ -4,6 +4,7 @@ using AngleSharp.Html;
 using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.Io;
+using AngleSharp.ReadOnlyDom.Filters;
 using AngleSharp.ReadOnlyDom.Helpers;
 using AngleSharp.Text;
 using BenchmarkDotNet.Attributes;
@@ -33,7 +34,7 @@ public class OverheadBenchmark
     {
         public required string Display { get; init; }
         public required string Html { get; init; }
-        public required HtmlParserOptions Options {get; init;}
+        public required bool CustomOptions {get; init;}
         public override string ToString() => Display;
     }
 
@@ -45,40 +46,9 @@ public class OverheadBenchmark
         
     }
 
-    [ParamsSource(nameof(GetTasks))] public HtmlTask? It { get; set; }
+    [ParamsSource(nameof(GetTasks))] public HtmlTask It { get; set; } = null!;
 
-    public IEnumerable<HtmlTask> GetTasks()
-    {
-        yield return new HtmlTask { Display = "br", Html = "<br/>", Options = default};
-        yield return new HtmlTask { Display = "table", Html = StaticHtml.HtmlTable, Options = default};
-        yield return new HtmlTask { Display = "table tabbed", Html = StaticHtml.HtmlTableTabbed, Options = default};
-        yield return new HtmlTask { Display = "table TABBED", Html = StaticHtml.HtmlTableTabbedSoMuch, Options = default};
-        yield return new HtmlTask { Display = "github", Html = StaticHtml.Github, Options = default};
-        
-        yield return new HtmlTask { Display = "br *", Html = "<br/>", Options = Custom };
-        yield return new HtmlTask { Display = "table *", Html = StaticHtml.HtmlTable, Options = Custom };
-        yield return new HtmlTask { Display = "table tabbed *", Html = StaticHtml.HtmlTableTabbed, Options = Custom };
-        yield return new HtmlTask { Display = "table TABBED *", Html = StaticHtml.HtmlTableTabbedSoMuch, Options = Custom };
-        yield return new HtmlTask { Display = "github *", Html = StaticHtml.Github, Options = Custom };
-    }
-
-    [Benchmark(Baseline = true)]
-    public void V1()
-    {
-        var htmlParser = new HtmlParser(It!.Options, ReadOnlyParser.DefaultContext);
-        var doc = htmlParser.ParseDocument(It!.Html);
-        doc.Dispose();
-    }
-
-    [Benchmark]
-    public void V2()
-    {
-        var htmlParser = new HtmlParser(It!.Options, ReadOnlyParser.DefaultContext);
-        var doc = htmlParser.ParseReadOnlyDocument(It!.Html);
-        doc.Dispose();
-    }
-
-    public static readonly HtmlParserOptions Custom = new HtmlParserOptions()
+    private static readonly HtmlParserOptions Custom = new HtmlParserOptions()
     {
         IsStrictMode = false,
         IsScripting = false,
@@ -100,14 +70,52 @@ public class OverheadBenchmark
         SkipRCDataText = true,
         SkipProcessingInstructions = true,
         DisableElementPositionTracking = true,
-        ShouldEmitAttribute = static (ref StructHtmlToken _, ReadOnlyMemory<char> n) =>
+        ShouldEmitAttribute = static (ref StructHtmlToken token, ReadOnlyMemory<char> attributeName) =>
         {
-            var s = n.Span;
+            if (token.Name != "div")
+                return false;
+            
+            var s = attributeName.Span;
             return s.Length switch
             {
                 2 => s[0] == 'i' && s[1] == 'd',
+                5 => s[0] == 'c' && s[1] == 'l' && s[2] == 'a' && s[3] == 's' && s[4] == 's',
                 _ => false
             };
         },
     };
+
+    public IEnumerable<HtmlTask> GetTasks()
+    {
+        // yield return new HtmlTask { Display = "br", Html = "<br/>", Options = default};
+        // yield return new HtmlTask { Display = "table", Html = StaticHtml.HtmlTable, Options = default};
+        // yield return new HtmlTask { Display = "table tabbed", Html = StaticHtml.HtmlTableTabbed, Options = default};
+        // yield return new HtmlTask { Display = "table TABBED", Html = StaticHtml.HtmlTableTabbedSoMuch, Options = default};
+        yield return new HtmlTask { Display = "github", Html = StaticHtml.Github, CustomOptions = false };
+        
+        // yield return new HtmlTask { Display = "br *", Html = "<br/>", Options = Custom };
+        // yield return new HtmlTask { Display = "table *", Html = StaticHtml.HtmlTable, Options = Custom };
+        // yield return new HtmlTask { Display = "table tabbed *", Html = StaticHtml.HtmlTableTabbed, Options = Custom };
+        // yield return new HtmlTask { Display = "table TABBED *", Html = StaticHtml.HtmlTableTabbedSoMuch, Options = Custom };
+        yield return new HtmlTask { Display = "github *", Html = StaticHtml.Github, CustomOptions = true };
+    }
+    
+    private static readonly HtmlParser DefaultParser = new HtmlParser(default, ReadOnlyParser.DefaultContext);
+    private static readonly HtmlParser CustomParser = new HtmlParser(Custom, ReadOnlyParser.DefaultContext);
+
+    [Benchmark(Baseline = true)]
+    public void V1()
+    {
+        var htmlParser = It.CustomOptions ? CustomParser : DefaultParser;
+        var doc = htmlParser.ParseDocument(It.Html);
+        doc.Dispose();
+    }
+
+    [Benchmark]
+    public void V2()
+    {
+        var htmlParser = It.CustomOptions ? CustomParser : DefaultParser;
+        var doc = htmlParser.ParseReadOnlyDocument(It.Html, new FirstTagAndAllChildren("body").Loop);
+        doc.Dispose();
+    }
 }

@@ -18,9 +18,7 @@ class ReadOnlyHtmlScript : ReadOnlyHtmlElement, IConstructableScriptElement
     public IConstructableNode ShallowCopy()
     {
         var readOnlyHtmlScript = new ReadOnlyHtmlScript(Owner);
-        if (_attributes != null)
-            foreach (var attribute in _attributes)
-                readOnlyHtmlScript.SetOwnAttribute(attribute.Name, attribute.Value);
+        PopulateAttributes(readOnlyHtmlScript);
         return readOnlyHtmlScript;
     }
 }

@@ -6,7 +6,6 @@ namespace AngleSharp.ReadOnlyDom.Filters;
 public struct FirstTagAndAllChildren
 {
     private readonly string _tag;
-
     private int _depth;
     private bool _started;
 

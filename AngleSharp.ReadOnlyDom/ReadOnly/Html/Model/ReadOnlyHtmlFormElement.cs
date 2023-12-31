@@ -14,11 +14,7 @@ class ReadOnlyHtmlFormElement : ReadOnlyHtmlElement, IConstructableFormElement
     public IConstructableNode ShallowCopy()
     {
         var readOnlyElement = new ReadOnlyHtmlFormElement(Owner, default);
-        
-        if (_attributes != null)
-            foreach (var attribute in _attributes)
-                readOnlyElement.SetOwnAttribute(attribute.Name, attribute.Value);
-       
+        PopulateAttributes(readOnlyElement);
         return readOnlyElement;
     }
 }

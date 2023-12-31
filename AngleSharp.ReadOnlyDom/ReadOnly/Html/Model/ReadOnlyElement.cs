@@ -7,27 +7,30 @@ namespace AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
 
 internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
 {
-    protected static readonly ReadOnlyNamedNodeMap EmptyAttributes = new ReadOnlyNamedNodeMap();
+    private static readonly ReadOnlyNamedNodeMap EmptyAttributes = new ReadOnlyNamedNodeMap();
 
     protected ReadOnlyNamedNodeMap? _attributes;
-    protected ISourceReference? _sourceReference;
+    // protected ISourceReference? _sourceReference;
 
     public StringOrMemory LocalName
     {
         get => NodeName;
     }
 
-    public StringOrMemory NamespaceUri
-    {
-        get => StringOrMemory.Empty;
-    }
+    public StringOrMemory NamespaceUri => StringOrMemory.Empty;
 
     public IConstructableNamedNodeMap Attributes => _attributes ?? EmptyAttributes;
     
+    // public ISourceReference? SourceReference
+    // {
+    //     get => _sourceReference;
+    //     set => _sourceReference = value;
+    // }
+    
     public ISourceReference? SourceReference
     {
-        get => _sourceReference;
-        set => _sourceReference = value;
+        get => null;
+        set { }
     }
 
     /// <inheritdoc />
@@ -104,4 +107,14 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
     }
 
     IReadOnlyNamedNodeMap IReadOnlyElement.Attributes => _attributes ?? EmptyAttributes;
+
+    protected void PopulateAttributes(ReadOnlyElement other)
+    {
+        if (_attributes != null)
+        {
+            // foreach (var attribute in _attributes)
+            //     other.SetAttribute(null, attribute.Name, attribute.Value);
+            other._attributes = _attributes;
+        }
+    }
 }
