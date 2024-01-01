@@ -20,7 +20,7 @@ public struct OnlyElementWithIdAndDescendants
         _started = false;
     }
 
-    public Result Loop(ref StructHtmlToken token, TokenConsumer next)
+    public TokenConsumptionResult Loop(ref StructHtmlToken token, TokenConsumer next)
     {
         _started = _started ||
                    token.Type == HtmlTokenType.StartTag &&
@@ -44,10 +44,10 @@ public struct OnlyElementWithIdAndDescendants
             }
             else
             {
-                return Result.Stop;
+                return TokenConsumptionResult.Stop;
             }
         }
 
-        return Result.Continue;
+        return TokenConsumptionResult.Continue;
     }
 }

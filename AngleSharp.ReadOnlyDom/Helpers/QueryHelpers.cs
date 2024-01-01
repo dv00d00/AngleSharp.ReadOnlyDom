@@ -70,8 +70,42 @@ public static class QueryHelpers
 
         return false;
     }
+    
+    public static bool Classes(
+        this IReadOnlyNode node, 
+        ReadOnlySpan<char> className1, 
+        ReadOnlySpan<char> className2)
+    {
+        var element = node as IReadOnlyElement;
+        if (element == null)
+            return false;
 
-    public static bool Attr(this IReadOnlyNode node, StringOrMemory name, string value = null)
+        var classAttr = element.Attributes["class"];
+        if (classAttr == null)
+            return false;
+        
+        bool found1 = false;
+        bool found2 = false;
+
+        foreach (var part in classAttr.Value.Memory.Span.Split(_whitespaces))
+        {
+            if (part.SequenceEqual(className1))
+            {
+                found1 = true;
+            }
+            else if (part.SequenceEqual(className2))
+            {
+                found2 = true;
+            }
+
+            if (found1 && found2)
+                return true;
+        }
+
+        return found1 && found2;
+    }
+
+    public static bool Attr(this IReadOnlyNode node, StringOrMemory name, string? value = null)
     {
         var element = node as IReadOnlyElement;
         var attr = element?.Attributes[name];
@@ -102,6 +136,32 @@ public static class QueryHelpers
     public static bool TagClass(this IReadOnlyNode node, StringOrMemory tag, StringOrMemory className)
     {
         return node.Tag(tag) && node.Class(className);
+    }
+    
+    public static bool TagClasses(this IReadOnlyNode node, StringOrMemory tag, StringOrMemory className1, StringOrMemory className2)
+    {
+        return node.Tag(tag) && node.Classes(className1, className2);
+    }
+
+    public static T WithTextContent<T>(this IReadOnlyNode node, Func<StringBuilder, T> consumeText)
+    {
+        var sb = _sbPool.Get();
+        try
+        {
+            var text = node.AllDescendants().OfType<IReadOnlyTextNode>();
+            foreach (var textNode in text)
+            {
+                var span = textNode.Content.Memory.Span;
+                sb.Append(span);
+            }
+            
+            return consumeText(sb);
+        }
+        finally
+        {
+            sb.Clear();
+            _sbPool.Return(sb);
+        }
     }
 
     public static string GetTextContent(this IReadOnlyNode node, TrimMode trim = TrimMode.None)

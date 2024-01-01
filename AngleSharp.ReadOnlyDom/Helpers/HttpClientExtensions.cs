@@ -49,14 +49,22 @@ public static class HttpClientExtensions
         string? endpointId = null,
         int? expectedResponseSize = null)
     {
-        endpointId ??= request.RequestUri!.Host;
         using var postResponse = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        return await postResponse.DownloadChars(endpointId, expectedResponseSize);
+    }
+    
+    public static async Task<Lease<char>> DownloadChars(
+        this HttpResponseMessage postResponse,
+        string? endpointId = null,
+        int? expectedResponseSize = null)
+    {
+        endpointId ??= postResponse.RequestMessage?.RequestUri?.Host ?? "unknown";
         
         var rb = AvgResponseSize.GetOrAdd(endpointId, static _ => new RingBuffer<int>(RingBufferSize));
         int size = rb.Avg() ?? (int?)postResponse.Content.Headers.ContentLength ?? expectedResponseSize ?? 0;
         
         await using var htmlStream = await postResponse.Content.ReadAsStreamAsync();
-        await using var recyclableMemoryStream = Manager.GetStream(request.RequestUri!.Host, size);
+        await using var recyclableMemoryStream = Manager.GetStream(endpointId, size);
         await htmlStream.CopyToAsync(recyclableMemoryStream);
         var totalBytes = (int)recyclableMemoryStream.Length;
         rb.Add(totalBytes);
