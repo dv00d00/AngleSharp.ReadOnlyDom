@@ -5,10 +5,6 @@ using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Helpers;
 using AngleSharp.ReadOnlyDom.ReadOnly.Html;
-using FluentAssertions;
-using Xunit;
-using Xunit.Abstractions;
-using Xunit.Sdk;
 
 namespace AngleSharp.ReadOnly.Tests;
 
@@ -17,8 +13,6 @@ namespace AngleSharp.ReadOnly.Tests;
 public class TopLevelSmoke
 {
     const int MaxSize = ( 512  + 128 ) * 1024;
-
-    private readonly ITestOutputHelper _testOutputHelper;
 
     const string BaseDir = @".\temp\";
 
@@ -70,21 +64,21 @@ public class TopLevelSmoke
             "td",
         ];
 
-    public static IEnumerable<object[]> SingleTag() => Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
-        .SelectMany(path => Tags.Select(t => new object[] { Path.GetFileName(path), t }));
+    public static IEnumerable<(string FileName, string Tag)> SingleTag() => Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
+        .SelectMany(path => Tags.Select(t => (Path.GetFileName(path), t)));
     
-    public static IEnumerable<object[]> TwoTags() => Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
+    public static IEnumerable<(string FileName, string Tag1, string Tag2)> TwoTags() => Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
         .SelectMany(path => 
             TagsShort.SelectMany(t1 => 
                 TagsShort.Select(t2 => 
-                    new object[] { Path.GetFileName(path), t1, t2 })));
+                    (Path.GetFileName(path), t1, t2))));
 
-    public static IEnumerable<object[]> ThreeTags() => Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
+    public static IEnumerable<(string FileName, string Tag1, string Tag2, string Tag3)> ThreeTags() => Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
        .SelectMany(path =>
            TagsShort.SelectMany(t1 =>
                TagsShort.SelectMany(t2 =>
                    TagsShort.Select(t3 =>
-                        new object[] { Path.GetFileName(path), t1, t2, t3 }))));
+                        (Path.GetFileName(path), t1, t2, t3)))));
 
     public class SelectorTestCase
     {
@@ -200,33 +194,34 @@ public class TopLevelSmoke
             });
     }
     
-    public static IEnumerable<object[]> CustomSelectors()
+    public static IEnumerable<SelectorTestCase> CustomSelectors()
     {
-        return Core().Select(it => new object[] { it });
+        return Core();
     }
     
-    public static IEnumerable<object[]> CustomSelectorsZip2()
+    public static IEnumerable<SelectorTestCase> CustomSelectorsZip2()
     {
         var single = Core().ToArray();
         
         return single.Zip(single.Skip(1))
             .Select(it => it.First.Combine(it.Second))
-            .Where(it => it != null)
-            .Select(it => new object[] { it! });
+            .Where(it => it != null)!;
     }
     
-    public static IEnumerable<object[]> CustomSelectorsZip3()
+    public static IEnumerable<SelectorTestCase> CustomSelectorsZip3()
     {
         var single = Core().ToArray();
         
         return single
             .Zip(single.Skip(1), single.Skip(2))
             .Select(it => it.First.Combine(it.Second)?.Combine(it.Third))
-            .Where(it => it != null)
-            .Select(it => new object[] { it! });
+            .Where(it => it != null)!;
     }
 
-    public static IEnumerable<object[]> Classes() =>
+    public static IEnumerable<SelectorTestCase> AllComplexSelectors() =>
+        CustomSelectors().Concat(CustomSelectorsZip2()).Concat(CustomSelectorsZip3());
+
+    public static IEnumerable<(string FileName, string ClassName)> Classes() =>
         Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
            .SelectMany(file =>
            {
@@ -236,10 +231,10 @@ public class TopLevelSmoke
                return doc.All.SelectMany(n => n.ClassList)
                    .Distinct()
                    .Where(className => !className.AsSpan().ContainsAny(badName))
-                   .Select(className => new object[] { fileName, className });
+                   .Select(className => (fileName, className));
            });
 
-    public static IEnumerable<object[]> Ids() =>
+    public static IEnumerable<(string FileName, string Id)> Ids() =>
         Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
            .SelectMany(file =>
            {
@@ -251,7 +246,7 @@ public class TopLevelSmoke
                    .Where(id => !id.IsNullOrWhiteSpace() && !id.AsSpan().ContainsAny(badName))
                    .Distinct()
                    .Take(75)
-                   .Select(id => new object[] { fileName, id! });
+                   .Select(id => (fileName, id!));
            });
 
     public static HtmlParser parser = new HtmlParser(new HtmlParserOptions()
@@ -259,26 +254,21 @@ public class TopLevelSmoke
         IsKeepingSourceReferences = true
     }, ReadOnlyParser.DefaultContext);
 
-    public TopLevelSmoke(ITestOutputHelper testOutputHelper)
-    {
-        _testOutputHelper = testOutputHelper;
-    }
-
-    [Theory]
-    [MemberData(nameof(SingleTag))]
-    public void SameResultTag(string fileName, string tag)
+    [Test]
+    [MethodDataSource(nameof(SingleTag))]
+    public async Task SameResultTag(string fileName, string tag)
     {
         var (mutable, ro) = GetDocs(fileName);
         var elements = mutable.QuerySelectorAll(tag).ToArray();
         var readOnlyNodes = ro.QueryAll(n => n.Tag(tag)).ToArray();
         var expected = elements.Length;
         var actual = readOnlyNodes.Length;
-        actual.Should().Be(expected);
+        await Assert.That(actual).IsEqualTo(expected);
     }
 
-    [Theory]
-    [MemberData(nameof(Classes))]
-    public void SameResultClass(string fileName, string class1)
+    [Test]
+    [MethodDataSource(nameof(Classes))]
+    public async Task SameResultClass(string fileName, string class1)
     {
         var (mutable, ro) = GetDocs(fileName);
         var elements = mutable.QuerySelectorAll($".{class1}").ToArray();
@@ -287,24 +277,24 @@ public class TopLevelSmoke
         var actual = readOnlyNodes.Length;
         try
         {
-            actual.Should().Be(expected);
+            await Assert.That(actual).IsEqualTo(expected);
         }
         catch (Exception)
         {
             var missing = elements.Where(it => !readOnlyNodes.Any(ron => ((IReadOnlyElement)ron).SourceReference == it.SourceReference));
             foreach (var element in missing)
             {
-                _testOutputHelper.WriteLine(element.SourceReference!.ToString());
-                _testOutputHelper.WriteLine(element.OuterHtml);
-                _testOutputHelper.WriteLine("=============================");
+                TestContext.Current!.Output.WriteLine(element.SourceReference!.ToString());
+                TestContext.Current!.Output.WriteLine(element.OuterHtml);
+                TestContext.Current!.Output.WriteLine("=============================");
             }
             throw;
         }
     }
 
-    [Theory]
-    [MemberData(nameof(Ids))]
-    public void SameResultId(string fileName, string id)
+    [Test]
+    [MethodDataSource(nameof(Ids))]
+    public async Task SameResultId(string fileName, string id)
     {
         if (id is "19ee99feeb254bf99a88146643d1afa2" or "19ee99feeb254bf99a88146643d1afa3")
             return;
@@ -317,50 +307,48 @@ public class TopLevelSmoke
 
         try
         {
-            actual.Should().Be(expected);
+            await Assert.That(actual).IsEqualTo(expected);
         }
         catch (Exception)
         {
             var missing = elements.Where(it => readOnlyNodes.All(ron => ((IReadOnlyElement)ron).SourceReference != it.SourceReference));
             foreach (var element in missing)
             {
-                _testOutputHelper.WriteLine(element.SourceReference!.ToString());
-                _testOutputHelper.WriteLine(element.OuterHtml);
-                _testOutputHelper.WriteLine("=============================");
+                TestContext.Current!.Output.WriteLine(element.SourceReference!.ToString());
+                TestContext.Current!.Output.WriteLine(element.OuterHtml);
+                TestContext.Current!.Output.WriteLine("=============================");
             }
             throw;
         }
     }
 
-    [Theory]
-    [MemberData(nameof(TwoTags))]
-    public void SameResultTwoTags(string fileName, string tag1, string tag2)
+    [Test]
+    [MethodDataSource(nameof(TwoTags))]
+    public async Task SameResultTwoTags(string fileName, string tag1, string tag2)
     {
         var (mutable, ro) = GetDocs(fileName);
         var elements = mutable.QuerySelectorAll($"{tag1} {tag2}").ToArray();
         var readOnlyNodes = ro.QueryAll(n => n.Tag(tag1), n => n.Tag(tag2)).ToArray();
         var expected = elements.Length;
         var actual = readOnlyNodes.Length;
-        actual.Should().Be(expected);
+        await Assert.That(actual).IsEqualTo(expected);
     }
 
-    [Theory]
-    [MemberData(nameof(ThreeTags))]
-    public void SameResultThreeTags(string fileName, string tag1, string tag2, string tag3)
+    [Test]
+    [MethodDataSource(nameof(ThreeTags))]
+    public async Task SameResultThreeTags(string fileName, string tag1, string tag2, string tag3)
     {
         var (mutable, ro) = GetDocs(fileName);
         var elements = mutable.QuerySelectorAll($"{tag1} {tag2} {tag3}").ToArray();
         var readOnlyNodes = ro.QueryAll(n => n.Tag(tag1), n => n.Tag(tag2), n => n.Tag(tag3)).ToArray();
         var expected = elements.Length;
         var actual = readOnlyNodes.Length;
-        actual.Should().Be(expected);
+        await Assert.That(actual).IsEqualTo(expected);
     }
 
-    [Theory]
-    [MemberData(nameof(CustomSelectors))]
-    [MemberData(nameof(CustomSelectorsZip2))]
-    [MemberData(nameof(CustomSelectorsZip3))]
-    public void SameResultComplex(SelectorTestCase testCase)
+    [Test]
+    [MethodDataSource(nameof(AllComplexSelectors))]
+    public async Task SameResultComplex(SelectorTestCase testCase)
     {
         var (mutable, ro) = GetDocs(testCase.FileName);
         var elements = mutable.QuerySelectorAll(testCase.CssSelector).ToArray();
@@ -370,16 +358,16 @@ public class TopLevelSmoke
 
         try
         {
-            actual.Should().Be(expected);
+            await Assert.That(actual).IsEqualTo(expected);
         }
         catch (Exception)
         {
             var missing = elements.Where(it => readOnlyNodes.All(ron => ((IReadOnlyElement)ron).SourceReference != it.SourceReference));
             foreach (var element in missing)
             {
-                _testOutputHelper.WriteLine(element.SourceReference!.ToString());
-                _testOutputHelper.WriteLine(element.OuterHtml);
-                _testOutputHelper.WriteLine("=============================");
+                TestContext.Current!.Output.WriteLine(element.SourceReference!.ToString());
+                TestContext.Current!.Output.WriteLine(element.OuterHtml);
+                TestContext.Current!.Output.WriteLine("=============================");
             }
             throw;
         }
