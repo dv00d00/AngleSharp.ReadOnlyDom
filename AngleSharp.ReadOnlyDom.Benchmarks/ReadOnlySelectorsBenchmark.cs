@@ -20,7 +20,7 @@ public class ReadOnlySelectorsBenchmark
     {
         public Config()
         {
-            AddJob(Job.ShortRun
+            AddJob(Job.MediumRun
                 .WithRuntime(CoreRuntime.Core80)
                 .WithStrategy(RunStrategy.Throughput)
             );
