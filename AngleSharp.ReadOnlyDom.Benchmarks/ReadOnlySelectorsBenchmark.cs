@@ -2,13 +2,11 @@
 using System.Linq;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
-using AngleSharp.ReadOnlyDom.Helpers;
 using AngleSharp.ReadOnlyDom.Html;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Engines;
-using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Toolchains.InProcess.Emit;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
@@ -20,10 +18,7 @@ public class ReadOnlySelectorsBenchmark
     {
         public Config()
         {
-            AddJob(Job.MediumRun
-                .WithRuntime(CoreRuntime.Core80)
-                .WithStrategy(RunStrategy.Throughput)
-            );
+            AddJob(Job.ShortRun.WithToolchain(InProcessEmitToolchain.Instance));
         }
     }
 

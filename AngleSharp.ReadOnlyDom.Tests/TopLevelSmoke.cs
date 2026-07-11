@@ -1,12 +1,11 @@
 ﻿using System.Buffers;
 using System.Collections.Concurrent;
-using System.Linq;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
-using AngleSharp.ReadOnlyDom.Helpers;
+using AngleSharp.ReadOnlyDom;
 using AngleSharp.ReadOnlyDom.Html;
 
-namespace AngleSharp.ReadOnly.Tests;
+namespace AngleSharp.Readonly.Tests;
 
 // dont run from IDE, will generate 166K test cases
 // dotnet test --configuration Release

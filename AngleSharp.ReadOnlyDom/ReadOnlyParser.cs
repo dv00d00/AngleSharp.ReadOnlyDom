@@ -4,7 +4,7 @@ using AngleSharp.ReadOnlyDom.Html;
 using AngleSharp.ReadOnlyDom.Html.Model;
 using AngleSharp.Text;
 
-namespace AngleSharp.ReadOnlyDom.Helpers;
+namespace AngleSharp.ReadOnlyDom;
 
 public static class ReadOnlyParser
 {

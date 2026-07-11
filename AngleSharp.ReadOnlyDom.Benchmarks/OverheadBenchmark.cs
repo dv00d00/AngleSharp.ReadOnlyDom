@@ -5,13 +5,10 @@ using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.Io;
 using AngleSharp.ReadOnlyDom.Filters;
-using AngleSharp.ReadOnlyDom.Helpers;
-using AngleSharp.Text;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Engines;
-using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Toolchains.InProcess.Emit;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
@@ -23,10 +20,7 @@ public class OverheadBenchmark
     {
         public Config()
         {
-            AddJob(Job.MediumRun
-                .WithRuntime(CoreRuntime.Core80)
-                .WithStrategy(RunStrategy.Throughput)
-            );
+            AddJob(Job.ShortRun.WithToolchain(InProcessEmitToolchain.Instance));
         }
     }
 

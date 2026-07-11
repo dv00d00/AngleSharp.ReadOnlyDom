@@ -1,12 +1,11 @@
 ﻿using System.Buffers;
 using System.Text;
 using AngleSharp.Common;
-using AngleSharp.ReadOnlyDom;
 using AngleSharp.ReadOnlyDom.Html;
 using AngleSharp.Text;
 using Microsoft.Extensions.ObjectPool;
 
-namespace AngleSharp.ReadOnlyDom.Helpers;
+namespace AngleSharp.ReadOnlyDom;
 
 public enum TrimMode
 {
@@ -180,8 +179,7 @@ public static class QueryHelpers
                 if (descendant is not IReadOnlyTextNode textNode)
                     continue;
 
-                var span = textNode.Content.Memory.Span;
-                sb.AppendSpan(span);
+                sb.AppendSOM(textNode.Content);
             }
             
             return consumeText(sb);
@@ -217,8 +215,8 @@ public static class QueryHelpers
             var span = textNode.Content.Memory.Span;
             span = trimMode switch
             {
-                TrimMode.Ends => i == 0 ? MemoryExtensions.TrimStart(span) : span,
-                TrimMode.TextNodes => MemoryExtensions.Trim(span),
+                TrimMode.Ends => i == 0 ? span.TrimStart() : span,
+                TrimMode.TextNodes => span.Trim(),
                 _ => span
             };
 

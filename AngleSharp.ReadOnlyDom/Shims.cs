@@ -6,19 +6,28 @@ internal static class Shims
 {
     public static void WriteSOM(this TextWriter writer, StringOrMemory content)
     {
-        #if NETSTANDARD2_0
+#if NETSTANDARD2_0
         writer.Write(content.ToString());
-        #else
+#else
         writer.Write(content.Memory.Span);
-        #endif
+#endif
     }
 
-    public static void AppendSpan(this System.Text.StringBuilder sb, ReadOnlySpan<char> span)
+    public static void AppendSOM(this System.Text.StringBuilder sb, StringOrMemory content)
     {
-        #if NETSTANDARD2_0
-        sb.Append(span.ToString());
-        #else
-        sb.Append(span);
-        #endif
+#if NETSTANDARD2_0
+        sb.Append(content.ToString());
+#else
+        sb.Append(content.Memory.Span);
+#endif
+    }
+    
+    public static void AppendSpan(this System.Text.StringBuilder sb, ReadOnlySpan<char> content)
+    {
+#if NETSTANDARD2_0
+        sb.Append(content.ToString());
+#else
+        sb.Append(content);
+#endif
     }
 }

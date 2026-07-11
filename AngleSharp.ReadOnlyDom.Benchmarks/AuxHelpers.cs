@@ -1,6 +1,9 @@
-﻿namespace AngleSharp.ReadOnlyDom.Helpers;
+﻿using System;
+using System.Collections.Generic;
 
-public static class AuxHelpers
+namespace AngleSharp.ReadOnlyDom.Benchmarks;
+
+internal static class AuxHelpers
 {
     public static bool ContainsI(this string src, string test)
     {

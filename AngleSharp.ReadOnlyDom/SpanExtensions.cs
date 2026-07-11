@@ -1,6 +1,6 @@
 ﻿using System.Buffers;
 
-namespace AngleSharp.ReadOnlyDom.Helpers;
+namespace AngleSharp.ReadOnlyDom;
 
 internal static class SpanExtensions
 {
