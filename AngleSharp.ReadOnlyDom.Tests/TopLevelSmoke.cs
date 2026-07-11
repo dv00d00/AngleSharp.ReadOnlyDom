@@ -118,7 +118,7 @@ public class TopLevelSmoke
 
         id = id.IsNullOrWhiteSpace() 
                  || id is "19ee99feeb254bf99a88146643d1afa2" or "19ee99feeb254bf99a88146643d1afa3" 
-                 || id.AsSpan().ContainsAny(badName)    
+                 || HasBadChar(id.AsSpan())
             ? null : id;
 
         if (id != null)
@@ -173,7 +173,24 @@ public class TopLevelSmoke
         }
     }
 
+#if NETFRAMEWORK
+    private static readonly char[] badName = ":()[]%/.! ?&'\",".ToCharArray();
+
+    private static bool HasBadChar(ReadOnlySpan<char> value)
+    {
+        foreach (var c in value)
+        {
+            if (Array.IndexOf(badName, c) >= 0)
+                return true;
+        }
+
+        return false;
+    }
+#else
     private static readonly SearchValues<char> badName = SearchValues.Create(":()[]%/.! ?&'\",");
+
+    private static bool HasBadChar(ReadOnlySpan<char> value) => value.ContainsAny(badName);
+#endif
 
     public static IEnumerable<SelectorTestCase> Core()
     {
@@ -187,7 +204,7 @@ public class TopLevelSmoke
                 return doc.All.Where(it => TagsShort.Contains(it.LocalName))
                     .SelectMany(it =>
                     {
-                        var classes = it.ClassList.Where(className => !className.AsSpan().ContainsAny(badName)).ToArray();
+                        var classes = it.ClassList.Where(className => !HasBadChar(className.AsSpan())).ToArray();
                         return GetTestCases(file, it.LocalName, it.Id, classes);
                     });
             });
@@ -229,7 +246,7 @@ public class TopLevelSmoke
                var doc = ParsedMutableDocs.GetOrAdd(fileName, k => parser.ParseDocument(html));
                return doc.All.SelectMany(n => n.ClassList)
                    .Distinct()
-                   .Where(className => !className.AsSpan().ContainsAny(badName))
+                   .Where(className => !HasBadChar(className.AsSpan()))
                    .Select(className => (fileName, className));
            });
 
@@ -242,7 +259,7 @@ public class TopLevelSmoke
                var doc = ParsedMutableDocs.GetOrAdd(fileName, k => parser.ParseDocument(html));
                return doc.All
                .Select(it => it.Id)
-                   .Where(id => !id.IsNullOrWhiteSpace() && !id.AsSpan().ContainsAny(badName))
+                   .Where(id => !id.IsNullOrWhiteSpace() && !HasBadChar(id.AsSpan()))
                    .Distinct()
                    .Take(75)
                    .Select(id => (fileName, id!));

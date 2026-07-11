@@ -3,21 +3,18 @@ using AngleSharp.Dom;
 
 namespace AngleSharp.ReadOnlyDom.Html.Model;
 
-internal class ReadOnlyDocumentType : ReadOnlyNode
+internal class ReadOnlyDocumentType(ReadOnlyDocument document, StringOrMemory nameString)
+    : ReadOnlyNode(document, nameString, NodeType.DocumentType)
 {
-    public ReadOnlyDocumentType(ReadOnlyDocument document, StringOrMemory nameString) : base(document, nameString, NodeType.DocumentType)
-    {
-    }
-
     public StringOrMemory SystemIdentifier { get; set; }
     public StringOrMemory PublicIdentifier { get; set; }
 
     public override void Print(TextWriter writer)
     {
         writer.Write("<!DOCTYPE html ");
-        writer.Write(PublicIdentifier.Memory.Span);
+        writer.WriteSOM(PublicIdentifier);
         writer.Write(" ");
-        writer.Write(SystemIdentifier.Memory.Span);
+        writer.WriteSOM(SystemIdentifier);
         writer.WriteLine(">");
         base.Print(writer);
     }

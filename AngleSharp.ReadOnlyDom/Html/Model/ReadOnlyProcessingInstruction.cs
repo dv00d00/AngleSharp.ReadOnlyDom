@@ -18,9 +18,9 @@ internal class ReadOnlyProcessingInstruction : ReadOnlyCharacterData, IReadOnlyP
     public override void Print(TextWriter writer)
     {
         writer.Write("<?");
-        writer.Write(NodeName.Memory.Span);
+        writer.WriteSOM(NodeName);
         writer.Write(" ");
-        writer.Write(Content.Memory.Span);
+        writer.WriteSOM(Content);
         writer.Write("?>");
     }
 }

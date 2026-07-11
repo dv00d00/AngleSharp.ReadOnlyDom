@@ -2,25 +2,21 @@
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <TargetFramework>net8.0</TargetFramework>
+        <TargetFrameworks>net8.0;net10.0;net472</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <RootNamespace>AngleSharp.Readonly.Tests</RootNamespace>
+        <EnableTUnitPolyfills>false</EnableTUnitPolyfills>
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="TUnit" Version="1.58.0" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <Reference Include="AngleSharp">
-            <HintPath>..\..\..\source\repos\AngleSharp-OG\src\AngleSharp\bin\Release\net8.0\AngleSharp.dll</HintPath>
-        </Reference>
+      <PackageReference Include="TUnit" />
+      <PackageReference Include="AngleSharp" />
+      <PackageReference Include="Polyfill" Condition="'$(TargetFramework)' == 'net472'" PrivateAssets="all" />
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj" />
-      <ProjectReference Include="..\AngleSharp.ReadOnlyDom.Helpers\AngleSharp.ReadOnlyDom.Helpers.csproj" />
     </ItemGroup>
 
     <ItemGroup>

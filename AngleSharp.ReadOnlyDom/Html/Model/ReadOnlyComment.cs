@@ -3,17 +3,13 @@ using AngleSharp.Dom;
 
 namespace AngleSharp.ReadOnlyDom.Html.Model;
 
-internal class ReadOnlyComment : ReadOnlyCharacterData, IReadOnlyCommentNode
+internal class ReadOnlyComment(ReadOnlyDocument? owner, StringOrMemory tokenData)
+    : ReadOnlyCharacterData(owner, "#comment", NodeType.Comment, tokenData), IReadOnlyCommentNode
 {
-    public ReadOnlyComment(ReadOnlyDocument? owner, StringOrMemory tokenData)
-        : base(owner, "#comment", NodeType.Comment, tokenData)
-    {
-    }
-
     public override void Print(TextWriter writer)
     {
         writer.Write("<!--");
-        writer.Write(Content.Memory.Span);
+        writer.WriteSOM(Content);
         writer.Write("-->");
     }
 }

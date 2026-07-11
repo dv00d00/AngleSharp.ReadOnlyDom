@@ -12,10 +12,7 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
     protected ReadOnlyNamedNodeMap? _attributes;
     // protected ISourceReference? _sourceReference;
 
-    public StringOrMemory LocalName
-    {
-        get => NodeName;
-    }
+    public StringOrMemory LocalName => NodeName;
 
     public StringOrMemory NamespaceUri => StringOrMemory.Empty;
 
@@ -90,19 +87,19 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
     public override void Print(TextWriter writer)
     {
         writer.Write("<");
-        writer.Write(NodeName.Memory.Span);
+        writer.WriteSOM(NodeName);
         foreach (var attribute in _attributes ?? EmptyAttributes)
         {
             writer.Write(" ");
-            writer.Write(attribute.Name.Memory.Span);
+            writer.WriteSOM(attribute.Name);
             writer.Write("=\"");
-            writer.Write(attribute.Value.Memory.Span);
+            writer.WriteSOM(attribute.Value);
             writer.Write("\"");
         }
         writer.WriteLine(">");
         base.Print(writer);
         writer.Write("</");
-        writer.Write(NodeName.Memory.Span);
+        writer.WriteSOM(NodeName);
         writer.WriteLine(">");
     }
 

@@ -28,8 +28,11 @@ class ReadOnlyHtmlElement : ReadOnlyElement, IConstructableElement
         {
             return localName;
         }
-        
+#if NETSTANDARD2_0
+        return string.Concat(prefix.ToString(), ":", localName.ToString());
+#else
         return string.Concat(prefix.Memory.Span, ":", localName.Memory.Span);
+#endif
     }
 
     public StringOrMemory Prefix => StringOrMemory.Empty;
@@ -48,5 +51,4 @@ class ReadOnlyHtmlElement : ReadOnlyElement, IConstructableElement
         PopulateAttributes(readOnlyElement);
         return readOnlyElement;
     }
-    
 }

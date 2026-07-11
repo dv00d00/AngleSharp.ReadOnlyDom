@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using System.Text;
 using AngleSharp.Common;
+using AngleSharp.ReadOnlyDom;
 using AngleSharp.ReadOnlyDom.Html;
 using AngleSharp.Text;
 using Microsoft.Extensions.ObjectPool;
@@ -63,7 +64,11 @@ public static class QueryHelpers
 
         return false;
     }
+#if NETSTANDARD2_0
+    private static readonly char[] _whitespaces = "\t\n\r\f ".ToCharArray();
+#else
     private static readonly SearchValues<char> _whitespaces = SearchValues.Create("\t\n\r\f ");
+#endif
 
     public static bool Class(this IReadOnlyNode node, ReadOnlySpan<char> className)
     {
@@ -78,7 +83,11 @@ public static class QueryHelpers
         if (classAttr.Value == className)
             return true;
 
+#if NETSTANDARD2_0
+        foreach (var part in classAttr.Value.Memory.Span.SplitAny(_whitespaces))
+#else
         foreach (var part in classAttr.Value.Memory.Span.Split(_whitespaces))
+#endif
             if (part.SequenceEqual(className))
                 return true;
 
@@ -101,7 +110,11 @@ public static class QueryHelpers
         bool found1 = false;
         bool found2 = false;
 
+#if NETSTANDARD2_0
+        foreach (var part in classAttr.Value.Memory.Span.SplitAny(_whitespaces))
+#else
         foreach (var part in classAttr.Value.Memory.Span.Split(_whitespaces))
+#endif
         {
             if (part.SequenceEqual(className1))
             {
@@ -168,7 +181,7 @@ public static class QueryHelpers
                     continue;
 
                 var span = textNode.Content.Memory.Span;
-                sb.Append(span);
+                sb.AppendSpan(span);
             }
             
             return consumeText(sb);
@@ -204,12 +217,12 @@ public static class QueryHelpers
             var span = textNode.Content.Memory.Span;
             span = trimMode switch
             {
-                TrimMode.Ends => i == 0 ? span.TrimStart() : span,
-                TrimMode.TextNodes => span.Trim(),
+                TrimMode.Ends => i == 0 ? MemoryExtensions.TrimStart(span) : span,
+                TrimMode.TextNodes => MemoryExtensions.Trim(span),
                 _ => span
             };
 
-            sb.Append(span);
+            sb.AppendSpan(span);
             i++;
         }
 
@@ -258,7 +271,7 @@ public static class QueryHelpers
         if (chain.Length == 0)
             return true;
 
-        var last = chain[^1];
+        var last = chain[chain.Length - 1];
         if (!last(node))
             return false;
 

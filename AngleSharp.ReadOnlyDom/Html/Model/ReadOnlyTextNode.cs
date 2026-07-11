@@ -3,15 +3,11 @@ using AngleSharp.Dom;
 
 namespace AngleSharp.ReadOnlyDom.Html.Model;
 
-internal class ReadOnlyTextNode : ReadOnlyCharacterData, IReadOnlyTextNode
+internal class ReadOnlyTextNode(ReadOnlyDocument? owner, StringOrMemory content)
+    : ReadOnlyCharacterData(owner, "#text", NodeType.Text, content), IReadOnlyTextNode
 {
-    public ReadOnlyTextNode(ReadOnlyDocument? owner, StringOrMemory content)
-        :  base(owner, "#text", NodeType.Text, content)
-    {
-    }
-
     public override void Print(TextWriter writer)
     {
-        writer.Write(Content.Memory.Span);
+        writer.WriteSOM(Content);
     }
 }
