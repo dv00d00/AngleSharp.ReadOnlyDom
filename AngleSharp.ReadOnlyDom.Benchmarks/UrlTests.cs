@@ -4,18 +4,9 @@ using System.Threading.Tasks;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks
 {
-    public sealed class UrlTests
+    public sealed class UrlTests(string extension, bool withBuffer = true)
     {
-        readonly List<UrlTest> _tests;
-        readonly bool _buffer;
-        readonly string _extension;
-
-        public UrlTests(string extension, bool withBuffer = true)
-        {
-            _tests = new List<UrlTest>();
-            _buffer = withBuffer;
-            _extension = extension;
-        }
+        readonly List<UrlTest> _tests = new();
 
         public List<UrlTest> Tests => _tests;
 
@@ -34,7 +25,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
 
         public async Task<UrlTests> Include(string url)
         {
-            var test = await UrlTest.For(url, _extension, _buffer).ConfigureAwait(false);
+            var test = await UrlTest.For(url, extension, withBuffer).ConfigureAwait(false);
             _tests.Add(test);
             return this;
         }

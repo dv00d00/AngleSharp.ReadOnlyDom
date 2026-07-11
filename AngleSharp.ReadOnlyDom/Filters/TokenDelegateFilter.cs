@@ -5,22 +5,14 @@ namespace AngleSharp.ReadOnlyDom.Filters;
 
 public delegate bool IsStartToken(ref StructHtmlToken token);
 
-public struct TokenDelegateFilter
+public struct TokenDelegateFilter(IsStartToken isStartTag)
 {
-    private int _depth;
-    private bool _started;
-    private readonly IsStartToken _isStartTag;
-
-    public TokenDelegateFilter(IsStartToken isStartTag)
-    {
-        _isStartTag = isStartTag;
-        _depth = 0;
-        _started = false;
-    }
+    private int _depth = 0;
+    private bool _started = false;
 
     public TokenConsumptionResult Loop(ref StructHtmlToken token, TokenConsumer next)
     {
-        _started = _started || token.Type == HtmlTokenType.StartTag && _isStartTag(ref token);
+        _started = _started || token.Type == HtmlTokenType.StartTag && isStartTag(ref token);
 
         if (_started)
         {

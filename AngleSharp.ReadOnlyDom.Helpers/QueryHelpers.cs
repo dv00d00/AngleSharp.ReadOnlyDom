@@ -1,7 +1,7 @@
 ﻿using System.Buffers;
 using System.Text;
 using AngleSharp.Common;
-using AngleSharp.ReadOnlyDom.ReadOnly.Html;
+using AngleSharp.ReadOnlyDom.Html;
 using AngleSharp.Text;
 using Microsoft.Extensions.ObjectPool;
 

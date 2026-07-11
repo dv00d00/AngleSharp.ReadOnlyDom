@@ -3,7 +3,7 @@ using System.Linq;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Helpers;
-using AngleSharp.ReadOnlyDom.ReadOnly.Html;
+using AngleSharp.ReadOnlyDom.Html;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Engines;

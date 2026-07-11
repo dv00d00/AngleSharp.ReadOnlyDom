@@ -2,18 +2,11 @@
 
 namespace AngleSharp.ReadOnlyDom.Helpers;
 
-public class Lease<T> : IDisposable
+public class Lease<T>(T[] data, int requestedLength) : IDisposable
 {
-    private T[]? _data;
-    private readonly int _requestedLength;
+    private T[]? _data = data;
 
-    public Lease(T[] data, int requestedLength)
-    {
-        _data = data;
-        _requestedLength = requestedLength;
-    }
-
-    public int RequestedLength => _requestedLength;
+    public int RequestedLength { get; } = requestedLength;
 
     public T[] Data => _data!;
 

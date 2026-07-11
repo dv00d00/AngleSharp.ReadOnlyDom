@@ -1,8 +1,7 @@
 using AngleSharp.Html.Construction;
 using AngleSharp.Html.Parser;
-using AngleSharp.ReadOnlyDom.ReadOnly;
-using AngleSharp.ReadOnlyDom.ReadOnly.Html;
-using AngleSharp.ReadOnlyDom.ReadOnly.Html.Model;
+using AngleSharp.ReadOnlyDom.Html;
+using AngleSharp.ReadOnlyDom.Html.Model;
 using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.Helpers;

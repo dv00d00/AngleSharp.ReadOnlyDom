@@ -4,28 +4,17 @@ using AngleSharp.Html.Parser.Tokens.Struct;
 
 namespace AngleSharp.ReadOnlyDom.Filters;
 
-public struct OnlyElementWithIdAndDescendants
+public struct OnlyElementWithIdAndDescendants(string tag, string id)
 {
-    private readonly string _id;
-    private readonly string _tag;
-
-    private int _depth;
-    private bool _started;
-
-    public OnlyElementWithIdAndDescendants(string tag, string id)
-    {
-        _tag = tag;
-        _id = id;
-        _depth = 0;
-        _started = false;
-    }
+    private int _depth = 0;
+    private bool _started = false;
 
     public TokenConsumptionResult Loop(ref StructHtmlToken token, TokenConsumer next)
     {
         _started = _started ||
                    token.Type == HtmlTokenType.StartTag &&
-                   token.Name.Memory.Span.SequenceEqual(_tag.AsSpan()) &&
-                   token.Attributes.HasAttribute(AttributeNames.Id, _id);
+                   token.Name.Memory.Span.SequenceEqual(tag.AsSpan()) &&
+                   token.Attributes.HasAttribute(AttributeNames.Id, id);
 
         if (_started)
         {

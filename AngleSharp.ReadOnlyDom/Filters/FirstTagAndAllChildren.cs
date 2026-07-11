@@ -3,24 +3,16 @@ using AngleSharp.Html.Parser.Tokens.Struct;
 
 namespace AngleSharp.ReadOnlyDom.Filters;
 
-public struct FirstTagAndAllChildren
+public struct FirstTagAndAllChildren(string tag)
 {
-    private readonly string _tag;
-    private int _depth;
-    private bool _started;
-
-    public FirstTagAndAllChildren(string tag)
-    {
-        _tag = tag;
-        _depth = 0;
-        _started = false;
-    }
+    private int _depth = 0;
+    private bool _started = false;
 
     public TokenConsumptionResult Loop(ref StructHtmlToken token, TokenConsumer next)
     {
         _started = _started ||
                    token.Type == HtmlTokenType.StartTag &&
-                   token.Name.Memory.Span.SequenceEqual(_tag.AsSpan());
+                   token.Name.Memory.Span.SequenceEqual(tag.AsSpan());
 
         if (_started)
         {

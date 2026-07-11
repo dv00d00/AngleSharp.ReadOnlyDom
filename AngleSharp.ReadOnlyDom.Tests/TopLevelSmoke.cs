@@ -4,7 +4,7 @@ using System.Linq;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Helpers;
-using AngleSharp.ReadOnlyDom.ReadOnly.Html;
+using AngleSharp.ReadOnlyDom.Html;
 
 namespace AngleSharp.ReadOnly.Tests;
 
@@ -182,13 +182,12 @@ public class TopLevelSmoke
             {
                 var fileName = Path.GetFileName(file);
                 var html = GetHtml(fileName);
-                var doc = ParsedMutableDocs.GetOrAdd(fileName, k => parser.ParseDocument(html));
+                var doc = ParsedMutableDocs.GetOrAdd(fileName, static (_, html) => parser.ParseDocument(html), html);
 
                 return doc.All.Where(it => TagsShort.Contains(it.LocalName))
                     .SelectMany(it =>
                     {
-                        var classes = it.ClassList.Where(className => !className.AsSpan().ContainsAny(badName))
-                            .ToArray();
+                        var classes = it.ClassList.Where(className => !className.AsSpan().ContainsAny(badName)).ToArray();
                         return GetTestCases(file, it.LocalName, it.Id, classes);
                     });
             });

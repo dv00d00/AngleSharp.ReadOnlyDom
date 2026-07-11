@@ -31,16 +31,10 @@ internal static class SpanExtensions
     public static MemStringSplitEnumerator Split(this ReadOnlyMemory<char> span, ReadOnlySpan<char> sentinel) =>
         new(span, sentinel);
 
-    internal ref struct StringSplitEnumerator
+    internal ref struct StringSplitEnumerator(ReadOnlySpan<char> span, ReadOnlySpan<char> sentinel)
     {
-        private readonly ReadOnlySpan<char> _sentinel;
-        private ReadOnlySpan<char> _span;
-
-        public StringSplitEnumerator(ReadOnlySpan<char> span, ReadOnlySpan<char> sentinel)
-        {
-            _span = span;
-            _sentinel = sentinel;
-        }
+        private readonly ReadOnlySpan<char> _sentinel = sentinel;
+        private ReadOnlySpan<char> _span = span;
 
         public bool MoveNext()
         {
@@ -77,16 +71,10 @@ internal static class SpanExtensions
         public readonly StringSplitEnumerator GetEnumerator() => this;
     }
 
-    internal ref struct MemStringSplitEnumerator
+    internal ref struct MemStringSplitEnumerator(ReadOnlyMemory<char> mem, ReadOnlySpan<char> sentinel)
     {
-        private readonly ReadOnlySpan<char> _sentinel;
-        private ReadOnlyMemory<char> _mem;
-
-        public MemStringSplitEnumerator(ReadOnlyMemory<char> mem, ReadOnlySpan<char> sentinel)
-        {
-            _mem = mem;
-            _sentinel = sentinel;
-        }
+        private readonly ReadOnlySpan<char> _sentinel = sentinel;
+        private ReadOnlyMemory<char> _mem = mem;
 
         public bool MoveNext()
         {
@@ -123,16 +111,9 @@ internal static class SpanExtensions
         public readonly MemStringSplitEnumerator GetEnumerator() => this;
     }
 
-    internal ref struct StringSplitEnumeratorSearchValues
+    internal ref struct StringSplitEnumeratorSearchValues(ReadOnlySpan<char> span, SearchValues<char> sentinel)
     {
-        private readonly SearchValues<char> _sentinel;
-        private ReadOnlySpan<char> _span;
-
-        public StringSplitEnumeratorSearchValues(ReadOnlySpan<char> span, SearchValues<char> sentinel)
-        {
-            _span = span;
-            _sentinel = sentinel;
-        }
+        private ReadOnlySpan<char> _span = span;
 
         public bool MoveNext()
         {
@@ -143,7 +124,7 @@ internal static class SpanExtensions
                     return false;
                 }
 
-                var index = _span.IndexOfAny(_sentinel);
+                var index = _span.IndexOfAny(sentinel);
                 if (index < 0)
                 {
                     Current = _span;

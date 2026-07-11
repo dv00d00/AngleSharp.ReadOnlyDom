@@ -2,16 +2,11 @@
 
 namespace AngleSharp.ReadOnlyDom.Helpers;
 
-public class RingBuffer<T> where T : struct, INumber<T>
+public class RingBuffer<T>(int capacity)
+    where T : struct, INumber<T>
 {
-    private readonly T[] _buffer;
-    private int _end;
-
-    public RingBuffer(int capacity)
-    {
-        _buffer = new T[capacity];
-        _end = 0;
-    }
+    private readonly T[] _buffer = new T[capacity];
+    private int _end = 0;
 
     public int Count => Math.Min(_buffer.Length, _end);
 
