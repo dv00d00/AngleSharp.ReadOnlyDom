@@ -17,9 +17,23 @@ internal class ReadOnlyDocument : ReadOnlyHtmlElement, IConstructableDocument, I
     public QuirksMode QuirksMode { get; set; }
 
     public IConstructableElement DocumentElement => this;
-    public IConstructableElement Head => _ChildNodes.OfType<IConstructableElement>().First(n => n.LocalName == "head");
-    IReadOnlyElement IReadOnlyDocument.Body => _ChildNodes.OfType<IReadOnlyElement>().First(n => n.LocalName == "body");
-    IReadOnlyElement IReadOnlyDocument.Head => _ChildNodes.OfType<IReadOnlyElement>().First(n => n.LocalName == "head");
+    public IConstructableElement Head => FindChildByLocalName("head");
+    IReadOnlyElement IReadOnlyDocument.Body => FindChildByLocalName("body");
+    IReadOnlyElement IReadOnlyDocument.Head => FindChildByLocalName("head");
+
+    private ReadOnlyHtmlElement FindChildByLocalName(StringOrMemory localName)
+    {
+        foreach (var node in _ChildNodes)
+        {
+            if (node is ReadOnlyHtmlElement element && element.LocalName == localName)
+            {
+                return element;
+            }
+        }
+
+        throw new InvalidOperationException($"No child element with local name '{localName}' was found.");
+    }
+    
     IReadOnlyNode? IReadOnlyNode.Parent => _parent as IReadOnlyNode;
     IReadOnlyNodeList IReadOnlyNode.ChildNodes => _ChildNodes;
 

@@ -168,5 +168,4 @@ internal static class SpanExtensions
 
         public readonly StringSplitEnumeratorSearchValues GetEnumerator() => this;
     }
-
 }

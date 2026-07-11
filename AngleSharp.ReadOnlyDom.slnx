@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="AngleSharp.ReadOnlyDom.Benchmarks/AngleSharp.ReadOnlyDom.Benchmarks.csproj" />
+  <Project Path="AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj" />
+  <Project Path="AngleSharp.ReadOnlyDom/AngleSharp.ReadOnlyDom.csproj" />
+</Solution>

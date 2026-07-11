@@ -24,13 +24,27 @@ public static class QueryHelpers
 
     public static IEnumerable<IReadOnlyNode> AllDescendants(this IReadOnlyNode node)
     {
-        for (var i = 0; i < node.ChildNodes.Length; i++)
+        var stack = _stackPool.Get();
+        try
         {
-            var child = node.ChildNodes[i];
-            yield return child;
+            var length = node.ChildNodes.Length;
+            while (length > 0)
+                stack.Push(node.ChildNodes[--length]);
 
-            foreach (var next in child.AllDescendants())
+            while (stack.Count > 0)
+            {
+                var next = stack.Pop();
                 yield return next;
+
+                length = next.ChildNodes.Length;
+                while (length > 0)
+                    stack.Push(next.ChildNodes[--length]);
+            }
+        }
+        finally
+        {
+            stack.Clear();
+            _stackPool.Return(stack);
         }
     }
 
@@ -148,9 +162,11 @@ public static class QueryHelpers
         var sb = _sbPool.Get();
         try
         {
-            var text = node.AllDescendants().OfType<IReadOnlyTextNode>();
-            foreach (var textNode in text)
+            foreach (var descendant in node.AllDescendants())
             {
+                if (descendant is not IReadOnlyTextNode textNode)
+                    continue;
+
                 var span = textNode.Content.Memory.Span;
                 sb.Append(span);
             }
@@ -179,10 +195,12 @@ public static class QueryHelpers
 
     public static string GetTextContent(this IReadOnlyNode node, StringBuilder sb, TrimMode trimMode = TrimMode.None)
     {
-        var text = node.AllDescendants().OfType<IReadOnlyTextNode>();
         int i = 0;
-        foreach (var textNode in text)
+        foreach (var descendant in node.AllDescendants())
         {
+            if (descendant is not IReadOnlyTextNode textNode)
+                continue;
+
             var span = textNode.Content.Memory.Span;
             span = trimMode switch
             {

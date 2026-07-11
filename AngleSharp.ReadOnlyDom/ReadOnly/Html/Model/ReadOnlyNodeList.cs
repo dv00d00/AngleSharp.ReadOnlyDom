@@ -18,7 +18,10 @@ internal class ReadOnlyNodeList : IConstructableNodeList, IReadOnlyNodeList
 
     IEnumerator<IReadOnlyNode> IEnumerable<IReadOnlyNode>.GetEnumerator()
     {
-        return _nodes.OfType<IReadOnlyNode>().GetEnumerator();
+        foreach (var node in _nodes)
+        {
+            yield return node;
+        }
     }
 
     public IEnumerator<IConstructableNode> GetEnumerator()

@@ -60,7 +60,10 @@ internal class ReadOnlyNamedNodeMap : IConstructableNamedNodeMap, IReadOnlyNamed
 
     IEnumerator<IReadOnlyAttr> IEnumerable<IReadOnlyAttr>.GetEnumerator()
     {
-        return _attributes.OfType<IReadOnlyAttr>().GetEnumerator();
+        foreach (var attr in _attributes)
+        {
+            yield return (IReadOnlyAttr)attr;
+        }
     }
 
     public IEnumerator<IConstructableAttr> GetEnumerator()
