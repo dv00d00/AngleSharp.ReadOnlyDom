@@ -13,5 +13,5 @@ public interface IReadOnlyElement : IReadOnlyNode
 
 public interface IReadOnlyTemplateElement : IReadOnlyElement
 {
-    IReadOnlyNodeList Content { get; } 
+    IReadOnlyNodeList Content { get; }
 }

@@ -10,20 +10,23 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
     private static readonly ReadOnlyNamedNodeMap EmptyAttributes = new ReadOnlyNamedNodeMap();
 
     protected ReadOnlyNamedNodeMap? _attributes;
-    // protected ISourceReference? _sourceReference;
 
     public StringOrMemory LocalName => NodeName;
 
     public StringOrMemory NamespaceUri => StringOrMemory.Empty;
 
     public IConstructableNamedNodeMap Attributes => _attributes ?? EmptyAttributes;
-    
+
+    // todo: extra sysptr, worth it?
+
+    // protected ISourceReference? _sourceReference;
+
     // public ISourceReference? SourceReference
     // {
     //     get => _sourceReference;
     //     set => _sourceReference = value;
     // }
-    
+
     public ISourceReference? SourceReference
     {
         get => null;
@@ -37,10 +40,9 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
         StringOrMemory localName,
         StringOrMemory prefix,
         StringOrMemory namespaceUri,
-        NodeFlags flags = NodeFlags.None)
-        : base(owner, name, NodeType.Element, flags)
-    {
-    }
+        NodeFlags flags = NodeFlags.None
+    )
+        : base(owner, name, NodeType.Element, flags) { }
 
     public StringOrMemory GetAttribute(StringOrMemory @namespace, StringOrMemory name)
     {

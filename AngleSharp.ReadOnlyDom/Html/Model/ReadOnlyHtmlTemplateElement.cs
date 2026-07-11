@@ -7,9 +7,12 @@ namespace AngleSharp.ReadOnlyDom.Html.Model;
 class ReadOnlyHtmlTemplateElement : ReadOnlyHtmlElement, IConstructableTemplateElement, IReadOnlyTemplateElement
 {
     public ReadOnlyHtmlTemplateElement(ReadOnlyDocument? owner, StringOrMemory prefix = default)
-        : base(owner, TagNames.Template, prefix, NodeFlags.Special | NodeFlags.Scoped | NodeFlags.HtmlTableScoped | NodeFlags.HtmlTableSectionScoped)
-    {
-    }
+        : base(
+            owner,
+            TagNames.Template,
+            prefix,
+            NodeFlags.Special | NodeFlags.Scoped | NodeFlags.HtmlTableScoped | NodeFlags.HtmlTableSectionScoped
+        ) { }
 
     private ReadOnlyNodeList Content { get; set; } = new ReadOnlyNodeList();
     IReadOnlyNodeList IReadOnlyTemplateElement.Content => Content;

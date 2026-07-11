@@ -28,7 +28,8 @@ public class OverheadBenchmark
     {
         public required string Display { get; init; }
         public required string Html { get; init; }
-        public required bool CustomOptions {get; init;}
+        public required bool CustomOptions { get; init; }
+
         public override string ToString() => Display;
     }
 
@@ -37,10 +38,10 @@ public class OverheadBenchmark
     {
         HtmlEntityProvider.Resolver.GetSymbol("test");
         MimeTypeNames.FromExtension(".txt");
-        
     }
 
-    [ParamsSource(nameof(GetTasks))] public HtmlTask It { get; set; } = null!;
+    [ParamsSource(nameof(GetTasks))]
+    public HtmlTask It { get; set; } = null!;
 
     private static readonly HtmlParserOptions Custom = new HtmlParserOptions()
     {
@@ -68,23 +69,33 @@ public class OverheadBenchmark
         {
             if (token.Name != "div")
                 return false;
-            
+
             var s = attributeName.Span;
             return s.Length switch
             {
                 2 => s[0] == 'i' && s[1] == 'd',
                 5 => s[0] == 'c' && s[1] == 'l' && s[2] == 'a' && s[3] == 's' && s[4] == 's',
-                _ => false
+                _ => false,
             };
         },
     };
 
     public IEnumerable<HtmlTask> GetTasks()
     {
-        yield return new HtmlTask { Display = "github", Html = StaticHtml.Github, CustomOptions = false };
-        yield return new HtmlTask { Display = "github *", Html = StaticHtml.Github, CustomOptions = true };
+        yield return new HtmlTask
+        {
+            Display = "github",
+            Html = StaticHtml.Github,
+            CustomOptions = false,
+        };
+        yield return new HtmlTask
+        {
+            Display = "github *",
+            Html = StaticHtml.Github,
+            CustomOptions = true,
+        };
     }
-    
+
     private static readonly HtmlParser DefaultParser = new HtmlParser(default, ReadOnlyParser.DefaultContext);
     private static readonly HtmlParser CustomParser = new HtmlParser(Custom, ReadOnlyParser.DefaultContext);
 

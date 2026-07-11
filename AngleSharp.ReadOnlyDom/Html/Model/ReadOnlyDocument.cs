@@ -5,9 +5,10 @@ using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.Html.Model;
 
-internal class ReadOnlyDocument : ReadOnlyHtmlElement, IConstructableDocument, IReadOnlyDocument, IConstructableElement
+internal class ReadOnlyDocument : ReadOnlyHtmlElement, IConstructableDocument, IReadOnlyDocument
 {
-    public ReadOnlyDocument(TextSource source) : base(null, "#document")
+    public ReadOnlyDocument(TextSource source)
+        : base(null, "#document")
     {
         Source = source;
     }
@@ -18,6 +19,7 @@ internal class ReadOnlyDocument : ReadOnlyHtmlElement, IConstructableDocument, I
 
     public IConstructableElement DocumentElement => this;
     public IConstructableElement Head => FindChildByLocalName("head");
+
     IReadOnlyElement IReadOnlyDocument.Body => FindChildByLocalName("body");
     IReadOnlyElement IReadOnlyDocument.Head => FindChildByLocalName("head");
 
@@ -33,7 +35,7 @@ internal class ReadOnlyDocument : ReadOnlyHtmlElement, IConstructableDocument, I
 
         throw new InvalidOperationException($"No child element with local name '{localName}' was found.");
     }
-    
+
     IReadOnlyNode? IReadOnlyNode.Parent => _parent as IReadOnlyNode;
     IReadOnlyNodeList IReadOnlyNode.ChildNodes => _ChildNodes;
 

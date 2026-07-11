@@ -3,68 +3,66 @@
 public class StaticHtml
 {
     public const string HtmlTable = """
-                                    <table>
-                                        <tr>
-                                            <th>Company</th>
-                                            <th>Contact</th>
-                                            <th>Country</th>
-                                        </tr>
-                                        <tr>
-                                            <td>Alfreds Futterkiste</td>
-                                            <td>Maria Anders</td>
-                                            <td>Germany</td>
-                                        </tr>
-                                        <tr>
-                                            <td>Centro comercial Moctezuma</td>
-                                            <td>Francisco Chang</td>
-                                            <td>Mexico</td>
-                                        </tr>
-                                    </table>
-                                    """;
+        <table>
+            <tr>
+                <th>Company</th>
+                <th>Contact</th>
+                <th>Country</th>
+            </tr>
+            <tr>
+                <td>Alfreds Futterkiste</td>
+                <td>Maria Anders</td>
+                <td>Germany</td>
+            </tr>
+            <tr>
+                <td>Centro comercial Moctezuma</td>
+                <td>Francisco Chang</td>
+                <td>Mexico</td>
+            </tr>
+        </table>
+        """;
 
     public const string HtmlTableTabbed = """
-                                                                                                                      <table>
-                                                                                                                          <tr>
-                                                                                                                              <th>Company</th>
-                                                                                                                              <th>Contact</th>
-                                                                                                                              <th>Country</th>
-                                                                                                                          </tr>
-                                                                                                                          <tr>
-                                                                                                                              <td>Alfreds Futterkiste</td>
-                                                                                                                              <td>Maria Anders</td>
-                                                                                                                              <td>Germany</td>
-                                                                                                                          </tr>
-                                                                                                                          <tr>
-                                                                                                                              <td>Centro comercial Moctezuma</td>
-                                                                                                                              <td>Francisco Chang</td>
-                                                                                                                              <td>Mexico</td>
-                                                                                                                          </tr>
-                                                                                                                      </table>
-                                          """;
+                                                                                    <table>
+                                                                                        <tr>
+                                                                                            <th>Company</th>
+                                                                                            <th>Contact</th>
+                                                                                            <th>Country</th>
+                                                                                        </tr>
+                                                                                        <tr>
+                                                                                            <td>Alfreds Futterkiste</td>
+                                                                                            <td>Maria Anders</td>
+                                                                                            <td>Germany</td>
+                                                                                        </tr>
+                                                                                        <tr>
+                                                                                            <td>Centro comercial Moctezuma</td>
+                                                                                            <td>Francisco Chang</td>
+                                                                                            <td>Mexico</td>
+                                                                                        </tr>
+                                                                                    </table>
+        """;
 
+    public const string HtmlTableTabbedSoMuch = """
+                                                                                                                                                                                                                                            <table>
+                                                                                                                                                                                                                                                <tr>
+                                                                                                                                                                                                                                                    <th>Company</th>
+                                                                                                                                                                                                                                                    <th>Contact</th>
+                                                                                                                                                                                                                                                    <th>Country</th>
+                                                                                                                                                                                                                                                </tr>
+                                                                                                                                                                                                                                                <tr>
+                                                                                                                                                                                                                                                    <td>Alfreds Futterkiste</td>
+                                                                                                                                                                                                                                                    <td>Maria Anders</td>
+                                                                                                                                                                                                                                                    <td>Germany</td>
+                                                                                                                                                                                                                                                </tr>
+                                                                                                                                                                                                                                                <tr>
+                                                                                                                                                                                                                                                    <td>Centro comercial Moctezuma</td>
+                                                                                                                                                                                                                                                    <td>Francisco Chang</td>
+                                                                                                                                                                                                                                                    <td>Mexico</td>
+                                                                                                                                                                                                                                                </tr>
+                                                                                                                                                                                                                                            </table>
+        """;
 
-        public const string HtmlTableTabbedSoMuch = """
-                                                                                                                                                                                                                                                                              <table>
-                                                                                                                                                                                                                                                                                  <tr>
-                                                                                                                                                                                                                                                                                      <th>Company</th>
-                                                                                                                                                                                                                                                                                      <th>Contact</th>
-                                                                                                                                                                                                                                                                                      <th>Country</th>
-                                                                                                                                                                                                                                                                                  </tr>
-                                                                                                                                                                                                                                                                                  <tr>
-                                                                                                                                                                                                                                                                                      <td>Alfreds Futterkiste</td>
-                                                                                                                                                                                                                                                                                      <td>Maria Anders</td>
-                                                                                                                                                                                                                                                                                      <td>Germany</td>
-                                                                                                                                                                                                                                                                                  </tr>
-                                                                                                                                                                                                                                                                                  <tr>
-                                                                                                                                                                                                                                                                                      <td>Centro comercial Moctezuma</td>
-                                                                                                                                                                                                                                                                                      <td>Francisco Chang</td>
-                                                                                                                                                                                                                                                                                      <td>Mexico</td>
-                                                                                                                                                                                                                                                                                  </tr>
-                                                                                                                                                                                                                                                                              </table>
-                                          """;
-
-    public const string Github =
-        """
+    public const string Github = """
 
 
 

@@ -43,7 +43,7 @@ internal class ReadOnlyNodeList : IConstructableNodeList, IReadOnlyNodeList
     {
         _nodes.Remove((ReadOnlyNode)node);
     }
-    
+
     public void RemoveAt(Int32 idx)
     {
         _nodes.RemoveAt(idx);

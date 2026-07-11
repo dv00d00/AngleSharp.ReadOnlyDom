@@ -7,7 +7,7 @@
     <WarningsAsErrors>false</WarningsAsErrors>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-  
+
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
     <PackageReference Include="AngleSharp" />
@@ -28,7 +28,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj" />
-    <ProjectReference Include="..\AngleSharp.ReadOnlyDom.Helpers\AngleSharp.ReadOnlyDom.Helpers.csproj" Condition=" '$(TargetFramework)' != 'net472' " />
+    <ProjectReference
+      Include="..\AngleSharp.ReadOnlyDom.Helpers\AngleSharp.ReadOnlyDom.Helpers.csproj"
+      Condition=" '$(TargetFramework)' != 'net472' "
+    />
   </ItemGroup>
-
 </Project>

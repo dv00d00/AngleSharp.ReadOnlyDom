@@ -7,11 +7,9 @@ namespace AngleSharp.ReadOnlyDom.Html.Model;
 class ReadOnlyHtmlFormElement : ReadOnlyHtmlElement, IConstructableFormElement
 {
     public ReadOnlyHtmlFormElement(ReadOnlyDocument? owner, StringOrMemory prefix = default)
-        : base(owner, TagNames.Form, prefix, NodeFlags.Special)
-    {
-    }
-    
-    public IConstructableNode ShallowCopy()
+        : base(owner, TagNames.Form, prefix, NodeFlags.Special) { }
+
+    public new IConstructableNode ShallowCopy()
     {
         var readOnlyElement = new ReadOnlyHtmlFormElement(Owner, default);
         PopulateAttributes(readOnlyElement);

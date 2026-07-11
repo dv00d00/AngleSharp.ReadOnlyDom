@@ -18,7 +18,7 @@ public class Lease<T>(T[] data, int requestedLength) : IDisposable
     {
         if (_data != null)
         {
-            ArrayPool<T>.Shared.Return(_data, false);
+            ArrayPool<T>.Shared.Return(_data);
             _data = null;
         }
     }

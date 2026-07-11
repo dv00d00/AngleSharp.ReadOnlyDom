@@ -10,9 +10,8 @@ public struct FirstTagAndAllChildren(string tag)
 
     public TokenConsumptionResult Loop(ref StructHtmlToken token, TokenConsumer next)
     {
-        _started = _started ||
-                   token.Type == HtmlTokenType.StartTag &&
-                   token.Name.Memory.Span.SequenceEqual(tag.AsSpan());
+        _started =
+            _started || token.Type == HtmlTokenType.StartTag && token.Name.Memory.Span.SequenceEqual(tag.AsSpan());
 
         if (_started)
         {

@@ -11,10 +11,11 @@ public struct OnlyElementWithIdAndDescendants(string tag, string id)
 
     public TokenConsumptionResult Loop(ref StructHtmlToken token, TokenConsumer next)
     {
-        _started = _started ||
-                   token.Type == HtmlTokenType.StartTag &&
-                   token.Name.Memory.Span.SequenceEqual(tag.AsSpan()) &&
-                   token.Attributes.HasAttribute(AttributeNames.Id, id);
+        _started =
+            _started
+            || token.Type == HtmlTokenType.StartTag
+                && token.Name.Memory.Span.SequenceEqual(tag.AsSpan())
+                && token.Attributes.HasAttribute(AttributeNames.Id, id);
 
         if (_started)
         {

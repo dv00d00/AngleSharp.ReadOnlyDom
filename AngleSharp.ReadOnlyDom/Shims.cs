@@ -21,7 +21,7 @@ internal static class Shims
         sb.Append(content.Memory.Span);
 #endif
     }
-    
+
     public static void AppendSpan(this System.Text.StringBuilder sb, ReadOnlySpan<char> content)
     {
 #if NETSTANDARD2_0

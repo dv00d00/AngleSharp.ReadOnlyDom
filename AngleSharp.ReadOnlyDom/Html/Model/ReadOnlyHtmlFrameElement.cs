@@ -7,9 +7,7 @@ namespace AngleSharp.ReadOnlyDom.Html.Model;
 class ReadOnlyHtmlFrameElement : ReadOnlyHtmlElement, IConstructableFrameElement
 {
     public ReadOnlyHtmlFrameElement(ReadOnlyDocument? owner, StringOrMemory prefix = default)
-        : base(owner, TagNames.Frame, prefix, NodeFlags.SelfClosing)
-    {
-    }
+        : base(owner, TagNames.Frame, prefix, NodeFlags.SelfClosing) { }
 
     public IConstructableNode ShallowCopy()
     {

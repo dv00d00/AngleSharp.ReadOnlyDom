@@ -6,7 +6,7 @@ public class RingBuffer<T>(int capacity)
     where T : struct, INumber<T>
 {
     private readonly T[] _buffer = new T[capacity];
-    private int _end = 0;
+    private int _end;
 
     public int Count => Math.Min(_buffer.Length, _end);
 
@@ -19,7 +19,8 @@ public class RingBuffer<T>(int capacity)
     public T? Avg()
     {
         var count = Count;
-        if (count == 0) return null;
+        if (count == 0)
+            return null;
         T sum = T.Zero;
         for (int i = 0; i < count; i++)
         {

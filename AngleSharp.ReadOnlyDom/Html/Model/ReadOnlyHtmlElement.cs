@@ -6,21 +6,30 @@ namespace AngleSharp.ReadOnlyDom.Html.Model;
 
 class ReadOnlyHtmlElement : ReadOnlyElement, IConstructableElement
 {
-    public ReadOnlyHtmlElement(ReadOnlyDocument? owner, StringOrMemory localName = default, StringOrMemory prefix = default, NodeFlags flags = NodeFlags.None)
-        : base(owner, Combine(prefix, localName), localName, prefix, NamespaceNames.HtmlUri, flags | NodeFlags.HtmlMember)
-    {
-    }
+    public ReadOnlyHtmlElement(
+        ReadOnlyDocument? owner,
+        StringOrMemory localName = default,
+        StringOrMemory prefix = default,
+        NodeFlags flags = NodeFlags.None
+    )
+        : base(
+            owner,
+            Combine(prefix, localName),
+            localName,
+            prefix,
+            NamespaceNames.HtmlUri,
+            flags | NodeFlags.HtmlMember
+        ) { }
 
     protected ReadOnlyHtmlElement(
-            ReadOnlyDocument? owner,
-            StringOrMemory name,
-            StringOrMemory localName,
-            StringOrMemory prefix,
-            StringOrMemory namespaceUri,
-            NodeFlags flags) :
-        base(owner, name, localName, prefix, namespaceUri, flags)
-    {
-    }
+        ReadOnlyDocument? owner,
+        StringOrMemory name,
+        StringOrMemory localName,
+        StringOrMemory prefix,
+        StringOrMemory namespaceUri,
+        NodeFlags flags
+    )
+        : base(owner, name, localName, prefix, namespaceUri, flags) { }
 
     protected static StringOrMemory Combine(StringOrMemory prefix, StringOrMemory localName)
     {

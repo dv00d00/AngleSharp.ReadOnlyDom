@@ -34,7 +34,8 @@ public class HttpParsingBenchmark
     [Params("15895974334")]
     public string Id { get; set; }
 
-    private static string GetUrl(string id) => $"https://bluedart.com/web/guest/trackdartresult?trackFor=0&trackNo={id}";
+    private static string GetUrl(string id) =>
+        $"https://bluedart.com/web/guest/trackdartresult?trackFor=0&trackNo={id}";
 
     [GlobalSetup]
     public void Setup()
@@ -72,10 +73,9 @@ public class HttpParsingBenchmark
         return events;
     }
 
-    private static readonly HttpClient Client = new HttpClient(new SocketsHttpHandler
-    {
-        PooledConnectionLifetime = TimeSpan.FromMinutes(5)
-    });
+    private static readonly HttpClient Client = new HttpClient(
+        new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) }
+    );
 
     private static readonly IBrowsingContext Context = BrowsingContext.New(ReadOnlyParser.DefaultConfig);
     private static ReadOnlySpan<char> ID => "id";
@@ -97,13 +97,13 @@ public class HttpParsingBenchmark
         {
             if (t.Name != "div")
                 return false;
-            
+
             var s = n.Span;
             return s.Length switch
             {
                 2 => s.SequenceEqual(ID),
                 5 => s.SequenceEqual(CLASS),
-                _ => false
+                _ => false,
             };
         },
     };
@@ -121,23 +121,23 @@ public class HttpParsingBenchmark
             e => e.TagId("div", $"AWB{id}"),
             e => e.TagId("div", $"SCAN{id}"),
             e => e.Tag("table"),
-            e => e.Tag("tbody"));
+            e => e.Tag("tbody")
+        );
 
-        var rows = tbody?
-            .QueryAll(e => e.Tag("tr"))
-            .Select(row => row
-                .QueryAll(e => e.Tag("td"))
-                .Select(it => it.GetTextContent(trim: TrimMode.TextNodes))
-                .ToList()
+        var rows = tbody
+            ?.QueryAll(e => e.Tag("tr"))
+            .Select(row =>
+                row.QueryAll(e => e.Tag("td")).Select(it => it.GetTextContent(trim: TrimMode.TextNodes)).ToList()
             )
             .SkipLast(1);
 
         if (rows == null)
         {
-            if (doc
-                .QueryOne(e => e.Id("errorDetails"), e => e.TagClass("div", "alert"))
-                ?.GetTextContent(trim: TrimMode.TextNodes)
-                .Contains("Records Not Found", StringComparison.OrdinalIgnoreCase) == true)
+            if (
+                doc.QueryOne(e => e.Id("errorDetails"), e => e.TagClass("div", "alert"))
+                    ?.GetTextContent(trim: TrimMode.TextNodes)
+                    .Contains("Records Not Found", StringComparison.OrdinalIgnoreCase) == true
+            )
             {
                 Console.WriteLine("Not found");
                 return null;
@@ -147,8 +147,7 @@ public class HttpParsingBenchmark
             return null;
         }
 
-        var history = rows
-            .Where(it => !it.TryAt(1).IsNullOrWhiteSpace())
+        var history = rows.Where(it => !it.TryAt(1).IsNullOrWhiteSpace())
             .Select(row =>
             {
                 var location = row.TryAt(0);
@@ -165,15 +164,13 @@ public class HttpParsingBenchmark
             .ToList();
 
         var stage =
-            history.FirstOrDefault()?.Status?.ContainsI("Delivered") == true
-                ? "Stage.Delivered"
-                : "Stage.Transit";
+            history.FirstOrDefault()?.Status?.ContainsI("Delivered") == true ? "Stage.Delivered" : "Stage.Transit";
 
         Console.WriteLine(stage);
 
         return history;
     }
-    
+
     private static async Task<List<Event>?> ParseSiteOld(string id)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, GetUrl(id));
@@ -186,16 +183,18 @@ public class HttpParsingBenchmark
 
         var div = doc.QuerySelector($"div#AWB{id}");
         var table = div?.QuerySelector<IHtmlTableElement>($"div#SCAN{id} table");
-        var rows = table?.Bodies.FirstOrDefault()?
-            .Rows
-            .Select(row => row.Cells.Select(it => it.TextContent.Trim()).ToList())
+        var rows = table
+            ?.Bodies.FirstOrDefault()
+            ?.Rows.Select(row => row.Cells.Select(it => it.TextContent.Trim()).ToList())
             .SkipLast(1)
             .ToList();
 
         if (rows == null)
         {
-            if (doc.QuerySelector("#errorDetails > div.alert")?.TextContent
-                    .Contains("Records Not Found", StringComparison.OrdinalIgnoreCase) == true)
+            if (
+                doc.QuerySelector("#errorDetails > div.alert")
+                    ?.TextContent.Contains("Records Not Found", StringComparison.OrdinalIgnoreCase) == true
+            )
             {
                 Console.WriteLine("Not found");
                 return null;
@@ -205,8 +204,7 @@ public class HttpParsingBenchmark
             return null;
         }
 
-        var history = rows
-            .Where(it => !string.IsNullOrWhiteSpace(it.ElementAtOrDefault(1)))
+        var history = rows.Where(it => !string.IsNullOrWhiteSpace(it.ElementAtOrDefault(1)))
             .Select(row =>
             {
                 var rawDate = $"{row.ElementAtOrDefault(2)} {row.ElementAtOrDefault(3)}";
@@ -219,7 +217,8 @@ public class HttpParsingBenchmark
                     Status = status,
                     Date = rawDate,
                 };
-            }).ToList();
+            })
+            .ToList();
 
         var stage =
             history.FirstOrDefault()?.Status?.Contains("Delivered", StringComparison.OrdinalIgnoreCase) == true

@@ -11,14 +11,14 @@ namespace AngleSharp.Readonly.Tests;
 // dotnet test --configuration Release
 public class TopLevelSmoke
 {
-    const int MaxSize = ( 512  + 128 ) * 1024;
+    const int MaxSize = (512 + 128) * 1024;
 
     const string BaseDir = @".\temp\";
 
     private static readonly ConcurrentDictionary<string, string> FileContents = new();
     private static readonly ConcurrentDictionary<string, IHtmlDocument> ParsedMutableDocs = new();
     private static readonly ConcurrentDictionary<string, IReadOnlyDocument> ParsedRoDocs = new();
-    
+
     private static string GetHtml(string fileName) =>
         FileContents.GetOrAdd(fileName, static fileName => File.ReadAllText(BaseDir + fileName));
 
@@ -30,54 +30,236 @@ public class TopLevelSmoke
         );
     }
 
-    private static readonly string[] Tags =
-        (new[]
+    private static readonly string[] Tags = (
+        new[]
         {
-    "div", "span", "a", "p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "li",
-    "ol", "table", "tr", "td", "th", "tbody", "thead", "tfoot", "caption", "colgroup", "col", "img", "br", "hr",
-    "form", "input", "button", "textarea", "select", "option", "optgroup", "label", "fieldset", "legend", "iframe",
-    "script", "noscript", "style", "link", "meta", "title", "head", "body", "html", "base", "area", "map", "param",
-    "object", "embed", "track", "audio", "video", "source", "canvas", "svg", "math", "del", "ins", "time", "mark",
-    "progress", "meter", "details", "summary", "menuitem", "menu", "dialog", "slot", "template", "article", "aside",
-    "bdi", "command", "datalist", "dfn", "figcaption", "figure", "footer", "header", "kbd", "main", "nav", "output",
-    "picture", "ruby", "rp", "rt", "section", "small", "strong", "sub", "sup", "var", "wbr", "b", "i", "u", "s",
-    "pre", "code", "q", "blockquote", "abbr", "cite", "em", "samp", "a", "bdo", "br", "button", "canvas", "cite",
-    "code", "command", "datalist", "dfn", "em", "embed", "i", "iframe", "input", "kbd", "keygen", "label",
-    "mark", "math", "meter", "noscript", "object", "output", "progress", "q", "ruby", "samp", "script", "select",
-    "small", "span", "strong", "sub", "sup", "textarea", "time", "var", "wbr", "text", "acronym", "address",
-    "big", "dt", "ins", "strike", "tt", "xmp", "applet", "basefont", "bgsound", "blink", "center", "command", "content",
-    "text", "dir", "element", "font", "frame", "frameset", "image", "isindex", "keygen", "listing", "marquee",
-    "rect", "shadow", "spacer", "template", "nextid", "noembed", "plaintext", "rb", "rtc", "section", "summary",
-    "sup", "time", "track", "var", "wbr", "xmp", "abbr", "acronym", "address", "applet", "article", "aside", "audio",
-        }).Distinct().ToArray();
-
-    private static readonly string[] TagsShort =
-        [
             "div",
             "span",
-            "ol",
+            "a",
+            "p",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
             "ul",
             "li",
+            "ol",
             "table",
             "tr",
             "td",
-        ];
+            "th",
+            "tbody",
+            "thead",
+            "tfoot",
+            "caption",
+            "colgroup",
+            "col",
+            "img",
+            "br",
+            "hr",
+            "form",
+            "input",
+            "button",
+            "textarea",
+            "select",
+            "option",
+            "optgroup",
+            "label",
+            "fieldset",
+            "legend",
+            "iframe",
+            "script",
+            "noscript",
+            "style",
+            "link",
+            "meta",
+            "title",
+            "head",
+            "body",
+            "html",
+            "base",
+            "area",
+            "map",
+            "param",
+            "object",
+            "embed",
+            "track",
+            "audio",
+            "video",
+            "source",
+            "canvas",
+            "svg",
+            "math",
+            "del",
+            "ins",
+            "time",
+            "mark",
+            "progress",
+            "meter",
+            "details",
+            "summary",
+            "menuitem",
+            "menu",
+            "dialog",
+            "slot",
+            "template",
+            "article",
+            "aside",
+            "bdi",
+            "command",
+            "datalist",
+            "dfn",
+            "figcaption",
+            "figure",
+            "footer",
+            "header",
+            "kbd",
+            "main",
+            "nav",
+            "output",
+            "picture",
+            "ruby",
+            "rp",
+            "rt",
+            "section",
+            "small",
+            "strong",
+            "sub",
+            "sup",
+            "var",
+            "wbr",
+            "b",
+            "i",
+            "u",
+            "s",
+            "pre",
+            "code",
+            "q",
+            "blockquote",
+            "abbr",
+            "cite",
+            "em",
+            "samp",
+            "a",
+            "bdo",
+            "br",
+            "button",
+            "canvas",
+            "cite",
+            "code",
+            "command",
+            "datalist",
+            "dfn",
+            "em",
+            "embed",
+            "i",
+            "iframe",
+            "input",
+            "kbd",
+            "keygen",
+            "label",
+            "mark",
+            "math",
+            "meter",
+            "noscript",
+            "object",
+            "output",
+            "progress",
+            "q",
+            "ruby",
+            "samp",
+            "script",
+            "select",
+            "small",
+            "span",
+            "strong",
+            "sub",
+            "sup",
+            "textarea",
+            "time",
+            "var",
+            "wbr",
+            "text",
+            "acronym",
+            "address",
+            "big",
+            "dt",
+            "ins",
+            "strike",
+            "tt",
+            "xmp",
+            "applet",
+            "basefont",
+            "bgsound",
+            "blink",
+            "center",
+            "command",
+            "content",
+            "text",
+            "dir",
+            "element",
+            "font",
+            "frame",
+            "frameset",
+            "image",
+            "isindex",
+            "keygen",
+            "listing",
+            "marquee",
+            "rect",
+            "shadow",
+            "spacer",
+            "template",
+            "nextid",
+            "noembed",
+            "plaintext",
+            "rb",
+            "rtc",
+            "section",
+            "summary",
+            "sup",
+            "time",
+            "track",
+            "var",
+            "wbr",
+            "xmp",
+            "abbr",
+            "acronym",
+            "address",
+            "applet",
+            "article",
+            "aside",
+            "audio",
+        }
+    )
+        .Distinct()
+        .ToArray();
 
-    public static IEnumerable<(string FileName, string Tag)> SingleTag() => Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
-        .SelectMany(path => Tags.Select(t => (Path.GetFileName(path), t)));
-    
-    public static IEnumerable<(string FileName, string Tag1, string Tag2)> TwoTags() => Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
-        .SelectMany(path => 
-            TagsShort.SelectMany(t1 => 
-                TagsShort.Select(t2 => 
-                    (Path.GetFileName(path), t1, t2))));
+    private static readonly string[] TagsShort = ["div", "span", "ol", "ul", "li", "table", "tr", "td"];
 
-    public static IEnumerable<(string FileName, string Tag1, string Tag2, string Tag3)> ThreeTags() => Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
-       .SelectMany(path =>
-           TagsShort.SelectMany(t1 =>
-               TagsShort.SelectMany(t2 =>
-                   TagsShort.Select(t3 =>
-                        (Path.GetFileName(path), t1, t2, t3)))));
+    public static IEnumerable<(string FileName, string Tag)> SingleTag() =>
+        Directory
+            .EnumerateFiles(BaseDir)
+            .Where(it => new FileInfo(it).Length < MaxSize)
+            .SelectMany(path => Tags.Select(t => (Path.GetFileName(path), t)));
+
+    public static IEnumerable<(string FileName, string Tag1, string Tag2)> TwoTags() =>
+        Directory
+            .EnumerateFiles(BaseDir)
+            .Where(it => new FileInfo(it).Length < MaxSize)
+            .SelectMany(path => TagsShort.SelectMany(t1 => TagsShort.Select(t2 => (Path.GetFileName(path), t1, t2))));
+
+    public static IEnumerable<(string FileName, string Tag1, string Tag2, string Tag3)> ThreeTags() =>
+        Directory
+            .EnumerateFiles(BaseDir)
+            .Where(it => new FileInfo(it).Length < MaxSize)
+            .SelectMany(path =>
+                TagsShort.SelectMany(t1 =>
+                    TagsShort.SelectMany(t2 => TagsShort.Select(t3 => (Path.GetFileName(path), t1, t2, t3)))
+                )
+            );
 
     public class SelectorTestCase
     {
@@ -89,17 +271,17 @@ public class TopLevelSmoke
         {
             return $"{FileName} {CssSelector}";
         }
-        
+
         public SelectorTestCase? Combine(SelectorTestCase other)
         {
             if (other.FileName != FileName)
                 return null;
-            
+
             return new SelectorTestCase
             {
                 FileName = FileName,
                 CssSelector = CssSelector + " " + other.CssSelector,
-                Chain = Chain.Concat(other.Chain).ToArray()
+                Chain = Chain.Concat(other.Chain).ToArray(),
             };
         }
     }
@@ -112,13 +294,15 @@ public class TopLevelSmoke
         {
             FileName = file,
             CssSelector = tag,
-            Chain = [ n => n.Tag(tag) ]
+            Chain = [n => n.Tag(tag)],
         };
 
-        id = id.IsNullOrWhiteSpace() 
-                 || id is "19ee99feeb254bf99a88146643d1afa2" or "19ee99feeb254bf99a88146643d1afa3" 
-                 || HasBadChar(id.AsSpan())
-            ? null : id;
+        id =
+            id.IsNullOrWhiteSpace()
+            || id is "19ee99feeb254bf99a88146643d1afa2" or "19ee99feeb254bf99a88146643d1afa3"
+            || HasBadChar(id.AsSpan())
+                ? null
+                : id;
 
         if (id != null)
         {
@@ -126,14 +310,14 @@ public class TopLevelSmoke
             {
                 FileName = file,
                 CssSelector = "#" + id,
-                Chain = [ n => n.Id(id) ]
+                Chain = [n => n.Id(id)],
             };
 
             yield return new SelectorTestCase
             {
                 FileName = file,
                 CssSelector = tag + "#" + id,
-                Chain = [n => n.TagId(tag, id)]
+                Chain = [n => n.TagId(tag, id)],
             };
         }
 
@@ -143,14 +327,14 @@ public class TopLevelSmoke
             {
                 FileName = file,
                 CssSelector = "." + @class,
-                Chain = [n => n.Class(@class)]
+                Chain = [n => n.Class(@class)],
             };
 
             yield return new SelectorTestCase
             {
                 FileName = file,
                 CssSelector = tag + "." + @class,
-                Chain = [n => n.TagClass(tag, @class)]
+                Chain = [n => n.TagClass(tag, @class)],
             };
 
             if (id != null)
@@ -159,14 +343,14 @@ public class TopLevelSmoke
                 {
                     FileName = file,
                     CssSelector = "#" + id + "." + @class,
-                    Chain = [n => n.Id(id) && n.Class(@class)]
+                    Chain = [n => n.Id(id) && n.Class(@class)],
                 };
 
                 yield return new SelectorTestCase
                 {
                     FileName = file,
                     CssSelector = tag + "#" + id + "." + @class,
-                    Chain = [n => n.TagId(tag, id) && n.Class(@class)]
+                    Chain = [n => n.TagId(tag, id) && n.Class(@class)],
                 };
             }
         }
@@ -193,14 +377,17 @@ public class TopLevelSmoke
 
     public static IEnumerable<SelectorTestCase> Core()
     {
-        return Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
+        return Directory
+            .EnumerateFiles(BaseDir)
+            .Where(it => new FileInfo(it).Length < MaxSize)
             .SelectMany(file =>
             {
                 var fileName = Path.GetFileName(file);
                 var html = GetHtml(fileName);
                 var doc = ParsedMutableDocs.GetOrAdd(fileName, static (_, html) => parser.ParseDocument(html), html);
 
-                return doc.All.Where(it => TagsShort.Contains(it.LocalName))
+                return doc
+                    .All.Where(it => TagsShort.Contains(it.LocalName))
                     .SelectMany(it =>
                     {
                         var classes = it.ClassList.Where(className => !HasBadChar(className.AsSpan())).ToArray();
@@ -208,25 +395,23 @@ public class TopLevelSmoke
                     });
             });
     }
-    
+
     public static IEnumerable<SelectorTestCase> CustomSelectors()
     {
         return Core();
     }
-    
+
     public static IEnumerable<SelectorTestCase> CustomSelectorsZip2()
     {
         var single = Core().ToArray();
-        
-        return single.Zip(single.Skip(1))
-            .Select(it => it.First.Combine(it.Second))
-            .Where(it => it != null)!;
+
+        return single.Zip(single.Skip(1)).Select(it => it.First.Combine(it.Second)).Where(it => it != null)!;
     }
-    
+
     public static IEnumerable<SelectorTestCase> CustomSelectorsZip3()
     {
         var single = Core().ToArray();
-        
+
         return single
             .Zip(single.Skip(1), single.Skip(2))
             .Select(it => it.First.Combine(it.Second)?.Combine(it.Third))
@@ -237,37 +422,42 @@ public class TopLevelSmoke
         CustomSelectors().Concat(CustomSelectorsZip2()).Concat(CustomSelectorsZip3());
 
     public static IEnumerable<(string FileName, string ClassName)> Classes() =>
-        Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
-           .SelectMany(file =>
-           {
-               var fileName = Path.GetFileName(file);
-               var html = GetHtml(fileName);
-               var doc = ParsedMutableDocs.GetOrAdd(fileName, k => parser.ParseDocument(html));
-               return doc.All.SelectMany(n => n.ClassList)
-                   .Distinct()
-                   .Where(className => !HasBadChar(className.AsSpan()))
-                   .Select(className => (fileName, className));
-           });
+        Directory
+            .EnumerateFiles(BaseDir)
+            .Where(it => new FileInfo(it).Length < MaxSize)
+            .SelectMany(file =>
+            {
+                var fileName = Path.GetFileName(file);
+                var html = GetHtml(fileName);
+                var doc = ParsedMutableDocs.GetOrAdd(fileName, k => parser.ParseDocument(html));
+                return doc
+                    .All.SelectMany(n => n.ClassList)
+                    .Distinct()
+                    .Where(className => !HasBadChar(className.AsSpan()))
+                    .Select(className => (fileName, className));
+            });
 
     public static IEnumerable<(string FileName, string Id)> Ids() =>
-        Directory.EnumerateFiles(BaseDir).Where(it => new FileInfo(it).Length < MaxSize)
-           .SelectMany(file =>
-           {
-               var fileName = Path.GetFileName(file);
-               var html = GetHtml(fileName);
-               var doc = ParsedMutableDocs.GetOrAdd(fileName, k => parser.ParseDocument(html));
-               return doc.All
-               .Select(it => it.Id)
-                   .Where(id => !id.IsNullOrWhiteSpace() && !HasBadChar(id.AsSpan()))
-                   .Distinct()
-                   .Take(75)
-                   .Select(id => (fileName, id!));
-           });
+        Directory
+            .EnumerateFiles(BaseDir)
+            .Where(it => new FileInfo(it).Length < MaxSize)
+            .SelectMany(file =>
+            {
+                var fileName = Path.GetFileName(file);
+                var html = GetHtml(fileName);
+                var doc = ParsedMutableDocs.GetOrAdd(fileName, k => parser.ParseDocument(html));
+                return doc
+                    .All.Select(it => it.Id)
+                    .Where(id => !id.IsNullOrWhiteSpace() && !HasBadChar(id.AsSpan()))
+                    .Distinct()
+                    .Take(75)
+                    .Select(id => (fileName, id!));
+            });
 
-    public static HtmlParser parser = new HtmlParser(new HtmlParserOptions()
-    {
-        IsKeepingSourceReferences = true
-    }, ReadOnlyParser.DefaultContext);
+    public static HtmlParser parser = new HtmlParser(
+        new HtmlParserOptions() { IsKeepingSourceReferences = true },
+        ReadOnlyParser.DefaultContext
+    );
 
     [Test]
     [MethodDataSource(nameof(SingleTag))]
@@ -296,7 +486,9 @@ public class TopLevelSmoke
         }
         catch (Exception)
         {
-            var missing = elements.Where(it => !readOnlyNodes.Any(ron => ((IReadOnlyElement)ron).SourceReference == it.SourceReference));
+            var missing = elements.Where(it =>
+                !readOnlyNodes.Any(ron => ((IReadOnlyElement)ron).SourceReference == it.SourceReference)
+            );
             foreach (var element in missing)
             {
                 TestContext.Current!.Output.WriteLine(element.SourceReference!.ToString());
@@ -326,7 +518,9 @@ public class TopLevelSmoke
         }
         catch (Exception)
         {
-            var missing = elements.Where(it => readOnlyNodes.All(ron => ((IReadOnlyElement)ron).SourceReference != it.SourceReference));
+            var missing = elements.Where(it =>
+                readOnlyNodes.All(ron => ((IReadOnlyElement)ron).SourceReference != it.SourceReference)
+            );
             foreach (var element in missing)
             {
                 TestContext.Current!.Output.WriteLine(element.SourceReference!.ToString());
@@ -377,7 +571,9 @@ public class TopLevelSmoke
         }
         catch (Exception)
         {
-            var missing = elements.Where(it => readOnlyNodes.All(ron => ((IReadOnlyElement)ron).SourceReference != it.SourceReference));
+            var missing = elements.Where(it =>
+                readOnlyNodes.All(ron => ((IReadOnlyElement)ron).SourceReference != it.SourceReference)
+            );
             foreach (var element in missing)
             {
                 TestContext.Current!.Output.WriteLine(element.SourceReference!.ToString());

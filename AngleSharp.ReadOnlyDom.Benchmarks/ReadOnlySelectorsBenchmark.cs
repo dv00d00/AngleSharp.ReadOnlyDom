@@ -23,27 +23,27 @@ public class ReadOnlySelectorsBenchmark
     }
 
     private readonly IHtmlDocument document = new HtmlParser().ParseDocument(StaticHtml.Github);
-    private readonly IReadOnlyDocument documentReadonly = new HtmlParser(default, ReadOnlyParser.DefaultContext).ParseReadOnlyDocument(StaticHtml.Github);
+    private readonly IReadOnlyDocument documentReadonly = new HtmlParser(
+        default,
+        ReadOnlyParser.DefaultContext
+    ).ParseReadOnlyDocument(StaticHtml.Github);
 
-    private static readonly Func<IReadOnlyNode, bool>[] _selectors = {
+    private static readonly Func<IReadOnlyNode, bool>[] _selectors =
+    {
         n => n.TagClass("div", "edit-comment-hide"),
         n => n.TagClass("tr", "d-block"),
-        n => n.TagClass("td", "comment-body")
+        n => n.TagClass("td", "comment-body"),
     };
 
     [Benchmark]
     public void Selectors()
     {
-        var _ = document
-                .QuerySelectorAll("div.edit-comment-hide tr.d-block td.comment-body")
-                .Count();
+        var _ = document.QuerySelectorAll("div.edit-comment-hide tr.d-block td.comment-body").Count();
     }
 
     [Benchmark]
     public void SelectorsReadonly()
     {
-        var _ = documentReadonly
-                .QueryAll(_selectors)
-                .Count();
+        var _ = documentReadonly.QueryAll(_selectors).Count();
     }
 }

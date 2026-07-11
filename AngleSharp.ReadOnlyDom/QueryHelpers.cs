@@ -11,16 +11,18 @@ public enum TrimMode
 {
     None,
     Ends,
-    TextNodes
+    TextNodes,
 }
 
 public static class QueryHelpers
 {
-    private static readonly ObjectPool<StringBuilder> _sbPool = 
-        ObjectPool.Create(new StringBuilderPooledObjectPolicy());
+    private static readonly ObjectPool<StringBuilder> _sbPool = ObjectPool.Create(
+        new StringBuilderPooledObjectPolicy()
+    );
 
-    private static readonly ObjectPool<Stack<IReadOnlyNode>> _stackPool = 
-        new DefaultObjectPool<Stack<IReadOnlyNode>>(new DefaultPooledObjectPolicy<Stack<IReadOnlyNode>>());
+    private static readonly ObjectPool<Stack<IReadOnlyNode>> _stackPool = new DefaultObjectPool<Stack<IReadOnlyNode>>(
+        new DefaultPooledObjectPolicy<Stack<IReadOnlyNode>>()
+    );
 
     public static IEnumerable<IReadOnlyNode> AllDescendants(this IReadOnlyNode node)
     {
@@ -63,6 +65,7 @@ public static class QueryHelpers
 
         return false;
     }
+
 #if NETSTANDARD2_0
     private static readonly char[] _whitespaces = "\t\n\r\f ".ToCharArray();
 #else
@@ -92,11 +95,8 @@ public static class QueryHelpers
 
         return false;
     }
-    
-    public static bool Classes(
-        this IReadOnlyNode node, 
-        ReadOnlySpan<char> className1, 
-        ReadOnlySpan<char> className2)
+
+    public static bool Classes(this IReadOnlyNode node, ReadOnlySpan<char> className1, ReadOnlySpan<char> className2)
     {
         var element = node as IReadOnlyElement;
         if (element == null)
@@ -105,7 +105,7 @@ public static class QueryHelpers
         var classAttr = element.Attributes["class"];
         if (classAttr == null)
             return false;
-        
+
         bool found1 = false;
         bool found2 = false;
 
@@ -156,15 +156,20 @@ public static class QueryHelpers
 
     public static bool TagId(this IReadOnlyNode node, StringOrMemory name, StringOrMemory id)
     {
-       return node.Tag(name) && node.Id(id);
+        return node.Tag(name) && node.Id(id);
     }
 
     public static bool TagClass(this IReadOnlyNode node, StringOrMemory tag, StringOrMemory className)
     {
         return node.Tag(tag) && node.Class(className);
     }
-    
-    public static bool TagClasses(this IReadOnlyNode node, StringOrMemory tag, StringOrMemory className1, StringOrMemory className2)
+
+    public static bool TagClasses(
+        this IReadOnlyNode node,
+        StringOrMemory tag,
+        StringOrMemory className1,
+        StringOrMemory className2
+    )
     {
         return node.Tag(tag) && node.Classes(className1, className2);
     }
@@ -181,7 +186,7 @@ public static class QueryHelpers
 
                 sb.AppendSOM(textNode.Content);
             }
-            
+
             return consumeText(sb);
         }
         finally
@@ -217,7 +222,7 @@ public static class QueryHelpers
             {
                 TrimMode.Ends => i == 0 ? span.TrimStart() : span,
                 TrimMode.TextNodes => span.Trim(),
-                _ => span
+                _ => span,
             };
 
             sb.AppendSpan(span);
@@ -227,16 +232,14 @@ public static class QueryHelpers
         if (trimMode == TrimMode.Ends)
         {
             int j;
-            for (j = sb.Length - 1; j > 0 && sb[j].IsWhiteSpaceCharacter(); j--)
-            {
-            }
+            for (j = sb.Length - 1; j > 0 && sb[j].IsWhiteSpaceCharacter(); j--) { }
 
             if (j != sb.Length - 1)
             {
                 sb.Remove(j + 1, sb.Length - j - 1);
             }
         }
-       
+
         var tmp = sb.ToString();
         sb.Clear();
         return tmp;
@@ -263,7 +266,7 @@ public static class QueryHelpers
     {
         return node.QueryAll(chain).FirstOrDefault();
     }
-    
+
     private static bool ChainMatches(this IReadOnlyNode node, Func<IReadOnlyNode, bool>[] chain)
     {
         if (chain.Length == 0)
@@ -292,7 +295,8 @@ public static class QueryHelpers
     private static IEnumerable<IReadOnlyNode> ChainInner(
         this IReadOnlyNode parent,
         Stack<IReadOnlyNode> stack,
-        Func<IReadOnlyNode, bool>[] chain)
+        Func<IReadOnlyNode, bool>[] chain
+    )
     {
         stack.Push(parent);
 

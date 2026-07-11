@@ -7,9 +7,9 @@ namespace AngleSharp.ReadOnlyDom.Html.Model;
 
 internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrintable
 {
-    private static readonly ReadOnlyNodeList EmptyChildNodes = new ReadOnlyNodeList();
+    private static readonly ReadOnlyNodeList EmptyChildNodes = [];
     private static ReadOnlySpan<char> WhiteSpace => " \t\r\n".AsSpan();
-    
+
     protected readonly NodeFlags _flags;
     protected ReadOnlyNodeList? _childNodes;
     protected IConstructableNode? _parent;
@@ -20,10 +20,20 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrint
     IReadOnlyNode? IReadOnlyNode.Parent => _parent as IReadOnlyNode;
     IReadOnlyNodeList IReadOnlyNode.ChildNodes => _ChildNodes;
 
-    public StringOrMemory NodeName { get => _nodeName; internal set => _nodeName = value; }
+    public StringOrMemory NodeName
+    {
+        get => _nodeName;
+        internal set => _nodeName = value;
+    }
+
     public ReadOnlyDocument? Owner => null;
 
-    public ReadOnlyNode(ReadOnlyDocument? owner, StringOrMemory name, NodeType nodeType = NodeType.Element, NodeFlags flags = NodeFlags.None)
+    public ReadOnlyNode(
+        ReadOnlyDocument? owner,
+        StringOrMemory name,
+        NodeType nodeType = NodeType.Element,
+        NodeFlags flags = NodeFlags.None
+    )
     {
         _nodeName = name;
         _flags = flags;
@@ -74,7 +84,7 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrint
         {
             return;
         }
-        
+
         AddNode(new ReadOnlyTextNode(Owner, text));
     }
 
@@ -84,6 +94,7 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrint
         {
             return;
         }
+
         _childNodes ??= new ReadOnlyNodeList();
         var readOnlyTextNode = new ReadOnlyTextNode(Owner, text) { Parent = this };
         _childNodes.Insert(idx, readOnlyTextNode);
@@ -102,7 +113,7 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrint
         {
             return;
         }
-        
+
         foreach (var node in _childNodes)
         {
             ((ReadOnlyNode)node).Print(writer);

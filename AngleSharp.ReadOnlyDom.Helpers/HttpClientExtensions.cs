@@ -10,7 +10,7 @@ namespace AngleSharp.ReadOnlyDom.Helpers;
 public static class HttpClientExtensions
 {
     private const int RingBufferSize = 16;
-    
+
     private static readonly Encoding DefaultStringEncoding = Encoding.UTF8;
 
     private const int UTF8CodePage = 65001;
@@ -47,38 +47,40 @@ public static class HttpClientExtensions
         this HttpClient client,
         HttpRequestMessage request,
         string? endpointId = null,
-        int? expectedResponseSize = null)
+        int? expectedResponseSize = null
+    )
     {
         using var postResponse = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
         return await postResponse.DownloadChars(endpointId, expectedResponseSize);
     }
-    
+
     public static async Task<Lease<char>> DownloadChars(
         this HttpResponseMessage postResponse,
         string? endpointId = null,
-        int? expectedResponseSize = null)
+        int? expectedResponseSize = null
+    )
     {
         endpointId ??= postResponse.RequestMessage?.RequestUri?.Host ?? "unknown";
-        
+
         var rb = AvgResponseSize.GetOrAdd(endpointId, static _ => new RingBuffer<int>(RingBufferSize));
         int size = rb.Avg() ?? (int?)postResponse.Content.Headers.ContentLength ?? expectedResponseSize ?? 0;
-        
+
         await using var htmlStream = await postResponse.Content.ReadAsStreamAsync();
         await using var recyclableMemoryStream = Manager.GetStream(endpointId, size);
         await htmlStream.CopyToAsync(recyclableMemoryStream);
         var totalBytes = (int)recyclableMemoryStream.Length;
         rb.Add(totalBytes);
         var readOnlySequence = recyclableMemoryStream.GetReadOnlySequence();
-        
+
         var (encoding, offset) = DetermineEncoding(readOnlySequence.FirstSpan, postResponse.Content.Headers);
 
         var maxTotalChars = encoding.GetMaxCharCount(totalBytes);
-        
+
         var charsBuffer = ArrayPool<char>.Shared.Rent(maxTotalChars);
-        
+
         if (offset != 0)
             readOnlySequence = readOnlySequence.Slice(offset);
-        
+
         int writtenChars = encoding.GetChars(readOnlySequence, charsBuffer.AsSpan());
         return new Lease<char>(charsBuffer, writtenChars);
     }
@@ -137,8 +139,12 @@ public static class HttpClientExtensions
 
         return (encoding, bomLength);
     }
-    
-    private static bool TryDetectEncoding(ReadOnlySpan<byte> buffer, [NotNullWhen(true)] out Encoding? encoding, out int preambleLength)
+
+    private static bool TryDetectEncoding(
+        ReadOnlySpan<byte> buffer,
+        [NotNullWhen(true)] out Encoding? encoding,
+        out int preambleLength
+    )
     {
         var data = buffer;
         const int offset = 0;
@@ -161,7 +167,11 @@ public static class HttpClientExtensions
 
                 case UTF32OrUnicodePreambleFirst2Bytes:
                     // UTF32 not supported on Phone
-                    if (dataLength >= UTF32PreambleLength && data[offset + 2] == UTF32PreambleByte2 && data[offset + 3] == UTF32PreambleByte3)
+                    if (
+                        dataLength >= UTF32PreambleLength
+                        && data[offset + 2] == UTF32PreambleByte2
+                        && data[offset + 3] == UTF32PreambleByte3
+                    )
                     {
                         encoding = Encoding.UTF32;
                         preambleLength = UTF32PreambleLength;
@@ -194,25 +204,41 @@ public static class HttpClientExtensions
         switch (encoding.CodePage)
         {
             case UTF8CodePage:
-                return (dataLength >= UTF8PreambleLength
-                        && data[offset + 0] == UTF8PreambleByte0
-                        && data[offset + 1] == UTF8PreambleByte1
-                        && data[offset + 2] == UTF8PreambleByte2) ? UTF8PreambleLength : 0;
+                return (
+                    dataLength >= UTF8PreambleLength
+                    && data[offset + 0] == UTF8PreambleByte0
+                    && data[offset + 1] == UTF8PreambleByte1
+                    && data[offset + 2] == UTF8PreambleByte2
+                )
+                    ? UTF8PreambleLength
+                    : 0;
             case UTF32CodePage:
-                return (dataLength >= UTF32PreambleLength
-                        && data[offset + 0] == UTF32PreambleByte0
-                        && data[offset + 1] == UTF32PreambleByte1
-                        && data[offset + 2] == UTF32PreambleByte2
-                        && data[offset + 3] == UTF32PreambleByte3) ? UTF32PreambleLength : 0;
+                return (
+                    dataLength >= UTF32PreambleLength
+                    && data[offset + 0] == UTF32PreambleByte0
+                    && data[offset + 1] == UTF32PreambleByte1
+                    && data[offset + 2] == UTF32PreambleByte2
+                    && data[offset + 3] == UTF32PreambleByte3
+                )
+                    ? UTF32PreambleLength
+                    : 0;
             case UnicodeCodePage:
-                return (dataLength >= UnicodePreambleLength
-                        && data[offset + 0] == UnicodePreambleByte0
-                        && data[offset + 1] == UnicodePreambleByte1) ? UnicodePreambleLength : 0;
+                return (
+                    dataLength >= UnicodePreambleLength
+                    && data[offset + 0] == UnicodePreambleByte0
+                    && data[offset + 1] == UnicodePreambleByte1
+                )
+                    ? UnicodePreambleLength
+                    : 0;
 
             case BigEndianUnicodeCodePage:
-                return (dataLength >= BigEndianUnicodePreambleLength
-                        && data[offset + 0] == BigEndianUnicodePreambleByte0
-                        && data[offset + 1] == BigEndianUnicodePreambleByte1) ? BigEndianUnicodePreambleLength : 0;
+                return (
+                    dataLength >= BigEndianUnicodePreambleLength
+                    && data[offset + 0] == BigEndianUnicodePreambleByte0
+                    && data[offset + 1] == BigEndianUnicodePreambleByte1
+                )
+                    ? BigEndianUnicodePreambleLength
+                    : 0;
 
             default:
                 byte[] preamble = encoding.GetPreamble();

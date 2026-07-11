@@ -7,9 +7,7 @@ namespace AngleSharp.ReadOnlyDom.Html.Model;
 class ReadOnlyHtmlMeta : ReadOnlyHtmlElement, IConstructableMetaElement
 {
     public ReadOnlyHtmlMeta(ReadOnlyDocument? owner, StringOrMemory prefix = default)
-        : base(owner, TagNames.Meta, prefix, NodeFlags.Special | NodeFlags.SelfClosing)
-    {
-    }
+        : base(owner, TagNames.Meta, prefix, NodeFlags.Special | NodeFlags.SelfClosing) { }
 
     public void Handle()
     {

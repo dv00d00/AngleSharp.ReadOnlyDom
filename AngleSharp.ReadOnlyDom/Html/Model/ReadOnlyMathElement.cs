@@ -6,10 +6,20 @@ namespace AngleSharp.ReadOnlyDom.Html.Model;
 
 class ReadOnlyMathElement : ReadOnlyHtmlElement, IConstructableMathElement
 {
-    public ReadOnlyMathElement(ReadOnlyDocument? owner, StringOrMemory localName = default, StringOrMemory prefix = default, NodeFlags flags = NodeFlags.None)
-        : base(owner, Combine(prefix, localName), localName, prefix, NamespaceNames.MathMlUri, flags | NodeFlags.MathMember)
-    {
-    }
+    public ReadOnlyMathElement(
+        ReadOnlyDocument? owner,
+        StringOrMemory localName = default,
+        StringOrMemory prefix = default,
+        NodeFlags flags = NodeFlags.None
+    )
+        : base(
+            owner,
+            Combine(prefix, localName),
+            localName,
+            prefix,
+            NamespaceNames.MathMlUri,
+            flags | NodeFlags.MathMember
+        ) { }
 
     public override IConstructableNode ShallowCopy()
     {
