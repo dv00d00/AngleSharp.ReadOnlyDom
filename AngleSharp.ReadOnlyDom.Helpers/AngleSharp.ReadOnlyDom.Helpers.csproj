@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <Product>AngleSharp.ReadOnlyDom.Helpers</Product>
+        <PackageId>AngleSharp.ReadOnlyDom.Helpers</PackageId>
+        <Version>1.0.1</Version>
+        <Authors>dv00d00</Authors>
+        <Company>AngleSharp</Company>
+        <Description>HTML parsing/query/HTTP helpers for AngleSharp.ReadOnlyDom (uses .NET 8+ APIs such as SearchValues and generic math)</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="8.0.0"/>
+        <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.0"/>
+        <PackageReference Include="AngleSharp" Version="1.1.0"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj"/>
+    </ItemGroup>
+
+</Project>

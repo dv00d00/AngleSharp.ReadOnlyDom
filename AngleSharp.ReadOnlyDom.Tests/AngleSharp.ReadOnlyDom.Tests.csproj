@@ -25,6 +25,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj" />
+      <ProjectReference Include="..\AngleSharp.ReadOnlyDom.Helpers\AngleSharp.ReadOnlyDom.Helpers.csproj" />
     </ItemGroup>
 
     <ItemGroup>
