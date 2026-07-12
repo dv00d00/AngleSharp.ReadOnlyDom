@@ -256,3 +256,35 @@ On the SourceMapped GitHub fixture, scanning every node for a source location me
 with a dictionary, and 114.46 us with binary-searched sparse arrays. Dense and sparse builds allocated approximately the
 same 1.127 MB because locations were not sparse enough to pay for sparse indexing; the dictionary allocated 1.158 MB. Sparse
 storage remains relevant for genuinely rare payloads, but source positions on this workload should use dense storage.
+
+## Direct columnar construction supersedes build-from-DOM experiments
+
+The build-from-read-only document, exact-sizing, selectable payload-index, and wide-versus-hot experiments were removed
+after their useful comparisons were captured. The supported prototype direction is now direct AngleSharp construction
+through thin identity facades backed by document-scoped mutable columns.
+
+The direct parser now accepts the caller's `HtmlParserOptions`, token-aware attribute predicate, `TokenizerMiddleware`, and
+string, memory, or char-buffer input. This preserves the production pattern of pushing subtree and attribute predicates
+ahead of tree materialization. Namespace and prefix values are derived, source-reference storage is conditional, template
+storage is lazy, and accepted attributes occupy an independent dense arena reached through sparse node payloads.
+
+Anonymous query-level ShortRun workloads, including parsing, predicate pushdown, extraction, and disposal, measured:
+
+| Workload | Read-only | Direct pooled | Read-only allocation | Direct allocation |
+| --- | ---: | ---: | ---: | ---: |
+| Selected subtree with sparse attributes | 148.47 us | 171.30 us | 59.51 KB | 35.77 KB |
+| Attribute-free text subtree | 81.90 us | 91.04 us | 32.33 KB | 17.28 KB |
+
+The direct path now wins managed allocation on these shapes but remains 11-15% slower. Removing the exact final sizing
+traversal and growing the pooled final text buffer directly produced most of this improvement. Reachable preorder, remapping,
+name interning, and text copying remain the primary next targets.
+
+A post-parse source-slice recovery experiment was rejected. AngleSharp token values do not consistently retain the original
+input backing identity when source positions are disabled, so recovering slices required content searches. Allocation fell by
+only 1.6-3.3 KB while query time regressed by roughly 19-22%. Source-backed values require token-range information at the
+AngleSharp construction boundary rather than a search after parsing.
+
+An access-shape benchmark rejected density-only selection for optional payloads. Probing every node through sorted sparse
+binary search was 23-64 times slower than dense lookup across 1-90% density. Direct forward iteration over sparse values was
+faster than probing all dense nodes. Storage selection must therefore include the query contract: dense for per-node lookup,
+sparse for direct annotation enumeration, and no generic runtime abstraction until a payload needs both access modes.

@@ -3,8 +3,10 @@ using System.Runtime.CompilerServices;
 using AngleSharp.Dom;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
+using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.ReadOnlyDom;
 using AngleSharp.ReadOnlyDom.CompactPrototype;
+using AngleSharp.ReadOnlyDom.Filters;
 using AngleSharp.ReadOnlyDom.Html;
 
 namespace AngleSharp.Readonly.Tests;
@@ -91,6 +93,129 @@ public sealed class DirectCompactArenaTests
         using var second = session.Parse("<main><p>second</p><p>third</p></main>");
         await Assert.That(second.NodeCount).IsGreaterThan(firstCount);
         await Assert.That(second.FindNameId("main")).IsNotEqualTo(ushort.MaxValue);
+    }
+
+    [Test]
+    public async Task AttributeFilteringMatchesAngleSharpAcrossDiverseShapes()
+    {
+        string[] corpus =
+        [
+            "<main><p>attribute free</p></main>",
+            "<article id='a'><a class='link' href='/x'>x</a></article>",
+            "<form action='/save' method='post'><input id='x' class='field' name='x' value='1' required></form>",
+            "<table data-table='x'>text<tr><td id='cell' colspan='2'>x</td></tr></table>",
+            "<template data-template='x'><b id='b'><i class='i'>one</b>two</i></template>",
+        ];
+
+        foreach (var html in corpus)
+        {
+            var expectedParser = new HtmlParser(
+                new HtmlParserOptions
+                {
+                    SkipComments = true,
+                    SkipProcessingInstructions = true,
+                    ShouldEmitAttribute = static (ref StructHtmlToken _, ReadOnlyMemory<char> _) => false,
+                }
+            );
+            using var expected = expectedParser.ParseDocument(html);
+            using var actual = DirectCompactParser.Parse(
+                html,
+                ownership: CompactBufferOwnership.Pooled,
+                attributeFilter: static (ref StructHtmlToken _, ReadOnlyMemory<char> _) => false
+            );
+
+            await Assert.That(actual.AttributeCount).IsEqualTo(0);
+            await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
+        }
+    }
+
+    [Test]
+    public async Task TinyCapacityHintsGrowIndependentPayloadAndAttributeArenas()
+    {
+        const string html =
+            "<main id='m'><section class='a' data-x='1'><p title='p'>one</p><p title='q'>two</p></section></main>";
+        var hints = new CompactParserHints
+        {
+            InitialNodeCapacity = 1,
+            InitialPayloadCapacity = 1,
+            InitialAttributeCapacity = 1,
+        };
+
+        using var expected = new HtmlParser(
+            new HtmlParserOptions { SkipComments = true, SkipProcessingInstructions = true }
+        ).ParseDocument(html);
+        using var actual = DirectCompactParser.Parse(html, ownership: CompactBufferOwnership.Pooled, hints: hints);
+
+        await Assert.That(actual.AttributeCount).IsEqualTo(5);
+        await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
+    }
+
+    [Test]
+    public async Task ProductionParserControlsFlowThroughDirectSession()
+    {
+        const string html =
+            "<head><script>ignored()</script></head><body><div id='drop' class='keep'><p>x</p></div></body>";
+        var parserOptions = new HtmlParserOptions
+        {
+            IsNotSupportingFrames = true,
+            SkipScriptText = true,
+            SkipComments = true,
+            SkipProcessingInstructions = true,
+            DisableElementPositionTracking = true,
+            ShouldEmitAttribute = static (ref StructHtmlToken token, ReadOnlyMemory<char> name) =>
+                token.Name == "div" && name.Span is "class",
+        };
+        var expectedFilter = new FirstTagAndAllChildren("body");
+        var actualFilter = new FirstTagAndAllChildren("body");
+        var expectedParser = new HtmlParser(parserOptions, ReadOnlyParser.DefaultContext);
+        using var expected = expectedParser.ParseReadOnlyDocument(html.AsMemory(), expectedFilter.Loop);
+        var session = new DirectCompactParserSession(
+            ownership: CompactBufferOwnership.Pooled,
+            parserOptions: parserOptions,
+            attributeFilter: static (ref StructHtmlToken token, ReadOnlyMemory<char> name) =>
+                token.Name == "div" && name.Span is "class"
+        );
+        using var actual = session.Parse(html.AsMemory(), actualFilter.Loop);
+
+        await Assert.That(actual.AttributeCount).IsEqualTo(1);
+        await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
+    }
+
+    [Test]
+    public async Task RequestedLengthInputDoesNotParseUnusedTail()
+    {
+        const string retained = "<main><p>x</p></main>";
+        var input = (retained + "<aside>unused</aside>").ToCharArray();
+        using var expected = new HtmlParser(
+            new HtmlParserOptions { SkipComments = true, SkipProcessingInstructions = true }
+        ).ParseDocument(retained);
+        using var actual = DirectCompactParser.Parse(input, retained.Length, ownership: CompactBufferOwnership.Pooled);
+
+        await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
+    }
+
+    [Test]
+    public async Task SubtreeMiddlewareDoesNotCountHtmlVoidElementsAsOpenScopes()
+    {
+        const string html = "<body><section id='target'><img><input><p>x</p></section><aside>tail</aside></body>";
+        var expectedFilter = new OnlyElementWithIdAndDescendants("section", "target");
+        var actualFilter = new OnlyElementWithIdAndDescendants("section", "target");
+        var parserOptions = new HtmlParserOptions
+        {
+            SkipComments = true,
+            SkipProcessingInstructions = true,
+            ShouldEmitAttribute = static (ref StructHtmlToken _, ReadOnlyMemory<char> name) => name.Span is "id",
+        };
+        var expectedParser = new HtmlParser(parserOptions, ReadOnlyParser.DefaultContext);
+        using var expected = expectedParser.ParseReadOnlyDocument(html, expectedFilter.Loop);
+        var session = new DirectCompactParserSession(
+            ownership: CompactBufferOwnership.Pooled,
+            parserOptions: parserOptions
+        );
+        using var actual = session.Parse(html, actualFilter.Loop);
+
+        await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
+        await Assert.That(actual.FindNameId("aside")).IsEqualTo(ushort.MaxValue);
     }
 
     private static string Snapshot(INode node)

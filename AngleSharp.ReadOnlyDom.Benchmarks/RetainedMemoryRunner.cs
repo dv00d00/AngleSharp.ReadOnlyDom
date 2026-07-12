@@ -31,22 +31,13 @@ internal static class RetainedMemoryRunner
                 Median(Enumerable.Range(0, repetitions).Select(_ => MeasureReadOnly(sources, profile)).ToArray())
             )
             .ToArray();
-        var compact = new[]
-        {
-            CompactMetadataOptions.None,
-            CompactMetadataOptions.ParentLinks,
-            CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations,
-        }
-            .Select(options =>
-                Median(Enumerable.Range(0, repetitions).Select(_ => MeasureCompact(sources, options)).ToArray())
-            )
-            .ToArray();
-        var direct = Enum.GetValues<CompactBufferOwnership>()
-            .Select(ownership =>
-                Median(Enumerable.Range(0, repetitions).Select(_ => MeasureDirectCompact(sources, ownership)).ToArray())
-            )
-            .ToArray();
-        var report = Render(tier, repetitions, sources, standard, readOnly.Concat(compact).Concat(direct).ToArray());
+        var direct = Median(
+            Enumerable
+                .Range(0, repetitions)
+                .Select(_ => MeasureDirectCompact(sources, CompactBufferOwnership.Pooled))
+                .ToArray()
+        );
+        var report = Render(tier, repetitions, sources, standard, readOnly.Append(direct).ToArray());
 
         if (output is not null)
         {
@@ -83,26 +74,6 @@ internal static class RetainedMemoryRunner
             $"Read-only {profile}",
             sources,
             source => parser.ParseReadOnlyDocument(source),
-            documents,
-            Count
-        );
-    }
-
-    private static Measurement MeasureCompact(IReadOnlyList<CorpusDocument> sources, CompactMetadataOptions options)
-    {
-        var profile = options.HasFlag(CompactMetadataOptions.SourceLocations)
-            ? ReadOnlyMetadataProfile.SourceMapped
-            : ReadOnlyMetadataProfile.Minimal;
-        var parser = ReadOnlyParser.CreateParser(profile);
-        var documents = new List<CompactDocument>(sources.Count);
-        return Measure(
-            $"Compact {options}",
-            sources,
-            source =>
-            {
-                using var readOnly = parser.ParseReadOnlyDocument(source);
-                return CompactDomBuilder.Build(readOnly, options);
-            },
             documents,
             Count
         );
@@ -190,22 +161,6 @@ internal static class RetainedMemoryRunner
         foreach (var child in children)
         {
             counts += Count(child);
-        }
-
-        return counts;
-    }
-
-    private static Counts Count(CompactDocument document)
-    {
-        var counts = new Counts(0, 0, document.AttributeCount);
-        for (var handle = 0; handle < document.NodeCount; handle++)
-        {
-            counts += document.GetNode(handle).Kind switch
-            {
-                CompactNodeKind.Element => new Counts(1, 0, 0),
-                CompactNodeKind.Text => new Counts(0, 1, 0),
-                _ => new Counts(),
-            };
         }
 
         return counts;
