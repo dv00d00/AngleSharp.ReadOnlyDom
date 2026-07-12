@@ -3,4 +3,5 @@
   <Project Path="AngleSharp.ReadOnlyDom.Helpers/AngleSharp.ReadOnlyDom.Helpers.csproj" />
   <Project Path="AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj" />
   <Project Path="AngleSharp.ReadOnlyDom/AngleSharp.ReadOnlyDom.csproj" />
+  <Project Path="tools/AngleSharp.ReadOnlyDom.TagGenerator/AngleSharp.ReadOnlyDom.TagGenerator.csproj" />
 </Solution>
