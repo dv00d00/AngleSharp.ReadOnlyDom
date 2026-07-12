@@ -10,8 +10,12 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
     private static readonly ReadOnlyNamedNodeMap EmptyAttributes = new ReadOnlyNamedNodeMap();
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
         ReadOnlyElement,
-        OptionalMetadata
-    > Metadata = new();
+        ReadOnlyDocument
+    > SourceOwners = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+        ReadOnlyElement,
+        LegacySourceReference
+    > LegacySources = new();
 
     protected ReadOnlyNamedNodeMap? _attributes;
 
@@ -19,8 +23,8 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
     {
         get
         {
-            var prefix = Prefix;
-            return prefix.IsNullOrEmpty ? NodeName : NodeName.Memory.Slice(prefix.Memory.Length + 1);
+            var separator = NodeName.Memory.Span.IndexOf(':');
+            return separator < 0 ? NodeName : NodeName.Memory.Slice(separator + 1);
         }
     }
 
@@ -29,27 +33,37 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
         : (Flags & NodeFlags.MathMember) != 0 ? NamespaceNames.MathMlUri
         : NamespaceNames.HtmlUri;
 
-    public StringOrMemory Prefix => Metadata.TryGetValue(this, out var metadata) ? metadata.Prefix : default;
+    public StringOrMemory Prefix
+    {
+        get
+        {
+            var separator = NodeName.Memory.Span.IndexOf(':');
+            return separator < 0 ? default : NodeName.Memory.Slice(0, separator);
+        }
+    }
 
     public IConstructableNamedNodeMap Attributes => _attributes ?? EmptyAttributes;
 
     public ISourceReference? SourceReference
     {
-        get => Metadata.TryGetValue(this, out var metadata) ? metadata.SourceReference : null;
+        get =>
+            SourceOwners.TryGetValue(this, out var owner) ? owner.GetSourceReference(this)
+            : LegacySources.TryGetValue(this, out var legacy) ? legacy.Value
+            : null;
         set
         {
-            if (value is null)
+            if (SourceOwners.TryGetValue(this, out var owner))
             {
-                if (Metadata.TryGetValue(this, out var metadata))
-                {
-                    metadata.SourceReference = null;
-                    RemoveMetadataIfEmpty(metadata);
-                }
-
-                return;
+                owner.SetSourceReference(this, value);
             }
-
-            Metadata.GetOrCreateValue(this).SourceReference = value;
+            else if (value is null)
+            {
+                LegacySources.Remove(this);
+            }
+            else
+            {
+                LegacySources.GetOrCreateValue(this).Value = value;
+            }
         }
     }
 
@@ -64,10 +78,8 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
     )
         : base(owner, name, flags)
     {
-        if (!prefix.IsNullOrEmpty)
-        {
-            Metadata.GetOrCreateValue(this).Prefix = prefix;
-        }
+        if (owner?.TracksSources == true)
+            SourceOwners.Add(this, owner);
     }
 
     public StringOrMemory GetAttribute(StringOrMemory @namespace, StringOrMemory name)
@@ -141,17 +153,8 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
         }
     }
 
-    private void RemoveMetadataIfEmpty(OptionalMetadata metadata)
+    private sealed class LegacySourceReference
     {
-        if (metadata.SourceReference is null && metadata.Prefix.IsNullOrEmpty)
-        {
-            Metadata.Remove(this);
-        }
-    }
-
-    private sealed class OptionalMetadata
-    {
-        public StringOrMemory Prefix;
-        public ISourceReference? SourceReference;
+        public ISourceReference? Value;
     }
 }
