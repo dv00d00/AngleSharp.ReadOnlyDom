@@ -22,7 +22,11 @@ internal static class RetainedMemoryRunner
 
         var sources = BenchmarkCorpus.Load(tier);
         var standard = Median(Enumerable.Range(0, repetitions).Select(_ => MeasureStandard(sources)).ToArray());
-        var readOnly = Median(Enumerable.Range(0, repetitions).Select(_ => MeasureReadOnly(sources)).ToArray());
+        var readOnly = Enum.GetValues<ReadOnlyMetadataProfile>()
+            .Select(profile =>
+                Median(Enumerable.Range(0, repetitions).Select(_ => MeasureReadOnly(sources, profile)).ToArray())
+            )
+            .ToArray();
         var report = Render(tier, repetitions, sources, standard, readOnly);
 
         if (output is not null)
@@ -62,12 +66,12 @@ internal static class RetainedMemoryRunner
         );
     }
 
-    private static Measurement MeasureReadOnly(IReadOnlyList<CorpusDocument> sources)
+    private static Measurement MeasureReadOnly(IReadOnlyList<CorpusDocument> sources, ReadOnlyMetadataProfile profile)
     {
-        var parser = new HtmlParser(default, ReadOnlyParser.DefaultContext);
+        var parser = ReadOnlyParser.CreateParser(profile);
         var documents = new List<IReadOnlyDocument>(sources.Count);
         return Measure(
-            "Read-only DOM",
+            $"Read-only {profile}",
             sources,
             source =>
             {
@@ -151,7 +155,7 @@ internal static class RetainedMemoryRunner
         int repetitions,
         IReadOnlyList<CorpusDocument> sources,
         Measurement standard,
-        Measurement readOnly
+        IReadOnlyList<Measurement> readOnly
     )
     {
         var report = new StringBuilder();
@@ -173,7 +177,10 @@ internal static class RetainedMemoryRunner
         );
         report.AppendLine("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
         Append(standard);
-        Append(readOnly);
+        foreach (var profile in readOnly)
+        {
+            Append(profile);
+        }
         return report.ToString();
 
         void Append(Measurement value)

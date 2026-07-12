@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageReference Include="TUnit" />
     <PackageReference Include="AngleSharp" />
+    <PackageReference Include="FsCheck" />
     <PackageReference Include="Polyfill" Condition="'$(TargetFramework)' == 'net481'" PrivateAssets="all" />
   </ItemGroup>
 

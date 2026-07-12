@@ -5,13 +5,29 @@ using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.Html.Model;
 
-internal class ReadOnlyDocument : ReadOnlyHtmlElement, IConstructableDocument, IReadOnlyDocument
+internal class ReadOnlyDocument
+    : ReadOnlyHtmlElement,
+        IConstructableDocument,
+        IReadOnlyDocument,
+        IReadOnlyDiagnostics,
+        IReadOnlySourceMetadata
 {
-    public ReadOnlyDocument(TextSource source)
+    private readonly List<Exception>? _errors;
+    private readonly Dictionary<IReadOnlyElement, ISourceReference?>? _sourceReferences;
+
+    public ReadOnlyDocument(TextSource source, ReadOnlyMetadataProfile profile = ReadOnlyMetadataProfile.Minimal)
         : base(null, "#document")
     {
         Source = source;
+        MetadataProfile = profile;
+        var features = profile.Features();
+        if (features.HasFlag(MetadataFeatures.Diagnostics))
+            _errors = [];
+        if (features.HasFlag(MetadataFeatures.SourceReferences))
+            _sourceReferences = [];
     }
+
+    public ReadOnlyMetadataProfile MetadataProfile { get; }
 
     public TextSource Source { get; set; }
     public IDisposable? Builder { get; set; }
@@ -58,8 +74,42 @@ internal class ReadOnlyDocument : ReadOnlyHtmlElement, IConstructableDocument, I
 
     public bool IsLoading => false;
 
-    // Parsing errors are deliberately not retained in the minimal profile. The parser remains permissive.
-    public void TrackError(Exception _) { }
+    public void TrackError(Exception error) => _errors?.Add(error);
+
+    public bool TryGetDiagnostics(out IReadOnlyDiagnostics diagnostics)
+    {
+        diagnostics = this;
+        return _errors is not null;
+    }
+
+    public bool TryGetSourceMetadata(out IReadOnlySourceMetadata metadata)
+    {
+        metadata = this;
+        return _sourceReferences is not null;
+    }
+
+    IReadOnlyList<Exception> IReadOnlyDiagnostics.Errors => _errors!;
+    SourceFidelity IReadOnlySourceMetadata.Fidelity => MetadataProfile.Fidelity()!.Value;
+
+    bool IReadOnlySourceMetadata.TryGetSourceReference(
+        IReadOnlyElement element,
+        out ISourceReference? sourceReference
+    ) => _sourceReferences!.TryGetValue(element, out sourceReference) && sourceReference is not null;
+
+    internal bool TracksSources => _sourceReferences is not null;
+
+    internal ISourceReference? GetSourceReference(IReadOnlyElement element) =>
+        _sourceReferences is not null && _sourceReferences.TryGetValue(element, out var value) ? value : null;
+
+    internal void SetSourceReference(IReadOnlyElement element, ISourceReference? value)
+    {
+        if (_sourceReferences is null)
+            return;
+        if (value is null)
+            _sourceReferences.Remove(element);
+        else
+            _sourceReferences[element] = value;
+    }
 
     public Task WaitForReadyAsync(CancellationToken cancelToken) => Task.CompletedTask;
 

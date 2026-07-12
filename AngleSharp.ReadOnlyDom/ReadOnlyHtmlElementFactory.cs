@@ -10,6 +10,13 @@ internal interface IReadOnlyConstructionFactory : IDomConstructionElementFactory
 
 internal sealed class ReadOnlyDomConstructionFactory : IReadOnlyConstructionFactory
 {
+    private readonly ReadOnlyMetadataProfile _profile;
+
+    public ReadOnlyDomConstructionFactory(ReadOnlyMetadataProfile profile)
+    {
+        _profile = profile;
+    }
+
     public ReadOnlyHtmlElement Create(
         ReadOnlyDocument document,
         StringOrMemory localName,
@@ -50,6 +57,8 @@ internal sealed class ReadOnlyDomConstructionFactory : IReadOnlyConstructionFact
                         prefix,
                         NodeFlags.Special | NodeFlags.ImplicitlyClosed | NodeFlags.ImpliedEnd
                     );
+                if (localName.Equals(TagNames.I) || localName.Equals(TagNames.B))
+                    return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.HtmlFormatting);
                 break;
             case 2:
                 if (localName.Equals(TagNames.Li))
@@ -77,6 +86,27 @@ internal sealed class ReadOnlyDomConstructionFactory : IReadOnlyConstructionFact
                         prefix,
                         NodeFlags.Special | NodeFlags.HtmlListScoped
                     );
+                if (localName.Equals(TagNames.Dd) || localName.Equals(TagNames.Dt))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.ImplicitlyClosed | NodeFlags.ImpliedEnd
+                    );
+                if (localName.Equals(TagNames.Hr))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.SelfClosing
+                    );
+                if (localName.Equals(TagNames.Ol))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.HtmlListScoped
+                    );
                 if (localName.Equals(TagNames.H1) || localName.Equals(TagNames.H2) || localName.Equals(TagNames.H3))
                     return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.Special);
                 break;
@@ -94,6 +124,15 @@ internal sealed class ReadOnlyDomConstructionFactory : IReadOnlyConstructionFact
                     );
                 if (localName.Equals(TagNames.Nav))
                     return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.Special);
+                if (localName.Equals(TagNames.Pre))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.LineTolerance
+                    );
+                if (localName.Equals(TagNames.Var) || localName.Equals(TagNames.Dfn))
+                    return new ReadOnlyHtmlElement(document, localName);
                 break;
             case 4:
                 if (localName.Equals(TagNames.Span))
@@ -267,7 +306,8 @@ internal sealed class ReadOnlyDomConstructionFactory : IReadOnlyConstructionFact
     public ReadOnlyHtmlElement CreateUnknown(ReadOnlyDocument document, StringOrMemory tagName) =>
         new(document, tagName);
 
-    public ReadOnlyDocument CreateDocument(TextSource source, IBrowsingContext? context = null) => new(source);
+    public ReadOnlyDocument CreateDocument(TextSource source, IBrowsingContext? context = null) =>
+        new(source, _profile);
 
     public IConstructableNode CreateDocumentType(
         ReadOnlyDocument document,
