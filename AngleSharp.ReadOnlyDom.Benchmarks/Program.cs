@@ -11,6 +11,11 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
                 return RetainedMemoryRunner.Run(args.Skip(1).ToArray());
             }
 
+            if (args.Length > 0 && args[0].Equals("--collection-shapes", StringComparison.OrdinalIgnoreCase))
+            {
+                return CollectionShapeRunner.Run(args.Skip(1).ToArray());
+            }
+
             BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
             return 0;
         }
