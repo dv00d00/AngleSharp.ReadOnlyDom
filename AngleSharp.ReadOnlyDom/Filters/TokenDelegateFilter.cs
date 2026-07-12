@@ -3,6 +3,14 @@ using AngleSharp.Html.Parser.Tokens.Struct;
 
 namespace AngleSharp.ReadOnlyDom.Filters;
 
+internal static class SubtreeTokenDepth
+{
+    public static bool OpensScope(ref StructHtmlToken token) =>
+        token.Type == HtmlTokenType.StartTag
+        && !token.IsSelfClosing
+        && (GeneratedTagMetadata.GetFlags(token.Name) & AngleSharp.Dom.NodeFlags.SelfClosing) == 0;
+}
+
 public delegate bool IsStartToken(ref StructHtmlToken token);
 
 public struct TokenDelegateFilter(IsStartToken isStartTag)
@@ -16,7 +24,7 @@ public struct TokenDelegateFilter(IsStartToken isStartTag)
 
         if (_started)
         {
-            if (token is { Type: HtmlTokenType.StartTag, IsSelfClosing: false })
+            if (SubtreeTokenDepth.OpensScope(ref token))
             {
                 _depth++;
             }

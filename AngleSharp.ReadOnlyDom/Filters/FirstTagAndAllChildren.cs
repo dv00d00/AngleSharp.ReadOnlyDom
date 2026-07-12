@@ -15,7 +15,7 @@ public struct FirstTagAndAllChildren(string tag)
 
         if (_started)
         {
-            if (token is { Type: HtmlTokenType.StartTag, IsSelfClosing: false })
+            if (SubtreeTokenDepth.OpensScope(ref token))
             {
                 _depth++;
             }
