@@ -50,29 +50,29 @@ public static class HttpClientExtensions
         int? expectedResponseSize = null
     )
     {
-        using var postResponse = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
-        return await postResponse.DownloadChars(endpointId, expectedResponseSize);
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        return await response.DownloadChars(endpointId, expectedResponseSize);
     }
 
     public static async Task<Lease<char>> DownloadChars(
-        this HttpResponseMessage postResponse,
+        this HttpResponseMessage response,
         string? endpointId = null,
         int? expectedResponseSize = null
     )
     {
-        endpointId ??= postResponse.RequestMessage?.RequestUri?.Host ?? "unknown";
+        endpointId ??= response.RequestMessage?.RequestUri?.Host ?? "unknown";
 
         var rb = AvgResponseSize.GetOrAdd(endpointId, static _ => new RingBuffer<int>(RingBufferSize));
-        int size = rb.Avg() ?? (int?)postResponse.Content.Headers.ContentLength ?? expectedResponseSize ?? 0;
+        int size = rb.Avg() ?? (int?)response.Content.Headers.ContentLength ?? expectedResponseSize ?? 0;
 
-        await using var htmlStream = await postResponse.Content.ReadAsStreamAsync();
+        await using var htmlStream = await response.Content.ReadAsStreamAsync();
         await using var recyclableMemoryStream = Manager.GetStream(endpointId, size);
         await htmlStream.CopyToAsync(recyclableMemoryStream);
         var totalBytes = (int)recyclableMemoryStream.Length;
         rb.Add(totalBytes);
         var readOnlySequence = recyclableMemoryStream.GetReadOnlySequence();
 
-        var (encoding, offset) = DetermineEncoding(readOnlySequence.FirstSpan, postResponse.Content.Headers);
+        var (encoding, offset) = DetermineEncoding(readOnlySequence.FirstSpan, response.Content.Headers);
 
         var maxTotalChars = encoding.GetMaxCharCount(totalBytes);
 
