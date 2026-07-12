@@ -1,0 +1,34 @@
+# Canonical tag metadata
+
+`AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs` is deterministic checked-in code generated from the exact AngleSharp
+package referenced by `Directory.Packages.props`. The generator reflects AngleSharp's internal `HtmlElementFactory`, creates
+every public `TagNames` entry, and records its effective `NodeFlags`. This makes the package's runtime construction behavior
+the canonical source instead of maintaining a second handwritten table.
+
+Regenerate after changing the AngleSharp package version:
+
+```powershell
+dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
+csharpier format AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
+```
+
+Verify that checked-in output is current:
+
+```powershell
+dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --check AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
+```
+
+The output uses a length switch and orders high-frequency corpus tags first within each length. Custom elements retain an
+earlier hyphen fast path. `GeneratedTagMetadataTests` independently compares every generated flag against the runtime
+AngleSharp factory, and focused tests preserve the read-only specialized form, template, script, and meta types.
+
+The generator targets .NET 10 because it is a repository tool. Generated library code builds on every supported library
+target. The project currently verifies tests on `net10.0` and `net481`; issue #5's older `net472` wording is superseded by
+the repository's active `net481` test target.
+
+## Performance gate
+
+The .NET 10 partial-parse short run after generation measured 4.813 ms / 706.44 KB for the full path and
+3.977 ms / 208.24 KB for the filtered path. The committed pre-change signals were 4.817 ms / 706.51 KB and
+3.858 ms / 212.08 KB respectively. Full-path performance is unchanged; filtered time is 3.1% higher within the declared
+5% short-run noise gate, while allocation fell 1.8%.
