@@ -1,4 +1,6 @@
-using AngleSharp.Html.Construction;
+using System.Runtime.CompilerServices;
+using AngleSharp.Dom;
+using AngleSharp.Html.Dom.Events;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Html;
 using AngleSharp.ReadOnlyDom.Html.Model;
@@ -8,12 +10,41 @@ namespace AngleSharp.ReadOnlyDom;
 
 public static class ReadOnlyParser
 {
-    private static Func<
-        IBrowsingContext,
-        IDomConstructionElementFactory<ReadOnlyDocument, ReadOnlyHtmlElement>
-    > _service = _ => new ReadOnlyDomConstructionFactory();
+    private static readonly ConditionalWeakTable<HtmlParser, ParserProfile> ParserProfiles = new();
+    private static readonly Func<IBrowsingContext, ReadOnlyDomConstructionFactory> _service =
+        _ => new ReadOnlyDomConstructionFactory(ReadOnlyMetadataProfile.Minimal);
+
     public static readonly IConfiguration DefaultConfig = Configuration.Default.With(_service);
     public static readonly IBrowsingContext DefaultContext = BrowsingContext.New(DefaultConfig);
+
+    private static readonly IBrowsingContext NavigableContext = CreateContextCore(ReadOnlyMetadataProfile.Navigable);
+    private static readonly IBrowsingContext SourceMappedContext = CreateContextCore(
+        ReadOnlyMetadataProfile.SourceMapped
+    );
+    private static readonly IBrowsingContext DiagnosticContext = CreateContextCore(ReadOnlyMetadataProfile.Diagnostic);
+
+    public static IBrowsingContext CreateContext(ReadOnlyMetadataProfile profile) =>
+        profile switch
+        {
+            ReadOnlyMetadataProfile.Minimal => DefaultContext,
+            ReadOnlyMetadataProfile.Navigable => NavigableContext,
+            ReadOnlyMetadataProfile.SourceMapped => SourceMappedContext,
+            ReadOnlyMetadataProfile.Diagnostic => DiagnosticContext,
+            _ => throw new ArgumentOutOfRangeException(nameof(profile)),
+        };
+
+    private static IBrowsingContext CreateContextCore(ReadOnlyMetadataProfile profile)
+    {
+        var configuration = Configuration.Default.With(_ => new ReadOnlyDomConstructionFactory(profile));
+        return BrowsingContext.New(configuration);
+    }
+
+    public static HtmlParser CreateParser(ReadOnlyMetadataProfile profile)
+    {
+        var parser = new HtmlParser(profile.ParserOptions(), CreateContext(profile));
+        ParserProfiles.Add(parser, new ParserProfile(profile));
+        return parser;
+    }
 
     public static IReadOnlyDocument ParseReadOnlyDocument(
         this IHtmlParser parser,
@@ -21,7 +52,10 @@ public static class ReadOnlyParser
         TokenizerMiddleware? middleware = null
     )
     {
-        return parser.ParseDocument<ReadOnlyDocument, ReadOnlyHtmlElement>(source, middleware);
+        return ParseWithDiagnostics(
+            parser,
+            () => parser.ParseDocument<ReadOnlyDocument, ReadOnlyHtmlElement>(source, middleware)
+        );
     }
 
     public static IReadOnlyDocument ParseReadOnlyDocument(
@@ -31,9 +65,13 @@ public static class ReadOnlyParser
         TokenizerMiddleware? middleware = null
     )
     {
-        return parser.ParseDocument<ReadOnlyDocument, ReadOnlyHtmlElement>(
-            new TextSource(new CharArrayTextSource(source, length)),
-            middleware
+        return ParseWithDiagnostics(
+            parser,
+            () =>
+                parser.ParseDocument<ReadOnlyDocument, ReadOnlyHtmlElement>(
+                    new TextSource(new CharArrayTextSource(source, length)),
+                    middleware
+                )
         );
     }
 
@@ -43,9 +81,13 @@ public static class ReadOnlyParser
         TokenizerMiddleware? middleware = null
     )
     {
-        return parser.ParseDocument<ReadOnlyDocument, ReadOnlyHtmlElement>(
-            new TextSource(new StringTextSource(source)),
-            middleware
+        return ParseWithDiagnostics(
+            parser,
+            () =>
+                parser.ParseDocument<ReadOnlyDocument, ReadOnlyHtmlElement>(
+                    new TextSource(new StringTextSource(source)),
+                    middleware
+                )
         );
     }
 
@@ -55,9 +97,61 @@ public static class ReadOnlyParser
         TokenizerMiddleware? middleware = null
     )
     {
-        return parser.ParseDocument<ReadOnlyDocument, ReadOnlyHtmlElement>(
-            new TextSource(new ReadOnlyMemoryTextSource(source)),
-            middleware
+        return ParseWithDiagnostics(
+            parser,
+            () =>
+                parser.ParseDocument<ReadOnlyDocument, ReadOnlyHtmlElement>(
+                    new TextSource(new ReadOnlyMemoryTextSource(source)),
+                    middleware
+                )
         );
+    }
+
+    private static IReadOnlyDocument ParseWithDiagnostics(IHtmlParser parser, Func<ReadOnlyDocument> parse)
+    {
+        if (
+            parser is not HtmlParser htmlParser
+            || !ParserProfiles.TryGetValue(htmlParser, out var marker)
+            || !marker.Profile.Features().HasFlag(MetadataFeatures.Diagnostics)
+        )
+        {
+            return parse();
+        }
+
+        List<Exception>? errors = null;
+        DomEventHandler handler = (_, @event) =>
+        {
+            if (@event is HtmlErrorEvent error)
+            {
+                errors ??= [];
+                errors.Add(new HtmlParseException(error.Code, error.Message, error.Position));
+            }
+        };
+        htmlParser.Error += handler;
+        try
+        {
+            var document = parse();
+            if (errors is not null)
+            {
+                foreach (var error in errors)
+                    document.TrackError(error);
+            }
+
+            return document;
+        }
+        finally
+        {
+            htmlParser.Error -= handler;
+        }
+    }
+
+    private sealed class ParserProfile
+    {
+        public ParserProfile(ReadOnlyMetadataProfile profile)
+        {
+            Profile = profile;
+        }
+
+        public ReadOnlyMetadataProfile Profile { get; }
     }
 }

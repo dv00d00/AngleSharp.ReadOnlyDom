@@ -127,8 +127,14 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IConst
 
     public void AddComment(ref StructHtmlToken token)
     {
-        var readOnlyTextNode = new ReadOnlyComment(null, token.Data) { Parent = this };
-        AddNode(readOnlyTextNode);
+        if (token.IsEmpty)
+            return;
+
+        ReadOnlyNode node = token.IsProcessingInstruction
+            ? ReadOnlyProcessingInstruction.Create(null, token.Data)
+            : new ReadOnlyComment(null, token.Data);
+        node.Parent = this;
+        AddNode(node);
     }
 
     public virtual void Print(TextWriter writer)
