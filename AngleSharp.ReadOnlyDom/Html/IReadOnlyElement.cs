@@ -7,6 +7,7 @@ public interface IReadOnlyElement : IReadOnlyNode
 {
     StringOrMemory NamespaceUri { get; }
     StringOrMemory LocalName { get; }
+    StringOrMemory Prefix { get; }
     IReadOnlyNamedNodeMap Attributes { get; }
     ISourceReference? SourceReference { get; }
 }

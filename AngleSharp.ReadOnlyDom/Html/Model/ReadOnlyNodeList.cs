@@ -5,12 +5,7 @@ namespace AngleSharp.ReadOnlyDom.Html.Model;
 
 internal class ReadOnlyNodeList : IConstructableNodeList, IReadOnlyNodeList
 {
-    internal readonly List<ReadOnlyNode> _nodes;
-
-    public ReadOnlyNodeList()
-    {
-        _nodes = new List<ReadOnlyNode>(2);
-    }
+    private SmallReferenceList<ReadOnlyNode> _nodes;
 
     public int Length => _nodes.Count;
     public IConstructableNode this[int index] => _nodes[index];
@@ -18,15 +13,18 @@ internal class ReadOnlyNodeList : IConstructableNodeList, IReadOnlyNodeList
 
     IEnumerator<IReadOnlyNode> IEnumerable<IReadOnlyNode>.GetEnumerator()
     {
-        foreach (var node in _nodes)
+        for (var i = 0; i < _nodes.Count; i++)
         {
-            yield return node;
+            yield return _nodes[i];
         }
     }
 
     public IEnumerator<IConstructableNode> GetEnumerator()
     {
-        return _nodes.GetEnumerator();
+        for (var i = 0; i < _nodes.Count; i++)
+        {
+            yield return _nodes[i];
+        }
     }
 
     IEnumerator IEnumerable.GetEnumerator()
@@ -51,9 +49,9 @@ internal class ReadOnlyNodeList : IConstructableNodeList, IReadOnlyNodeList
 
     public void Clear()
     {
-        foreach (var node in _nodes)
+        for (var i = 0; i < _nodes.Count; i++)
         {
-            node.Parent = null;
+            _nodes[i].Parent = null;
         }
         _nodes.Clear();
     }

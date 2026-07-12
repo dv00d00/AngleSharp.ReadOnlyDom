@@ -5,20 +5,25 @@ using AngleSharp.Html.Parser.Tokens.Struct;
 
 namespace AngleSharp.ReadOnlyDom.Html.Model;
 
-internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrintable
+internal abstract class ReadOnlyNode
+    : IConstructableNode,
+        IReadOnlyNode,
+        IConstructableNodeList,
+        IReadOnlyNodeList,
+        IPrintable
 {
     private static readonly ReadOnlyNodeList EmptyChildNodes = [];
     private static ReadOnlySpan<char> WhiteSpace => " \t\r\n".AsSpan();
 
     protected readonly NodeFlags _flags;
-    protected ReadOnlyNodeList? _childNodes;
+    protected IConstructableNodeList? _childNodes;
     protected IConstructableNode? _parent;
     protected StringOrMemory _nodeName;
 
     public NodeFlags Flags => _flags;
-    protected ReadOnlyNodeList _ChildNodes => _childNodes ?? EmptyChildNodes;
+    protected IConstructableNodeList _ChildNodes => _childNodes ?? EmptyChildNodes;
     IReadOnlyNode? IReadOnlyNode.Parent => _parent as IReadOnlyNode;
-    IReadOnlyNodeList IReadOnlyNode.ChildNodes => _ChildNodes;
+    IReadOnlyNodeList IReadOnlyNode.ChildNodes => (IReadOnlyNodeList)_ChildNodes;
 
     public StringOrMemory NodeName
     {
@@ -55,27 +60,64 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrint
     public void RemoveChild(IConstructableNode childNode)
     {
         childNode.Parent = null;
-        _childNodes?.Remove(childNode);
+        if (_childNodes is ReadOnlyNode singleton)
+        {
+            if (ReferenceEquals(singleton, childNode))
+            {
+                _childNodes = null;
+            }
+        }
+        else
+        {
+            ((ReadOnlyNodeList?)_childNodes)?.Remove(childNode);
+        }
     }
 
     public void RemoveNode(int idx, IConstructableNode childNode)
     {
         childNode.Parent = null;
-        _childNodes?.RemoveAt(idx);
+        if (_childNodes is ReadOnlyNode)
+        {
+            if (idx != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(idx));
+            }
+
+            _childNodes = null;
+        }
+        else
+        {
+            ((ReadOnlyNodeList?)_childNodes)?.RemoveAt(idx);
+        }
     }
 
     public void InsertNode(int idx, IConstructableNode childNode)
     {
         childNode.Parent = this;
-        _childNodes ??= new ReadOnlyNodeList();
-        _childNodes?.Insert(idx, childNode);
+        if (_childNodes is null)
+        {
+            if (idx != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(idx));
+            }
+
+            _childNodes = (ReadOnlyNode)childNode;
+            return;
+        }
+
+        ExpandChildNodes().Insert(idx, childNode);
     }
 
     public void AddNode(IConstructableNode childNode)
     {
         childNode.Parent = this;
-        _childNodes ??= new ReadOnlyNodeList();
-        _childNodes.Add(childNode);
+        if (_childNodes is null)
+        {
+            _childNodes = (ReadOnlyNode)childNode;
+            return;
+        }
+
+        ExpandChildNodes().Add(childNode);
     }
 
     public void AppendText(StringOrMemory text, bool emitWhiteSpaceOnly = false)
@@ -95,16 +137,14 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrint
             return;
         }
 
-        _childNodes ??= new ReadOnlyNodeList();
         var readOnlyTextNode = new ReadOnlyTextNode(Owner, text) { Parent = this };
-        _childNodes.Insert(idx, readOnlyTextNode);
+        InsertNode(idx, readOnlyTextNode);
     }
 
     public void AddComment(ref StructHtmlToken token)
     {
-        _childNodes ??= new ReadOnlyNodeList();
         var readOnlyTextNode = new ReadOnlyComment(Owner, token.Data) { Parent = this };
-        _childNodes.Add(readOnlyTextNode);
+        AddNode(readOnlyTextNode);
     }
 
     public virtual void Print(TextWriter writer)
@@ -118,5 +158,42 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IPrint
         {
             ((ReadOnlyNode)node).Print(writer);
         }
+    }
+
+    int IConstructableNodeList.Length => 1;
+    int IReadOnlyNodeList.Length => 1;
+
+    IConstructableNode IConstructableNodeList.this[int index] =>
+        index == 0 ? this : throw new ArgumentOutOfRangeException(nameof(index));
+
+    IReadOnlyNode IReadOnlyNodeList.this[int index] =>
+        index == 0 ? this : throw new ArgumentOutOfRangeException(nameof(index));
+
+    IEnumerator<IConstructableNode> IEnumerable<IConstructableNode>.GetEnumerator()
+    {
+        yield return this;
+    }
+
+    IEnumerator<IReadOnlyNode> IEnumerable<IReadOnlyNode>.GetEnumerator()
+    {
+        yield return this;
+    }
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() =>
+        ((IEnumerable<IConstructableNode>)this).GetEnumerator();
+
+    void IConstructableNodeList.Clear() => Parent?.RemoveChild(this);
+
+    private ReadOnlyNodeList ExpandChildNodes()
+    {
+        if (_childNodes is ReadOnlyNode singleton)
+        {
+            var nodes = new ReadOnlyNodeList();
+            nodes.Add(singleton);
+            _childNodes = nodes;
+            return nodes;
+        }
+
+        return (ReadOnlyNodeList)_childNodes!;
     }
 }

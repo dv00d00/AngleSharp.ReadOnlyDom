@@ -17,8 +17,194 @@ internal sealed class ReadOnlyDomConstructionFactory : IReadOnlyConstructionFact
         NodeFlags flags = NodeFlags.None
     )
     {
+        var common = CreateCommon(document, localName, prefix);
+        if (common is not null)
+        {
+            return common;
+        }
+
+        if (localName.Memory.Span.IndexOf('-') >= 0)
+        {
+            return new ReadOnlyHtmlElement(document, localName, prefix, flags);
+        }
+
         Creators.TryGetValue(localName, out var creator);
         return creator?.Invoke(document, prefix) ?? new ReadOnlyHtmlElement(document, localName, prefix, flags);
+    }
+
+    private static ReadOnlyHtmlElement? CreateCommon(
+        ReadOnlyDocument document,
+        StringOrMemory localName,
+        StringOrMemory prefix
+    )
+    {
+        switch (localName.Length)
+        {
+            case 1:
+                if (localName.Equals(TagNames.A))
+                    return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.HtmlFormatting);
+                if (localName.Equals(TagNames.P))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.ImplicitlyClosed | NodeFlags.ImpliedEnd
+                    );
+                break;
+            case 2:
+                if (localName.Equals(TagNames.Li))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.ImplicitlyClosed | NodeFlags.ImpliedEnd
+                    );
+                if (localName.Equals(TagNames.Td))
+                    return new ReadOnlyHtmlElement(document, localName, prefix);
+                if (localName.Equals(TagNames.Tr))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.ImplicitlyClosed
+                    );
+                if (localName.Equals(TagNames.Th))
+                    return new ReadOnlyHtmlElement(document, localName, prefix);
+                if (localName.Equals(TagNames.Ul))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.HtmlListScoped
+                    );
+                if (localName.Equals(TagNames.H1) || localName.Equals(TagNames.H2) || localName.Equals(TagNames.H3))
+                    return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.Special);
+                break;
+            case 3:
+                if (localName.Equals(TagNames.Div))
+                    return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.Special);
+                if (localName.Equals(TagNames.Kbd))
+                    return new ReadOnlyHtmlElement(document, localName, prefix);
+                if (localName.Equals(TagNames.Img))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.SelfClosing
+                    );
+                if (localName.Equals(TagNames.Nav))
+                    return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.Special);
+                break;
+            case 4:
+                if (localName.Equals(TagNames.Span))
+                    return new ReadOnlyHtmlElement(document, localName, prefix);
+                if (localName.Equals(TagNames.Meta))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.SelfClosing
+                    );
+                if (localName.Equals(TagNames.Form))
+                    return new ReadOnlyHtmlFormElement(document, prefix);
+                if (localName.Equals(TagNames.Link))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.SelfClosing
+                    );
+                if (localName.Equals(TagNames.Code))
+                    return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.HtmlFormatting);
+                if (localName.Equals(TagNames.Html))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special
+                            | NodeFlags.ImplicitlyClosed
+                            | NodeFlags.Scoped
+                            | NodeFlags.HtmlTableScoped
+                            | NodeFlags.HtmlTableSectionScoped
+                    );
+                if (localName.Equals(TagNames.Head))
+                    return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.Special);
+                if (localName.Equals(TagNames.Body))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.ImplicitlyClosed
+                    );
+                break;
+            case 5:
+                if (localName.Equals(TagNames.Input))
+                    return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.SelfClosing);
+                if (localName.Equals(TagNames.Table))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special
+                            | NodeFlags.Scoped
+                            | NodeFlags.HtmlTableScoped
+                            | NodeFlags.HtmlTableSectionScoped
+                    );
+                if (localName.Equals(TagNames.Tbody))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.ImplicitlyClosed | NodeFlags.HtmlTableSectionScoped
+                    );
+                if (localName.Equals(TagNames.Label))
+                    return new ReadOnlyHtmlElement(document, localName, prefix);
+                if (localName.Equals(TagNames.Style))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.LiteralText
+                    );
+                break;
+            case 6:
+                if (localName.Equals(TagNames.Script))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special | NodeFlags.LiteralText
+                    );
+                if (localName.Equals(TagNames.Button))
+                    return new ReadOnlyHtmlElement(document, localName, prefix);
+                if (localName.Equals(TagNames.Strong))
+                    return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.HtmlFormatting);
+                break;
+            case 7:
+                if (localName.Equals(TagNames.Details))
+                    return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.Special);
+                if (localName.Equals(TagNames.Summary))
+                    return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.Special);
+                break;
+            case 8:
+                if (localName.Equals(TagNames.Template))
+                    return new ReadOnlyHtmlElement(
+                        document,
+                        localName,
+                        prefix,
+                        NodeFlags.Special
+                            | NodeFlags.Scoped
+                            | NodeFlags.HtmlTableScoped
+                            | NodeFlags.HtmlTableSectionScoped
+                    );
+                break;
+            case 10:
+                if (localName.Equals(TagNames.BlockQuote))
+                    return new ReadOnlyHtmlElement(document, localName, prefix, NodeFlags.Special);
+                break;
+        }
+
+        return null;
     }
 
     public IConstructableMetaElement CreateMeta(ReadOnlyDocument document) => new ReadOnlyHtmlMeta(document);

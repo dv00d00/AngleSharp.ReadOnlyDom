@@ -37,7 +37,7 @@ internal class ReadOnlyDocument : ReadOnlyHtmlElement, IConstructableDocument, I
     }
 
     IReadOnlyNode? IReadOnlyNode.Parent => _parent as IReadOnlyNode;
-    IReadOnlyNodeList IReadOnlyNode.ChildNodes => _ChildNodes;
+    IReadOnlyNodeList IReadOnlyNode.ChildNodes => (IReadOnlyNodeList)_ChildNodes;
 
     public bool IsLoading => false;
 

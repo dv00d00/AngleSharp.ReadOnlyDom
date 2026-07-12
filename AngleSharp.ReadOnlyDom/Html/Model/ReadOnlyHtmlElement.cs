@@ -44,8 +44,6 @@ class ReadOnlyHtmlElement : ReadOnlyElement, IConstructableElement
 #endif
     }
 
-    public StringOrMemory Prefix => StringOrMemory.Empty;
-
     public void SetOwnAttribute(StringOrMemory name, StringOrMemory value)
     {
         _attributes ??= new ReadOnlyNamedNodeMap();

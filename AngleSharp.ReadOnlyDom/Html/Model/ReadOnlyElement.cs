@@ -8,29 +8,42 @@ namespace AngleSharp.ReadOnlyDom.Html.Model;
 internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
 {
     private static readonly ReadOnlyNamedNodeMap EmptyAttributes = new ReadOnlyNamedNodeMap();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+        ReadOnlyElement,
+        OptionalMetadata
+    > Metadata = new();
 
     protected ReadOnlyNamedNodeMap? _attributes;
 
     public StringOrMemory LocalName => NodeName;
 
-    public StringOrMemory NamespaceUri => StringOrMemory.Empty;
+    public StringOrMemory NamespaceUri =>
+        (Flags & NodeFlags.SvgMember) != 0 ? NamespaceNames.SvgUri
+        : (Flags & NodeFlags.MathMember) != 0 ? NamespaceNames.MathMlUri
+        : NamespaceNames.HtmlUri;
+
+    public StringOrMemory Prefix => Metadata.TryGetValue(this, out var metadata) ? metadata.Prefix : default;
 
     public IConstructableNamedNodeMap Attributes => _attributes ?? EmptyAttributes;
 
-    // todo: extra sysptr, worth it?
-
-    // protected ISourceReference? _sourceReference;
-
-    // public ISourceReference? SourceReference
-    // {
-    //     get => _sourceReference;
-    //     set => _sourceReference = value;
-    // }
-
     public ISourceReference? SourceReference
     {
-        get => null;
-        set { }
+        get => Metadata.TryGetValue(this, out var metadata) ? metadata.SourceReference : null;
+        set
+        {
+            if (value is null)
+            {
+                if (Metadata.TryGetValue(this, out var metadata))
+                {
+                    metadata.SourceReference = null;
+                    RemoveMetadataIfEmpty(metadata);
+                }
+
+                return;
+            }
+
+            Metadata.GetOrCreateValue(this).SourceReference = value;
+        }
     }
 
     /// <inheritdoc />
@@ -42,7 +55,13 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
         StringOrMemory namespaceUri,
         NodeFlags flags = NodeFlags.None
     )
-        : base(owner, name, NodeType.Element, flags) { }
+        : base(owner, name, NodeType.Element, flags)
+    {
+        if (!prefix.IsNullOrEmpty)
+        {
+            Metadata.GetOrCreateValue(this).Prefix = prefix;
+        }
+    }
 
     public StringOrMemory GetAttribute(StringOrMemory @namespace, StringOrMemory name)
     {
@@ -69,7 +88,7 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
         }
         else
         {
-            _attributes.Add(new ReadOnlyAttr(name, value));
+            _attributes.AddOrUpdate(name, value);
         }
     }
 
@@ -115,5 +134,19 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
             //     other.SetAttribute(null, attribute.Name, attribute.Value);
             other._attributes = _attributes;
         }
+    }
+
+    private void RemoveMetadataIfEmpty(OptionalMetadata metadata)
+    {
+        if (metadata.SourceReference is null && metadata.Prefix.IsNullOrEmpty)
+        {
+            Metadata.Remove(this);
+        }
+    }
+
+    private sealed class OptionalMetadata
+    {
+        public StringOrMemory Prefix;
+        public ISourceReference? SourceReference;
     }
 }

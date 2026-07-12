@@ -1,17 +1,18 @@
-﻿using System.Collections;
+using System.Collections;
 using AngleSharp.Common;
 using AngleSharp.Html.Construction;
 
 namespace AngleSharp.ReadOnlyDom.Html.Model;
 
-internal class ReadOnlyNamedNodeMap : IConstructableNamedNodeMap, IReadOnlyNamedNodeMap
+internal class ReadOnlyNamedNodeMap
+    : IConstructableNamedNodeMap,
+        IReadOnlyNamedNodeMap,
+        IConstructableAttr,
+        IReadOnlyAttr
 {
-    protected readonly List<IConstructableAttr> _attributes;
-
-    public ReadOnlyNamedNodeMap()
-    {
-        _attributes = new List<IConstructableAttr>(2);
-    }
+    private SmallReferenceList<IConstructableAttr> _additionalAttributes;
+    private StringOrMemory _name;
+    private StringOrMemory _value;
 
     IReadOnlyAttr? IReadOnlyNamedNodeMap.this[StringOrMemory name] => this[name] as IReadOnlyAttr;
 
@@ -19,9 +20,19 @@ internal class ReadOnlyNamedNodeMap : IConstructableNamedNodeMap, IReadOnlyNamed
     {
         get
         {
-            for (int i = 0; i < _attributes.Count; i++)
+            if (Length == 0)
             {
-                var attr = _attributes[i];
+                return null;
+            }
+
+            if (_name == name)
+            {
+                return this;
+            }
+
+            for (var i = 0; i < _additionalAttributes.Count; i++)
+            {
+                var attr = _additionalAttributes[i];
                 if (attr.Name == name)
                 {
                     return attr;
@@ -32,24 +43,32 @@ internal class ReadOnlyNamedNodeMap : IConstructableNamedNodeMap, IReadOnlyNamed
         }
     }
 
-    public int Length => _attributes.Count;
+    public int Length { get; private set; }
+
+    public StringOrMemory Name => _name;
+
+    public StringOrMemory Value
+    {
+        get => _value;
+        set => _value = value;
+    }
 
     public bool SameAs(IConstructableNamedNodeMap? attributes)
     {
-        if (attributes is null)
+        if (attributes is null || Length != attributes.Length)
         {
             return false;
         }
 
-        if (_attributes.Count != attributes.Length)
+        if (Length > 0 && attributes[_name]?.Value != _value)
         {
             return false;
         }
 
-        for (int i = 0; i < _attributes.Count; i++)
+        for (var i = 0; i < _additionalAttributes.Count; i++)
         {
-            var src = _attributes[i];
-            if (attributes[src.Name]?.Value != src.Value)
+            var source = _additionalAttributes[i];
+            if (attributes[source.Name]?.Value != source.Value)
             {
                 return false;
             }
@@ -60,47 +79,106 @@ internal class ReadOnlyNamedNodeMap : IConstructableNamedNodeMap, IReadOnlyNamed
 
     IEnumerator<IReadOnlyAttr> IEnumerable<IReadOnlyAttr>.GetEnumerator()
     {
-        foreach (var attr in _attributes)
+        if (Length == 0)
         {
-            yield return (IReadOnlyAttr)attr;
+            yield break;
+        }
+
+        yield return this;
+        for (var i = 0; i < _additionalAttributes.Count; i++)
+        {
+            yield return (IReadOnlyAttr)_additionalAttributes[i];
         }
     }
 
     public IEnumerator<IConstructableAttr> GetEnumerator()
     {
-        return _attributes.GetEnumerator();
+        if (Length == 0)
+        {
+            yield break;
+        }
+
+        yield return this;
+        for (var i = 0; i < _additionalAttributes.Count; i++)
+        {
+            yield return _additionalAttributes[i];
+        }
     }
 
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
-    }
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     public void Add(IConstructableAttr attr)
     {
-        _attributes.Add(attr);
+        if (Length == 0)
+        {
+            _name = attr.Name;
+            _value = attr.Value;
+        }
+        else
+        {
+            _additionalAttributes.Add(attr);
+        }
+
+        Length++;
     }
 
     public void Remove(IConstructableAttr attr)
     {
-        _attributes.Remove(attr);
+        if (Length == 0)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(attr, this))
+        {
+            if (_additionalAttributes.Count == 0)
+            {
+                _name = default;
+                _value = default;
+            }
+            else
+            {
+                var replacement = _additionalAttributes[0];
+                _name = replacement.Name;
+                _value = replacement.Value;
+                _additionalAttributes.RemoveAt(0);
+            }
+
+            Length--;
+            return;
+        }
+
+        if (_additionalAttributes.Remove(attr))
+        {
+            Length--;
+        }
     }
 
     public void Clear()
     {
-        _attributes.Clear();
+        _name = default;
+        _value = default;
+        _additionalAttributes.Clear();
+        Length = 0;
     }
 
     internal void AddOrUpdate(StringOrMemory name, StringOrMemory value)
     {
         var item = this[name];
-        if (item == null)
+        if (item is not null)
         {
-            _attributes.Add(new ReadOnlyAttr(name, value));
+            item.Value = value;
+        }
+        else if (Length == 0)
+        {
+            _name = name;
+            _value = value;
+            Length = 1;
         }
         else
         {
-            item.Value = value;
+            _additionalAttributes.Add(new ReadOnlyAttr(name, value));
+            Length++;
         }
     }
 }
