@@ -43,9 +43,53 @@ public static class DirectCompactParser
     }
 }
 
+public sealed class DirectCompactParserSession
+{
+    private readonly HtmlParser _parser;
+    private readonly CompactMetadataOptions _options;
+    private readonly CompactBufferOwnership _ownership;
+
+    public DirectCompactParserSession(
+        CompactMetadataOptions options = CompactMetadataOptions.None,
+        CompactBufferOwnership ownership = CompactBufferOwnership.Owned
+    )
+    {
+        _options = options;
+        _ownership = ownership;
+        var configuration = Configuration.Default.With(_ => new ArenaConstructionFactory(
+            ownership == CompactBufferOwnership.Pooled
+        ));
+        var context = BrowsingContext.New(configuration);
+        _parser = new HtmlParser(
+            new HtmlParserOptions
+            {
+                SkipComments = true,
+                SkipProcessingInstructions = true,
+                IsKeepingSourceReferences = options.HasFlag(CompactMetadataOptions.SourceLocations),
+            },
+            context
+        );
+    }
+
+    public HotCompactDocument Parse(string html)
+    {
+        var source = new TextSource(new StringTextSource(html));
+        var document = _parser.ParseDocument<ArenaDocument, ArenaElement>(source);
+        try
+        {
+            return document.Arena.Finalize(document.NodeHandle, _options, _ownership);
+        }
+        finally
+        {
+            document.Dispose();
+        }
+    }
+}
+
 internal sealed class Arena : IDisposable
 {
     private static ReadOnlySpan<char> WhiteSpace => " \t\r\n";
+    private static readonly IReadOnlyList<int> EmptyChildren = Array.Empty<int>();
     private readonly IReferenceBuffer<ArenaNode> _nodes;
     private readonly IReferenceBuffer<NodeState> _states;
 
@@ -105,9 +149,10 @@ internal sealed class Arena : IDisposable
     {
         var childState = State(child);
         if (childState.Parent >= 0)
-            State(childState.Parent).Children.Remove(child);
+            State(childState.Parent).Children?.Remove(child);
         childState.Parent = parent;
-        var children = State(parent).Children;
+        var parentState = State(parent);
+        var children = parentState.Children ??= [];
         if (index.HasValue)
             children.Insert(index.Value, child);
         else
@@ -155,11 +200,14 @@ internal sealed class Arena : IDisposable
         foreach (var oldHandle in order)
         {
             var state = State(oldHandle);
-            attributeCount += state.Attributes.Count;
+            var stateAttributes = state.Attributes;
+            var stateAttributeCount = stateAttributes?.Count ?? 0;
+            attributeCount += stateAttributeCount;
             textLength += state.Value.Length;
-            foreach (var attribute in state.Attributes)
-                textLength += attribute.Value.Length;
-            if (state.Attributes.Count != 0 || state.Value.Length != 0)
+            if (stateAttributes is not null)
+                foreach (var attribute in stateAttributes)
+                    textLength += attribute.Value.Length;
+            if (stateAttributeCount != 0 || state.Value.Length != 0)
                 payloadCount++;
         }
 
@@ -186,16 +234,18 @@ internal sealed class Arena : IDisposable
             if (state.Parent >= 0)
             {
                 var siblings = FinalChildren(State(state.Parent));
-                var siblingIndex = siblings.IndexOf(order[handle]);
+                var siblingIndex = IndexOf(siblings, order[handle]);
                 if (siblingIndex >= 0 && siblingIndex + 1 < siblings.Count)
                     nextSibling = remap[siblings[siblingIndex + 1]];
             }
 
             var nodePayload = -1;
-            if (state.Attributes.Count != 0 || state.Value.Length != 0)
+            var stateAttributes = state.Attributes;
+            var stateAttributeCount = stateAttributes?.Count ?? 0;
+            if (stateAttributeCount != 0 || state.Value.Length != 0)
             {
                 var firstAttribute = attributeIndex;
-                foreach (var attribute in state.Attributes)
+                foreach (var attribute in stateAttributes ?? [])
                 {
                     var value = CopyText(attribute.Value, text, ref textIndex);
                     attributes[attributeIndex++] = new CompactAttribute(
@@ -210,7 +260,7 @@ internal sealed class Arena : IDisposable
                     firstAttribute,
                     nodeValue.Start,
                     nodeValue.Length,
-                    checked((ushort)state.Attributes.Count)
+                    checked((ushort)stateAttributeCount)
                 );
             }
 
@@ -264,7 +314,16 @@ internal sealed class Arena : IDisposable
             AddPreOrder(child, order);
     }
 
-    private static List<int> FinalChildren(NodeState state) => state.TemplateContent ?? state.Children;
+    private static IReadOnlyList<int> FinalChildren(NodeState state) =>
+        state.TemplateContent ?? state.Children ?? EmptyChildren;
+
+    private static int IndexOf(IReadOnlyList<int> values, int value)
+    {
+        for (var index = 0; index < values.Count; index++)
+            if (values[index] == value)
+                return index;
+        return -1;
+    }
 
     private static (int Start, int Length) CopyText(StringOrMemory value, char[] destination, ref int index)
     {
@@ -322,9 +381,9 @@ internal sealed class NodeState
     public NodeFlags Flags;
     public CompactNodeKind Kind;
     public int Parent = -1;
-    public List<int> Children = [];
+    public List<int>? Children;
     public List<int>? TemplateContent;
-    public List<ArenaAttribute> Attributes = [];
+    public List<ArenaAttribute>? Attributes;
     public ISourceReference? SourceReference;
 }
 
@@ -347,8 +406,9 @@ internal class ArenaNode : IConstructableNode, IConstructableNodeList
         set => State.Parent = value is ArenaNode node ? node.NodeHandle : -1;
     }
     public IConstructableNodeList ChildNodes => this;
-    public int Length => State.Children.Count;
-    public IConstructableNode this[int index] => Arena.Node(State.Children[index]);
+    public int Length => State.Children?.Count ?? 0;
+    public IConstructableNode this[int index] =>
+        Arena.Node((State.Children ?? throw new ArgumentOutOfRangeException(nameof(index)))[index]);
 
     public void AddNode(IConstructableNode node) => Arena.AddChild(NodeHandle, ((ArenaNode)node).NodeHandle);
 
@@ -366,33 +426,39 @@ internal class ArenaNode : IConstructableNode, IConstructableNodeList
     public void RemoveFromParent()
     {
         if (State.Parent >= 0)
-            Arena.State(State.Parent).Children.Remove(NodeHandle);
+            Arena.State(State.Parent).Children?.Remove(NodeHandle);
         State.Parent = -1;
     }
 
     public void RemoveChild(IConstructableNode childNode)
     {
         var child = (ArenaNode)childNode;
-        if (State.Children.Remove(child.NodeHandle))
+        if (State.Children?.Remove(child.NodeHandle) == true)
             child.State.Parent = -1;
     }
 
     public void RemoveNode(int index, IConstructableNode childNode)
     {
-        State.Children.RemoveAt(index);
+        (State.Children ?? throw new ArgumentOutOfRangeException(nameof(index))).RemoveAt(index);
         ((ArenaNode)childNode).State.Parent = -1;
     }
 
     public void Clear()
     {
-        foreach (var child in State.Children)
+        var children = State.Children;
+        if (children is null)
+            return;
+        foreach (var child in children)
             Arena.State(child).Parent = -1;
-        State.Children.Clear();
+        children.Clear();
     }
 
     public IEnumerator<IConstructableNode> GetEnumerator()
     {
-        foreach (var child in State.Children)
+        var children = State.Children;
+        if (children is null)
+            yield break;
+        foreach (var child in children)
             yield return Arena.Node(child);
     }
 
@@ -409,7 +475,7 @@ internal class ArenaElement : ArenaNode, IConstructableElement
     public StringOrMemory NamespaceUri => State.NamespaceUri;
     public StringOrMemory LocalName => State.LocalName;
     public StringOrMemory Prefix => State.Prefix;
-    public IConstructableNamedNodeMap Attributes => _attributes ??= new ArenaNamedNodeMap(State.Attributes);
+    public IConstructableNamedNodeMap Attributes => _attributes ??= new ArenaNamedNodeMap(State);
     public ISourceReference? SourceReference
     {
         get => State.SourceReference;
@@ -420,22 +486,27 @@ internal class ArenaElement : ArenaNode, IConstructableElement
 
     public void SetOwnAttribute(StringOrMemory name, StringOrMemory value)
     {
-        foreach (var attribute in State.Attributes)
+        var attributes = State.Attributes;
+        if (attributes is not null)
         {
-            if (attribute.Name == name)
+            foreach (var attribute in attributes)
             {
-                attribute.Value = value;
-                return;
+                if (attribute.Name == name)
+                {
+                    attribute.Value = value;
+                    return;
+                }
             }
         }
-        State.Attributes.Add(new ArenaAttribute(name, value));
+        (State.Attributes ??= []).Add(new ArenaAttribute(name, value));
     }
 
     public StringOrMemory GetAttribute(StringOrMemory _, StringOrMemory name)
     {
-        foreach (var attribute in State.Attributes)
-            if (attribute.Name == name)
-                return attribute.Value;
+        if (State.Attributes is { } attributes)
+            foreach (var attribute in attributes)
+                if (attribute.Name == name)
+                    return attribute.Value;
         return StringOrMemory.Empty;
     }
 
@@ -445,15 +516,16 @@ internal class ArenaElement : ArenaNode, IConstructableElement
             SetOwnAttribute(attributes[i].Name, attributes[i].Value);
     }
 
-    public bool HasAttribute(StringOrMemory name) => State.Attributes.Any(attribute => attribute.Name == name);
+    public bool HasAttribute(StringOrMemory name) => State.Attributes?.Any(attribute => attribute.Name == name) == true;
 
     public void SetupElement() { }
 
     public virtual IConstructableNode ShallowCopy()
     {
         var copy = Arena.CreateElement(LocalName, Prefix, NamespaceUri, Flags);
-        foreach (var attribute in State.Attributes)
-            copy.SetOwnAttribute(attribute.Name, attribute.Value);
+        if (State.Attributes is { } attributes)
+            foreach (var attribute in attributes)
+                copy.SetOwnAttribute(attribute.Name, attribute.Value);
         return copy;
     }
 }
@@ -505,8 +577,8 @@ internal sealed class ArenaTemplateElement(Arena arena, int handle)
 {
     public void PopulateFragment()
     {
-        State.TemplateContent = [.. State.Children];
-        State.Children.Clear();
+        State.TemplateContent = State.Children;
+        State.Children = null;
     }
 }
 
@@ -544,16 +616,16 @@ internal sealed class ArenaAttribute(StringOrMemory name, StringOrMemory value) 
     public StringOrMemory Value { get; set; } = value;
 }
 
-internal sealed class ArenaNamedNodeMap(List<ArenaAttribute> attributes) : IConstructableNamedNodeMap
+internal sealed class ArenaNamedNodeMap(NodeState state) : IConstructableNamedNodeMap
 {
     public IConstructableAttr? this[StringOrMemory name] =>
-        attributes.FirstOrDefault(attribute => attribute.Name == name);
-    public int Length => attributes.Count;
+        state.Attributes?.FirstOrDefault(attribute => attribute.Name == name);
+    public int Length => state.Attributes?.Count ?? 0;
 
     public bool SameAs(IConstructableNamedNodeMap? other) =>
         other is not null
-        && attributes.Count == other.Length
-        && attributes.All(attribute => other[attribute.Name]?.Value == attribute.Value);
+        && Length == other.Length
+        && (state.Attributes?.All(attribute => other[attribute.Name]?.Value == attribute.Value) ?? true);
 }
 
 internal interface IReferenceBuffer<T> : IDisposable
