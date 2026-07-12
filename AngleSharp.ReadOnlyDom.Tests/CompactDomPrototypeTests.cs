@@ -33,6 +33,24 @@ public class CompactDomPrototypeTests
     }
 
     [Test]
+    [Arguments(CompactIndexMode.Dense)]
+    [Arguments(CompactIndexMode.Sparse)]
+    [Arguments(CompactIndexMode.Dictionary)]
+    public async Task SourceLocationsSupportSelectableIndexModes(CompactIndexMode mode)
+    {
+        using var source = ReadOnlyParser
+            .CreateParser(ReadOnlyMetadataProfile.SourceMapped)
+            .ParseReadOnlyDocument("<main><p>content</p></main>");
+        using var compact = CompactDomBuilder.Build(source, new CompactDomOptions { SourceLocationIndexMode = mode });
+
+        var main = compact.FindElements("main").Single();
+        await Assert.That(compact.SourceLocationIndexMode).IsEqualTo(mode);
+        await Assert.That(compact.TryGetSourceLocation(main, out var location)).IsTrue();
+        await Assert.That(location.Index).IsGreaterThanOrEqualTo(0);
+        await Assert.That(compact.TryGetSourceLocation(0, out _)).IsFalse();
+    }
+
+    [Test]
     public async Task OptionalArraysEnableNavigationAndCompactSourceLocations()
     {
         using var source = ReadOnlyParser

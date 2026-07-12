@@ -116,4 +116,65 @@ public class CompactDomTraversalBenchmark
         return count;
     }
 }
+
+[MemoryDiagnoser]
+public class CompactSourceIndexBenchmark
+{
+    private IReadOnlyDocument _source = null!;
+    private CompactDocument _dense = null!;
+    private CompactDocument _sparse = null!;
+    private CompactDocument _dictionary = null!;
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        _source = ReadOnlyParser
+            .CreateParser(ReadOnlyMetadataProfile.SourceMapped)
+            .ParseReadOnlyDocument(StaticHtml.Github);
+        _dense = Build(CompactIndexMode.Dense);
+        _sparse = Build(CompactIndexMode.Sparse);
+        _dictionary = Build(CompactIndexMode.Dictionary);
+    }
+
+    [GlobalCleanup]
+    public void Cleanup()
+    {
+        _dense.Dispose();
+        _sparse.Dispose();
+        _dictionary.Dispose();
+        _source.Dispose();
+    }
+
+    [Benchmark(Baseline = true)]
+    public int LookupDense() => Lookup(_dense);
+
+    [Benchmark]
+    public int LookupSparse() => Lookup(_sparse);
+
+    [Benchmark]
+    public int LookupDictionary() => Lookup(_dictionary);
+
+    [Benchmark]
+    public CompactDocument BuildDense() => Build(CompactIndexMode.Dense);
+
+    [Benchmark]
+    public CompactDocument BuildSparse() => Build(CompactIndexMode.Sparse);
+
+    [Benchmark]
+    public CompactDocument BuildDictionary() => Build(CompactIndexMode.Dictionary);
+
+    private CompactDocument Build(CompactIndexMode mode) =>
+        CompactDomBuilder.Build(_source, new CompactDomOptions { SourceLocationIndexMode = mode });
+
+    private static int Lookup(CompactDocument document)
+    {
+        var checksum = 0;
+        for (var handle = 0; handle < document.NodeCount; handle++)
+        {
+            if (document.TryGetSourceLocation(handle, out var source))
+                checksum += source.Index;
+        }
+        return checksum;
+    }
+}
 #endif

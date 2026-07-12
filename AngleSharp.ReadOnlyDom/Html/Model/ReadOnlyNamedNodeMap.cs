@@ -10,7 +10,7 @@ internal class ReadOnlyNamedNodeMap
         IConstructableAttr,
         IReadOnlyAttr
 {
-    private SmallReferenceList<IConstructableAttr> _additionalAttributes;
+    private SmallReferenceList2<IConstructableAttr> _additionalAttributes;
     private StringOrMemory _name;
     private StringOrMemory _value;
 

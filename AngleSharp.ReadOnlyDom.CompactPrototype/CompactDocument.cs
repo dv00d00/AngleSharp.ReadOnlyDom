@@ -1,37 +1,42 @@
 namespace AngleSharp.ReadOnlyDom.CompactPrototype;
 
+/// <summary>
+/// An indexed, read-only view over a source document. Value memories borrow their backing storage from the
+/// source input; callers must keep that storage valid for the lifetime of this document.
+/// </summary>
 public sealed class CompactDocument : IDisposable
 {
     private readonly CompactNode[] _nodes;
     private readonly CompactAttribute[] _attributes;
-    private readonly string[] _names;
-    private readonly char[] _text;
+    private readonly IReadOnlyList<string> _names;
+    private readonly ReadOnlyMemory<char>[] _values;
     private readonly int[]? _parents;
-    private readonly CompactSourceLocation[]? _sources;
+    private readonly INodePayloadIndex<CompactSourceLocation>? _sources;
 
     internal CompactDocument(
         CompactNode[] nodes,
         CompactAttribute[] attributes,
-        string[] names,
-        char[] text,
+        IReadOnlyList<string> names,
+        ReadOnlyMemory<char>[] values,
         int[]? parents,
-        CompactSourceLocation[]? sources
+        INodePayloadIndex<CompactSourceLocation>? sources
     )
     {
         _nodes = nodes;
         _attributes = attributes;
         _names = names;
-        _text = text;
+        _values = values;
         _parents = parents;
         _sources = sources;
     }
 
     public int NodeCount => _nodes.Length;
     public int AttributeCount => _attributes.Length;
-    public int NameCount => _names.Length;
-    public int TextLength => _text.Length;
+    public int NameCount => _names.Count;
+    public int ValueCount => _values.Length;
     public bool HasParentLinks => _parents is not null;
     public bool HasSourceLocations => _sources is not null;
+    public CompactIndexMode SourceLocationIndexMode => _sources?.Mode ?? CompactIndexMode.None;
 
     public ref readonly CompactNode GetNode(int handle) => ref _nodes[handle];
 
@@ -39,19 +44,16 @@ public sealed class CompactDocument : IDisposable
 
     public string GetName(ushort nameId) => _names[nameId];
 
-    public ReadOnlySpan<char> GetValue(int start, int length) => _text.AsSpan(start, length);
+    public ReadOnlySpan<char> GetValue(int valueIndex, int length) =>
+        valueIndex < 0 ? ReadOnlySpan<char>.Empty : _values[valueIndex].Span[..length];
 
     public int GetParent(int handle) =>
-        _parents is null ? throw new InvalidOperationException("Parent links were not retained.") : _parents[handle];
+        _parents?[handle] ?? throw new InvalidOperationException("Parent links were not retained.");
 
     public bool TryGetSourceLocation(int handle, out CompactSourceLocation location)
     {
         if (_sources is not null)
-        {
-            location = _sources[handle];
-            return location.Index >= 0;
-        }
-
+            return _sources.TryGetValue(handle, out location);
         location = default;
         return false;
     }
@@ -104,4 +106,46 @@ public sealed class CompactNodeWrapper
     public IReadOnlyList<CompactNodeWrapper> Children { get; }
     public ref readonly CompactNode Node => ref Document.GetNode(Handle);
     public string Name => Document.GetName(Node.NameId);
+}
+
+internal interface INodePayloadIndex<T>
+{
+    CompactIndexMode Mode { get; }
+    bool TryGetValue(int handle, out T value);
+}
+
+internal sealed class DenseNodePayloadIndex<T>(T[] values, bool[] present) : INodePayloadIndex<T>
+{
+    public CompactIndexMode Mode => CompactIndexMode.Dense;
+
+    public bool TryGetValue(int handle, out T value)
+    {
+        value = values[handle];
+        return present[handle];
+    }
+}
+
+internal sealed class SparseNodePayloadIndex<T>(int[] handles, T[] values) : INodePayloadIndex<T>
+{
+    public CompactIndexMode Mode => CompactIndexMode.Sparse;
+
+    public bool TryGetValue(int handle, out T value)
+    {
+        var index = Array.BinarySearch(handles, handle);
+        if (index >= 0)
+        {
+            value = values[index];
+            return true;
+        }
+
+        value = default!;
+        return false;
+    }
+}
+
+internal sealed class DictionaryNodePayloadIndex<T>(Dictionary<int, T> values) : INodePayloadIndex<T>
+{
+    public CompactIndexMode Mode => CompactIndexMode.Dictionary;
+
+    public bool TryGetValue(int handle, out T value) => values.TryGetValue(handle, out value!);
 }

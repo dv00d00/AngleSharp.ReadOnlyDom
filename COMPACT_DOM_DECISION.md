@@ -234,3 +234,25 @@ The collection pass tested owner-specific layouts rather than assuming one gener
 On x64, the preserved two-inline generic struct is 32 bytes and the four-inline variant is 48 bytes. Embedding four slots
 directly in `ReadOnlyNodeList` yields an approximately 64-byte list object, avoiding separate `List<T>` and backing-array
 objects for up to four children. Both generic variants remain in source as fixtures for the later deep optimization pass.
+
+### Source-backed build view and payload-index modes
+
+The build-from-read-only prototype now retains node and attribute values as `ReadOnlyMemory<char>` references rather than
+copying every value into a second character buffer. This is a borrowed view: source input storage must remain valid for the
+compact document lifetime. Independent ownership belongs in the direct parser, where ownership can transfer without
+retaining or unexpectedly disposing the source read-only DOM.
+
+The builder performs an exact structural sizing pass for nodes, attributes, and non-empty value references. A temporary
+single-pass `List<T>` implementation allocated 1,517.85 KB to compact the GitHub fixture; exact arrays reduced this to
+1,012.53 KB. The short-run exact-array build time was 857.5 us. This preserves source-backed values without geometric list
+growth and duplicate final arrays.
+
+Source locations now exercise three opt-in immutable index layouts behind `CompactDomOptions`: dense arrays, sorted sparse
+handle/value arrays, and a dictionary. The legacy `CompactMetadataOptions.SourceLocations` path selects dense storage. These
+are payload-specific experiments rather than a generic column abstraction; build cost, retained memory, and lookup cost must
+select their eventual use.
+
+On the SourceMapped GitHub fixture, scanning every node for a source location measured 4.75 us with dense arrays, 10.26 us
+with a dictionary, and 114.46 us with binary-searched sparse arrays. Dense and sparse builds allocated approximately the
+same 1.127 MB because locations were not sparse enough to pay for sparse indexing; the dictionary allocated 1.158 MB. Sparse
+storage remains relevant for genuinely rare payloads, but source positions on this workload should use dense storage.
