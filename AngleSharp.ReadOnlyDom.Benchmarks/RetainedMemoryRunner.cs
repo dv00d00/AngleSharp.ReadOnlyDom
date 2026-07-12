@@ -2,8 +2,12 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using AngleSharp.Dom;
+using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Html;
+#if NET10_0
+using AngleSharp.ReadOnlyDom.CompactPrototype;
+#endif
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
@@ -27,7 +31,17 @@ internal static class RetainedMemoryRunner
                 Median(Enumerable.Range(0, repetitions).Select(_ => MeasureReadOnly(sources, profile)).ToArray())
             )
             .ToArray();
-        var report = Render(tier, repetitions, sources, standard, readOnly);
+        var compact = new[]
+        {
+            CompactMetadataOptions.None,
+            CompactMetadataOptions.ParentLinks,
+            CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations,
+        }
+            .Select(options =>
+                Median(Enumerable.Range(0, repetitions).Select(_ => MeasureCompact(sources, options)).ToArray())
+            )
+            .ToArray();
+        var report = Render(tier, repetitions, sources, standard, readOnly.Concat(compact).ToArray());
 
         if (output is not null)
         {
@@ -53,17 +67,7 @@ internal static class RetainedMemoryRunner
     {
         var parser = new HtmlParser();
         var documents = new List<IDocument>(sources.Count);
-        return Measure(
-            "Standard AngleSharp",
-            sources,
-            source =>
-            {
-                var document = parser.ParseDocument(source);
-                documents.Add(document);
-                return Count(document);
-            },
-            documents
-        );
+        return Measure("Standard AngleSharp", sources, parser.ParseDocument, documents, Count);
     }
 
     private static Measurement MeasureReadOnly(IReadOnlyList<CorpusDocument> sources, ReadOnlyMetadataProfile profile)
@@ -73,21 +77,38 @@ internal static class RetainedMemoryRunner
         return Measure(
             $"Read-only {profile}",
             sources,
+            source => parser.ParseReadOnlyDocument(source),
+            documents,
+            Count
+        );
+    }
+
+    private static Measurement MeasureCompact(IReadOnlyList<CorpusDocument> sources, CompactMetadataOptions options)
+    {
+        var profile = options.HasFlag(CompactMetadataOptions.SourceLocations)
+            ? ReadOnlyMetadataProfile.SourceMapped
+            : ReadOnlyMetadataProfile.Minimal;
+        var parser = ReadOnlyParser.CreateParser(profile);
+        var documents = new List<CompactDocument>(sources.Count);
+        return Measure(
+            $"Compact {options}",
+            sources,
             source =>
             {
-                var document = parser.ParseReadOnlyDocument(source);
-                documents.Add(document);
-                return Count(document);
+                using var readOnly = parser.ParseReadOnlyDocument(source);
+                return CompactDomBuilder.Build(readOnly, options);
             },
-            documents
+            documents,
+            Count
         );
     }
 
     private static Measurement Measure<T>(
         string implementation,
         IReadOnlyList<CorpusDocument> sources,
-        Func<string, Counts> parse,
-        List<T> documents
+        Func<string, T> parse,
+        List<T> documents,
+        Func<T, Counts> count
     )
         where T : IDisposable
     {
@@ -95,17 +116,19 @@ internal static class RetainedMemoryRunner
         var retainedBefore = GC.GetTotalMemory(true);
         var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         var peak = retainedBefore;
-        var counts = new Counts();
         var stopwatch = Stopwatch.StartNew();
 
         foreach (var source in sources)
         {
-            counts += parse(source.Html);
+            documents.Add(parse(source.Html));
             peak = Math.Max(peak, GC.GetTotalMemory(false));
         }
 
         stopwatch.Stop();
         var allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        var counts = new Counts();
+        foreach (var document in documents)
+            counts += count(document);
         var retained = Math.Max(0, GC.GetTotalMemory(true) - retainedBefore);
         GC.KeepAlive(documents);
         foreach (var document in documents)
@@ -126,7 +149,8 @@ internal static class RetainedMemoryRunner
             IText => new Counts(0, 1, 0),
             _ => new Counts(),
         };
-        foreach (var child in node.ChildNodes)
+        var children = node is IHtmlTemplateElement template ? template.Content.ChildNodes : node.ChildNodes;
+        foreach (var child in children)
         {
             counts += Count(child);
         }
@@ -142,9 +166,26 @@ internal static class RetainedMemoryRunner
             IReadOnlyTextNode => new Counts(0, 1, 0),
             _ => new Counts(),
         };
-        foreach (var child in node.ChildNodes)
+        var children = node is IReadOnlyTemplateElement template ? template.Content : node.ChildNodes;
+        foreach (var child in children)
         {
             counts += Count(child);
+        }
+
+        return counts;
+    }
+
+    private static Counts Count(CompactDocument document)
+    {
+        var counts = new Counts(0, 0, document.AttributeCount);
+        for (var handle = 0; handle < document.NodeCount; handle++)
+        {
+            counts += document.GetNode(handle).Kind switch
+            {
+                CompactNodeKind.Element => new Counts(1, 0, 0),
+                CompactNodeKind.Text => new Counts(0, 1, 0),
+                _ => new Counts(),
+            };
         }
 
         return counts;
@@ -168,6 +209,7 @@ internal static class RetainedMemoryRunner
         report.AppendLine(
             "- Method: sources are rooted before measurement; a forced full GC establishes the baseline; all parsed documents remain reachable; another forced full GC estimates retained managed bytes."
         );
+        report.AppendLine("- Counting is performed after the measured parse/allocation window.");
         report.AppendLine(
             "- Noise: run on an idle machine. Peak live heap is sampled after each document and is approximate; total allocation is current-thread allocation and excludes work moved to other threads."
         );

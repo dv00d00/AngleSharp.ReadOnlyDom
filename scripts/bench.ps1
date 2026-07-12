@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("micro", "small", "full", "retained", "all")]
+    [ValidateSet("micro", "small", "full", "retained", "compact", "all")]
     [string] $Tier = "all"
 )
 
@@ -42,6 +42,9 @@ function Invoke-Benchmark([string] $filter, [string] $name, [string] $corpusTier
 
 if ($Tier -in @("micro", "all")) {
     Invoke-Benchmark "*OverheadBenchmark*" "micro"
+}
+if ($Tier -in @("compact", "all")) {
+    Invoke-Benchmark "*CompactDom*" "compact"
 }
 if ($Tier -in @("small", "all")) {
     Invoke-Benchmark "*CorpusBenchmark*" "corpus-small" "small"
