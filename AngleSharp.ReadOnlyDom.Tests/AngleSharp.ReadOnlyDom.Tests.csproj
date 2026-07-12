@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net8.0;net10.0;net472</TargetFrameworks>
+    <TargetFrameworks>net10.0;net481</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>AngleSharp.Readonly.Tests</RootNamespace>
@@ -11,7 +11,7 @@
   <ItemGroup>
     <PackageReference Include="TUnit" />
     <PackageReference Include="AngleSharp" />
-    <PackageReference Include="Polyfill" Condition="'$(TargetFramework)' == 'net472'" PrivateAssets="all" />
+    <PackageReference Include="Polyfill" Condition="'$(TargetFramework)' == 'net481'" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

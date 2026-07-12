@@ -200,3 +200,5 @@ pip-log.txt
 
 /src/AngleSharp.Benchmarks/BenchmarkDotNet.Artifacts*
 /src/AngleSharp.Benchmarks/temp
+/BenchmarkDotNet.Artifacts/
+/artifacts/benchmarks/
