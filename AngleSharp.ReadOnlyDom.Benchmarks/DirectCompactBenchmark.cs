@@ -9,6 +9,8 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 public class DirectCompactBuildBenchmark
 {
     private readonly HtmlParser _readOnlyParser = ReadOnlyParser.CreateParser(ReadOnlyMetadataProfile.Minimal);
+    private readonly DirectCompactParserSession _directOwned = new();
+    private readonly DirectCompactParserSession _directPooled = new(ownership: CompactBufferOwnership.Pooled);
 
     [Benchmark(Baseline = true)]
     public int ParseReadOnly()
@@ -38,6 +40,33 @@ public class DirectCompactBuildBenchmark
         using var compact = DirectCompactParser.Parse(StaticHtml.Github, ownership: CompactBufferOwnership.Pooled);
         return compact.NodeCount;
     }
+
+    [Benchmark]
+    public int ParseDirectHotCompactReused()
+    {
+        using var compact = _directOwned.Parse(StaticHtml.Github);
+        return compact.NodeCount;
+    }
+
+    [Benchmark]
+    public int ParseDirectHotCompactPooledReused()
+    {
+        using var compact = _directPooled.Parse(StaticHtml.Github);
+        return compact.NodeCount;
+    }
+}
+
+[MemoryDiagnoser]
+public class DirectCompactSetupBenchmark
+{
+    [Benchmark(Baseline = true)]
+    public HtmlParser CreateReadOnlyParser() => ReadOnlyParser.CreateParser(ReadOnlyMetadataProfile.Minimal);
+
+    [Benchmark]
+    public DirectCompactParserSession CreateDirectOwned() => new();
+
+    [Benchmark]
+    public DirectCompactParserSession CreateDirectPooled() => new(ownership: CompactBufferOwnership.Pooled);
 }
 
 [MemoryDiagnoser]

@@ -16,6 +16,13 @@ public sealed class DirectCompactArenaTests
         await Assert.That(Unsafe.SizeOf<HotCompactNode>()).IsEqualTo(16);
 
     [Test]
+    public async Task InlineReferenceListLayoutsAreExplicit()
+    {
+        await Assert.That(Unsafe.SizeOf<SmallReferenceList<object>>()).IsEqualTo(32);
+        await Assert.That(Unsafe.SizeOf<SmallReferenceList4<object>>()).IsEqualTo(48);
+    }
+
+    [Test]
     public async Task DirectArenaMatchesReadOnlyFactoryOnWildMarkup()
     {
         string[] corpus =
@@ -71,6 +78,19 @@ public sealed class DirectCompactArenaTests
         await Assert.That(document.FindNameId("main")).IsNotEqualTo(ushort.MaxValue);
         document.Dispose();
         document.Dispose();
+    }
+
+    [Test]
+    public async Task ReusableSessionCreatesIndependentDocuments()
+    {
+        var session = new DirectCompactParserSession(ownership: CompactBufferOwnership.Pooled);
+        using var first = session.Parse("<main><p>first</p></main>");
+        var firstCount = first.NodeCount;
+        first.Dispose();
+
+        using var second = session.Parse("<main><p>second</p><p>third</p></main>");
+        await Assert.That(second.NodeCount).IsGreaterThan(firstCount);
+        await Assert.That(second.FindNameId("main")).IsNotEqualTo(ushort.MaxValue);
     }
 
     private static string Snapshot(INode node)

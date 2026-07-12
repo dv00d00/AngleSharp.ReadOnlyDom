@@ -204,3 +204,33 @@ Pool buckets are larger than the logical arrays, and buffers cannot be reused wh
 mode is therefore appropriate only for sequential parse/use/dispose pipelines with reliable disposal. Exact owned arrays
 remain the better default for long-lived documents or many documents alive concurrently. A deep optimization pass should
 retain and separately measure both modes rather than generalizing from either workload.
+
+### Fair parser reuse and small-collection pass
+
+Reusable `DirectCompactParserSession` instances now put the direct and read-only construction benchmarks on the same parser
+lifetime. Setup is reported separately instead of being charged only to direct parsing:
+
+| Parser setup | Mean | Allocated |
+| --- | ---: | ---: |
+| Reused read-only parser factory call | 525 ns | 134 B |
+| New direct owned session | 4.65 us | 17,440 B |
+| New direct pooled session | 4.64 us | 17,440 B |
+
+Reusing the direct session saves about 17 KB per parse but does not close the structural allocation gap. In the fair short
+matrix, pooled direct construction used 1,507.7 KB versus 1,524.7 KB for the one-shot API and 905.7 KB for the temporarily
+regressed read-only variant. Parser setup was therefore a benchmark defect, but not the root cause.
+
+The collection pass tested owner-specific layouts rather than assuming one generic small-list policy:
+
+- Making `ReadOnlyNamedNodeMap` allocate a nullable `List<T>` at attribute two regressed the GitHub parse from about 860 KB
+  to 906 KB. The existing two-inline additional-attribute storage was restored.
+- Empty direct-arena child and attribute lists are now null and allocate only on first mutation. On the five-page retained
+  corpus this reduced direct owned construction allocation from 264.98 MB to 263.37 MB.
+- `ReadOnlyNodeList` now stores four child references directly and allocates overflow only at child five. It is instantiated
+  only when a node gains its second child, so leaf and singleton nodes do not pay for these fields.
+- Four inline child slots reduced five-page read-only Minimal allocation from roughly 66.01 MB to 65.20 MB while increasing
+  retained memory from 62.16 MB to 62.25 MB. This is the preferred trade for parse/extract/dispose workloads.
+
+On x64, the preserved two-inline generic struct is 32 bytes and the four-inline variant is 48 bytes. Embedding four slots
+directly in `ReadOnlyNodeList` yields an approximately 64-byte list object, avoiding separate `List<T>` and backing-array
+objects for up to four children. Both generic variants remain in source as fixtures for the later deep optimization pass.
