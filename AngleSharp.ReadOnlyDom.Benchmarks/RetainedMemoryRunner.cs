@@ -41,7 +41,12 @@ internal static class RetainedMemoryRunner
                 Median(Enumerable.Range(0, repetitions).Select(_ => MeasureCompact(sources, options)).ToArray())
             )
             .ToArray();
-        var report = Render(tier, repetitions, sources, standard, readOnly.Concat(compact).ToArray());
+        var direct = Enum.GetValues<CompactBufferOwnership>()
+            .Select(ownership =>
+                Median(Enumerable.Range(0, repetitions).Select(_ => MeasureDirectCompact(sources, ownership)).ToArray())
+            )
+            .ToArray();
+        var report = Render(tier, repetitions, sources, standard, readOnly.Concat(compact).Concat(direct).ToArray());
 
         if (output is not null)
         {
@@ -98,6 +103,21 @@ internal static class RetainedMemoryRunner
                 using var readOnly = parser.ParseReadOnlyDocument(source);
                 return CompactDomBuilder.Build(readOnly, options);
             },
+            documents,
+            Count
+        );
+    }
+
+    private static Measurement MeasureDirectCompact(
+        IReadOnlyList<CorpusDocument> sources,
+        CompactBufferOwnership ownership
+    )
+    {
+        var documents = new List<HotCompactDocument>(sources.Count);
+        return Measure(
+            $"Direct compact hot core {ownership}",
+            sources,
+            source => DirectCompactParser.Parse(source, ownership: ownership),
             documents,
             Count
         );
@@ -176,6 +196,22 @@ internal static class RetainedMemoryRunner
     }
 
     private static Counts Count(CompactDocument document)
+    {
+        var counts = new Counts(0, 0, document.AttributeCount);
+        for (var handle = 0; handle < document.NodeCount; handle++)
+        {
+            counts += document.GetNode(handle).Kind switch
+            {
+                CompactNodeKind.Element => new Counts(1, 0, 0),
+                CompactNodeKind.Text => new Counts(0, 1, 0),
+                _ => new Counts(),
+            };
+        }
+
+        return counts;
+    }
+
+    private static Counts Count(HotCompactDocument document)
     {
         var counts = new Counts(0, 0, document.AttributeCount);
         for (var handle = 0; handle < document.NodeCount; handle++)

@@ -94,3 +94,113 @@ especially strong retained-memory savings for source metadata. The next architec
 real consumers, is an upstream opaque-handle sink proposal followed by a direct-construction benchmark. Without that hook,
 offer build-then-compact only as an explicit option for long-lived documents where retained memory outweighs temporary
 allocation and peak-live cost.
+
+## Direct factory-backed arena follow-up
+
+A second prototype parses directly through AngleSharp's generic DOM construction factory into an indexed arena, then
+finalizes that mutable arena into a 16-byte `HotCompactNode` array. Attributes, values, optional parents, and optional source
+locations are cold storage. Parser-facing reference wrappers exist only while AngleSharp's tree builder is active and are not
+retained by the returned `HotCompactDocument`.
+
+This is an experiment, not a commitment to the 16-byte layout. The hot record intentionally contains only first-child,
+next-sibling, cold-payload index, interned name ID, node kind, and one byte of hot flags. Any production contract requiring
+all `NodeFlags` would need a separate cold column or a purpose-built compact flag contract.
+
+### Short .NET 10 construction result
+
+| Operation | Mean | Allocated |
+| --- | ---: | ---: |
+| Parse read-only Minimal | 4.963 ms | 860.55 KB |
+| Parse read-only then 32-byte compact | 5.964 ms | 2,096.49 KB |
+| Parse directly to arena then 16-byte hot compact | 5.928 ms | 2,485.33 KB |
+
+The factory route removes coexistence with the read-only object DOM, but this first arena is not allocation-efficient. The
+generic builder requires one reference wrapper per node, while the prototype also uses per-node mutable state and ordinary
+`List<T>` growth storage. Direct construction matches build-then-compact time but allocates 19% more. This disproves the
+assumption that avoiding the first DOM is sufficient by itself.
+
+### Locality result
+
+| Operation | Mean | Allocated |
+| --- | ---: | ---: |
+| Linear scan, 32-byte nodes | 1.841 us | 0 B |
+| Linear scan, 16-byte hot nodes | 1.826 us | 0 B |
+| `div` scan, wide node plus string lookup | 6.827 us | 0 B |
+| `div` scan, hot node plus interned ID | 1.881 us | 0 B |
+| Linked traversal, hot node plus parent column | 8.178 us | 0 B |
+
+Halving the record did not materially improve a simple linear kind scan on this corpus. The large selector win combines the
+smaller record with integer name IDs and removal of string lookup; it must not be attributed to record width alone. This
+supports a hot/cold layout, but only where APIs and query execution consistently consume the hot fields.
+
+### Retained-memory result
+
+A one-repetition five-page retained run measured:
+
+| Representation | Allocated | Retained | Approx. peak live | Retained / node |
+| --- | ---: | ---: | ---: | ---: |
+| Read-only Minimal | 66.03 MB | 62.16 MB | 62.40 MB | 102.5 B |
+| Build-then-compact, no metadata | 209.04 MB | 42.74 MB | 105.45 MB | 70.5 B |
+| Direct factory arena, 16-byte hot core | 292.05 MB | 40.67 MB | 249.07 MB | 67.0 B |
+
+The final direct representation is the smallest measured result, about 5% below the 32-byte compact representation and 35%
+below read-only Minimal. Construction allocation and sampled peak are currently unacceptable. Peak includes uncollected
+construction garbage between documents, but that garbage is itself evidence of excessive transient work.
+
+### Correctness boundary and next decision
+
+The direct factory path is checked against AngleSharp's mutable core DOM on malformed formatting, implied elements, doctypes,
+templates, entities, and broken comments. It also explicitly documents a known divergence for HTML inside SVG
+`foreignObject`: AngleSharp's generic tree builder contains concrete core-element checks, so a custom construction factory
+cannot reproduce the core tree in every case even when its own node operations are correct.
+
+Do not select either the 16-byte layout or raw-token parsing as production architecture yet. The evidence supports this order:
+
+1. Keep the hot/cold final representation as a promising query and retained-memory hypothesis.
+2. Separately measure pooled construction scratch. A disposable document may optionally own rented final buffers, but that
+   changes lifetime semantics and must be compared with exact-size owned arrays.
+3. Prefer an upstream opaque-handle tree-builder sink. It retains AngleSharp's HTML tree-construction algorithms without the
+   reference-wrapper and concrete-element constraints.
+4. Consume raw tokenizer tokens only if the tree builder cannot be generalized. Tokens alone are not a DOM; this would mean
+   owning adoption-agency, foster-parenting, template, foreign-content, and insertion-mode correctness.
+
+The current factory arena is valuable evidence and a benchmark fixture, not a candidate default parser.
+
+### Pooling and alternate-key follow-up
+
+Both the original List-backed construction arena and an opt-in pooled arena are retained in the prototype. Likewise,
+`CompactBufferOwnership.Owned` produces exact-size arrays while `Pooled` rents the final node, payload, attribute, name, text,
+parent, and source buffers. `HotCompactDocument.Dispose()` idempotently returns rented buffers and clears reference and text
+arrays before return.
+
+On .NET 10, name interning now uses `Dictionary<string, ushort>.GetAlternateLookup<ReadOnlySpan<char>>()`. Lookup hashes the
+source span without allocating; only a new distinct name becomes an owned string. The net8 build preserves the original
+`Dictionary<StringOrMemory, ushort>` implementation. A frozen dictionary is intentionally not used because the table is
+mutated during construction and discarded after finalization.
+
+Successive short construction measurements isolated the effects:
+
+| Direct variant | Mean | Allocated |
+| --- | ---: | ---: |
+| Owned, source-memory name keys | 5.964 ms | 2,485.43 KB |
+| Pooled final buffers, source-memory name keys | 5.652 ms | 1,922.87 KB |
+| Owned, alternate span name lookup | 5.838 ms | 2,189.74 KB |
+| Pooled final buffers and alternate span lookup | 5.543 ms | 1,627.08 KB |
+| Above plus pooled arena reference buffers, isolated rerun | 5.711 ms | 1.46 MB |
+
+ShortRun timing noise is too wide to distinguish the last two pooled timings. Allocation is deterministic enough to show
+that alternate span lookup saves about 296 KB on this document, final-buffer pooling saves about 563 KB after warmup, and
+pooling the arena's two top-level reference buffers saves another roughly 160 KB. The remaining allocation is dominated by
+per-node reference wrappers, `NodeState` objects, child lists, attributes, and finalization bookkeeping.
+
+Pooling reverses direction for concurrently retained documents. In a one-repetition five-page retained run:
+
+| Direct ownership | Allocated | Retained | Approx. peak live | Retained / node |
+| --- | ---: | ---: | ---: | ---: |
+| Exact owned arrays | 264.98 MB | 40.67 MB | 247.59 MB | 67.0 B |
+| Pooled arrays and arena | 287.47 MB | 96.76 MB | 278.89 MB | 159.5 B |
+
+Pool buckets are larger than the logical arrays, and buffers cannot be reused while all documents remain rooted. The pooled
+mode is therefore appropriate only for sequential parse/use/dispose pipelines with reliable disposal. Exact owned arrays
+remain the better default for long-lived documents or many documents alive concurrently. A deep optimization pass should
+retain and separately measure both modes rather than generalizing from either workload.
