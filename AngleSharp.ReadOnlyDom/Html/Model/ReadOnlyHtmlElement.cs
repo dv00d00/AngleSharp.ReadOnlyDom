@@ -54,7 +54,7 @@ class ReadOnlyHtmlElement : ReadOnlyElement, IConstructableElement
 
     public virtual IConstructableNode ShallowCopy()
     {
-        var readOnlyElement = new ReadOnlyHtmlElement(Owner, LocalName, prefix: default, Flags);
+        var readOnlyElement = new ReadOnlyHtmlElement(null, LocalName, Prefix, Flags);
         PopulateAttributes(readOnlyElement);
         return readOnlyElement;
     }

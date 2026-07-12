@@ -13,9 +13,9 @@ class ReadOnlyHtmlScript : ReadOnlyHtmlElement, IConstructableScriptElement
 
     Task IConstructableScriptElement.RunAsync(CancellationToken cancel) => Task.CompletedTask;
 
-    public IConstructableNode ShallowCopy()
+    public override IConstructableNode ShallowCopy()
     {
-        var readOnlyHtmlScript = new ReadOnlyHtmlScript(Owner);
+        var readOnlyHtmlScript = new ReadOnlyHtmlScript(null, Prefix);
         PopulateAttributes(readOnlyHtmlScript);
         return readOnlyHtmlScript;
     }

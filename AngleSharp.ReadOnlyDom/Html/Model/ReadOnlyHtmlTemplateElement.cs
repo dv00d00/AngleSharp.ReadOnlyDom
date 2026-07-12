@@ -28,9 +28,9 @@ class ReadOnlyHtmlTemplateElement : ReadOnlyHtmlElement, IConstructableTemplateE
         }
     }
 
-    public IConstructableNode ShallowCopy()
+    public override IConstructableNode ShallowCopy()
     {
-        var readOnlyElement = new ReadOnlyHtmlTemplateElement(Owner) { Content = Content };
+        var readOnlyElement = new ReadOnlyHtmlTemplateElement(null, Prefix);
         PopulateAttributes(readOnlyElement);
         return readOnlyElement;
     }

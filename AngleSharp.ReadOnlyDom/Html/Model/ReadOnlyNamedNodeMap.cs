@@ -181,4 +181,22 @@ internal class ReadOnlyNamedNodeMap
             Length++;
         }
     }
+
+    internal ReadOnlyNamedNodeMap Clone()
+    {
+        var clone = new ReadOnlyNamedNodeMap();
+        if (Length == 0)
+        {
+            return clone;
+        }
+
+        clone.AddOrUpdate(_name, _value);
+        for (var i = 0; i < _additionalAttributes.Count; i++)
+        {
+            var attribute = _additionalAttributes[i];
+            clone.AddOrUpdate(attribute.Name, attribute.Value);
+        }
+
+        return clone;
+    }
 }

@@ -5,12 +5,7 @@ using AngleSharp.Html.Parser.Tokens.Struct;
 
 namespace AngleSharp.ReadOnlyDom.Html.Model;
 
-internal abstract class ReadOnlyNode
-    : IConstructableNode,
-        IReadOnlyNode,
-        IConstructableNodeList,
-        IReadOnlyNodeList,
-        IPrintable
+internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IConstructableNodeList, IReadOnlyNodeList
 {
     private static readonly ReadOnlyNodeList EmptyChildNodes = [];
     private static ReadOnlySpan<char> WhiteSpace => " \t\r\n".AsSpan();
@@ -25,20 +20,9 @@ internal abstract class ReadOnlyNode
     IReadOnlyNode? IReadOnlyNode.Parent => _parent as IReadOnlyNode;
     IReadOnlyNodeList IReadOnlyNode.ChildNodes => (IReadOnlyNodeList)_ChildNodes;
 
-    public StringOrMemory NodeName
-    {
-        get => _nodeName;
-        internal set => _nodeName = value;
-    }
+    public virtual StringOrMemory NodeName => _nodeName;
 
-    public ReadOnlyDocument? Owner => null;
-
-    public ReadOnlyNode(
-        ReadOnlyDocument? owner,
-        StringOrMemory name,
-        NodeType nodeType = NodeType.Element,
-        NodeFlags flags = NodeFlags.None
-    )
+    public ReadOnlyNode(ReadOnlyDocument? _, StringOrMemory name, NodeFlags flags = NodeFlags.None)
     {
         _nodeName = name;
         _flags = flags;
@@ -127,7 +111,7 @@ internal abstract class ReadOnlyNode
             return;
         }
 
-        AddNode(new ReadOnlyTextNode(Owner, text));
+        AddNode(new ReadOnlyTextNode(null, text));
     }
 
     public void InsertText(int idx, StringOrMemory text, bool emitWhiteSpaceOnly = false)
@@ -137,13 +121,13 @@ internal abstract class ReadOnlyNode
             return;
         }
 
-        var readOnlyTextNode = new ReadOnlyTextNode(Owner, text) { Parent = this };
+        var readOnlyTextNode = new ReadOnlyTextNode(null, text) { Parent = this };
         InsertNode(idx, readOnlyTextNode);
     }
 
     public void AddComment(ref StructHtmlToken token)
     {
-        var readOnlyTextNode = new ReadOnlyComment(Owner, token.Data) { Parent = this };
+        var readOnlyTextNode = new ReadOnlyComment(null, token.Data) { Parent = this };
         AddNode(readOnlyTextNode);
     }
 

@@ -4,9 +4,11 @@ using AngleSharp.Dom;
 namespace AngleSharp.ReadOnlyDom.Html.Model;
 
 internal class ReadOnlyComment(ReadOnlyDocument? owner, StringOrMemory tokenData)
-    : ReadOnlyCharacterData(owner, "#comment", NodeType.Comment, tokenData),
+    : ReadOnlyCharacterData(owner, tokenData),
         IReadOnlyCommentNode
 {
+    public override StringOrMemory NodeName => "#comment";
+
     public override void Print(TextWriter writer)
     {
         writer.Write("<!--");

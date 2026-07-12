@@ -27,7 +27,8 @@ hierarchy, and does not naturally represent optional capabilities.
 
 ## Correctness and contract issues
 
-The following shortcuts currently resemble supported information but silently return incomplete or incorrect values:
+The initial review found the following shortcuts that resembled supported information but silently returned incomplete or
+incorrect values:
 
 - `SourceReference` ignores writes even when AngleSharp's `IsKeepingSourceReferences` is enabled.
 - `NamespaceUri` always returns empty, including for SVG and MathML.
@@ -42,6 +43,10 @@ The following shortcuts currently resemble supported information but silently re
 - The large tag-flags table duplicates AngleSharp metadata manually and can drift.
 - `TrackError` and several document lifecycle methods silently do nothing.
 - `ReadOnlyDocument.DocumentElement => this` gives the document and document element unusual semantics.
+
+The construction-allocation and correctness passes resolved these items except for canonical generation of the tag-flags
+table, which remains tracked separately. Owner-document storage and browser lifecycle/error retention are now explicitly
+unsupported by the minimal profile, as documented below, rather than exposed as misleading node state.
 
 These should become implemented features or explicitly unavailable capabilities, rather than nullable or no-op
 approximations.
@@ -408,3 +413,13 @@ Across the 50 valid real-page inputs in `ParserBenchmark` compared with the prev
 
 A contiguous text-slice coalescing experiment was rejected: it saved effectively no allocation on the benchmark and
 added about 1% execution time. Keep this benchmark gate for future plausible-but-unhelpful optimizations.
+
+# Correctness contract of the minimal DOM
+
+The minimal representation intentionally does not retain an owner-document reference on every node. Parent links provide
+tree navigation, while `IReadOnlyDocument.DocumentElement`, `Head`, and `Body` expose document navigation. This saves one
+reference-sized field per node; code requiring owner lookup belongs in an opt-in navigable metadata profile.
+
+Likewise, the construction-only lifecycle methods required by AngleSharp do not model a browser lifecycle: loading completes
+synchronously, microtask/stable-state/manifest hooks are no-ops, scripts do not execute, and parse errors are not retained.
+Malformed HTML remains permissive. A future diagnostic profile may retain errors explicitly and pay for that information.

@@ -4,7 +4,7 @@ using AngleSharp.Dom;
 namespace AngleSharp.ReadOnlyDom.Html.Model;
 
 internal class ReadOnlyDocumentType(ReadOnlyDocument document, StringOrMemory nameString)
-    : ReadOnlyNode(document, nameString, NodeType.DocumentType)
+    : ReadOnlyNode(document, nameString)
 {
     public StringOrMemory SystemIdentifier { get; set; }
     public StringOrMemory PublicIdentifier { get; set; }

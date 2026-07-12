@@ -14,9 +14,9 @@ class ReadOnlyHtmlMeta : ReadOnlyHtmlElement, IConstructableMetaElement
         // do nothing
     }
 
-    public IConstructableNode ShallowCopy()
+    public override IConstructableNode ShallowCopy()
     {
-        var readOnlyElement = new ReadOnlyHtmlMeta(Owner);
+        var readOnlyElement = new ReadOnlyHtmlMeta(null, Prefix);
         PopulateAttributes(readOnlyElement);
         return readOnlyElement;
     }

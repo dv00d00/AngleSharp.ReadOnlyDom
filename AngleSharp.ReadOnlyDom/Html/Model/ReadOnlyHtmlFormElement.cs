@@ -9,9 +9,9 @@ class ReadOnlyHtmlFormElement : ReadOnlyHtmlElement, IConstructableFormElement
     public ReadOnlyHtmlFormElement(ReadOnlyDocument? owner, StringOrMemory prefix = default)
         : base(owner, TagNames.Form, prefix, NodeFlags.Special) { }
 
-    public new IConstructableNode ShallowCopy()
+    public override IConstructableNode ShallowCopy()
     {
-        var readOnlyElement = new ReadOnlyHtmlFormElement(Owner, default);
+        var readOnlyElement = new ReadOnlyHtmlFormElement(null, Prefix);
         PopulateAttributes(readOnlyElement);
         return readOnlyElement;
     }

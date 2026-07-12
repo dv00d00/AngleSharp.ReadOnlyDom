@@ -17,15 +17,29 @@ internal class ReadOnlyDocument : ReadOnlyHtmlElement, IConstructableDocument, I
     public IDisposable? Builder { get; set; }
     public QuirksMode QuirksMode { get; set; }
 
-    public IConstructableElement DocumentElement => this;
-    public IConstructableElement Head => FindChildByLocalName("head");
+    public IConstructableElement DocumentElement => FindDocumentElement();
+    public IConstructableElement? Head => FindHtmlChild("head");
 
-    IReadOnlyElement IReadOnlyDocument.Body => FindChildByLocalName("body");
-    IReadOnlyElement IReadOnlyDocument.Head => FindChildByLocalName("head");
+    IReadOnlyElement IReadOnlyDocument.DocumentElement => FindDocumentElement();
+    IReadOnlyElement IReadOnlyDocument.Body => FindHtmlChild("body") ?? throw MissingDocumentElement("body");
+    IReadOnlyElement IReadOnlyDocument.Head => FindHtmlChild("head") ?? throw MissingDocumentElement("head");
 
-    private ReadOnlyHtmlElement FindChildByLocalName(StringOrMemory localName)
+    private ReadOnlyHtmlElement FindDocumentElement()
     {
         foreach (var node in _ChildNodes)
+        {
+            if (node is ReadOnlyHtmlElement element)
+            {
+                return element;
+            }
+        }
+
+        throw MissingDocumentElement("html");
+    }
+
+    private ReadOnlyHtmlElement? FindHtmlChild(StringOrMemory localName)
+    {
+        foreach (var node in FindDocumentElement().ChildNodes)
         {
             if (node is ReadOnlyHtmlElement element && element.LocalName == localName)
             {
@@ -33,20 +47,25 @@ internal class ReadOnlyDocument : ReadOnlyHtmlElement, IConstructableDocument, I
             }
         }
 
-        throw new InvalidOperationException($"No child element with local name '{localName}' was found.");
+        return null;
     }
+
+    private static InvalidOperationException MissingDocumentElement(StringOrMemory localName) =>
+        new($"No document element with local name '{localName}' was found.");
 
     IReadOnlyNode? IReadOnlyNode.Parent => _parent as IReadOnlyNode;
     IReadOnlyNodeList IReadOnlyNode.ChildNodes => (IReadOnlyNodeList)_ChildNodes;
 
     public bool IsLoading => false;
 
-    public void TrackError(Exception exception) { }
+    // Parsing errors are deliberately not retained in the minimal profile. The parser remains permissive.
+    public void TrackError(Exception _) { }
 
     public Task WaitForReadyAsync(CancellationToken cancelToken) => Task.CompletedTask;
 
     public Task FinishLoadingAsync() => Task.CompletedTask;
 
+    // A read-only parse has no browsing lifecycle, event loop, scripting, or manifest processing.
     public void ApplyManifest() { }
 
     public void Clear() => ChildNodes.Clear();

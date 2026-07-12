@@ -19,5 +19,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="AngleSharp.ReadOnlyDom.Helpers" />
+    <InternalsVisibleTo Include="AngleSharp.ReadOnlyDom.Tests" />
   </ItemGroup>
 </Project>

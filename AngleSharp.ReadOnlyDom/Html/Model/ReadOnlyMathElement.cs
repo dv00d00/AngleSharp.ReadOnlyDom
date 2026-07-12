@@ -23,7 +23,7 @@ class ReadOnlyMathElement : ReadOnlyHtmlElement, IConstructableMathElement
 
     public override IConstructableNode ShallowCopy()
     {
-        var readOnlyElement = new ReadOnlySvgElement(Owner, LocalName, prefix: default, Flags);
+        var readOnlyElement = new ReadOnlyMathElement(null, LocalName, Prefix, Flags);
         PopulateAttributes(readOnlyElement);
         return readOnlyElement;
     }

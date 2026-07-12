@@ -15,7 +15,14 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
 
     protected ReadOnlyNamedNodeMap? _attributes;
 
-    public StringOrMemory LocalName => NodeName;
+    public StringOrMemory LocalName
+    {
+        get
+        {
+            var prefix = Prefix;
+            return prefix.IsNullOrEmpty ? NodeName : NodeName.Memory.Slice(prefix.Memory.Length + 1);
+        }
+    }
 
     public StringOrMemory NamespaceUri =>
         (Flags & NodeFlags.SvgMember) != 0 ? NamespaceNames.SvgUri
@@ -55,7 +62,7 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
         StringOrMemory namespaceUri,
         NodeFlags flags = NodeFlags.None
     )
-        : base(owner, name, NodeType.Element, flags)
+        : base(owner, name, flags)
     {
         if (!prefix.IsNullOrEmpty)
         {
@@ -130,9 +137,7 @@ internal abstract class ReadOnlyElement : ReadOnlyNode, IReadOnlyElement
     {
         if (_attributes != null)
         {
-            // foreach (var attribute in _attributes)
-            //     other.SetAttribute(null, attribute.Name, attribute.Value);
-            other._attributes = _attributes;
+            other._attributes = _attributes.Clone();
         }
     }
 
