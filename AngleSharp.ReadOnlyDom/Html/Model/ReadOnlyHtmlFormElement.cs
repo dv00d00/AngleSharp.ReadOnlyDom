@@ -6,12 +6,16 @@ namespace AngleSharp.ReadOnlyDom.Html.Model;
 
 class ReadOnlyHtmlFormElement : ReadOnlyHtmlElement, IConstructableFormElement
 {
-    public ReadOnlyHtmlFormElement(ReadOnlyDocument? owner, StringOrMemory prefix = default)
-        : base(owner, TagNames.Form, prefix, NodeFlags.Special) { }
+    public ReadOnlyHtmlFormElement(
+        ReadOnlyDocument? owner,
+        StringOrMemory prefix = default,
+        NodeFlags flags = NodeFlags.None
+    )
+        : base(owner, TagNames.Form, prefix, flags | NodeFlags.Special) { }
 
     public override IConstructableNode ShallowCopy()
     {
-        var readOnlyElement = new ReadOnlyHtmlFormElement(null, Prefix);
+        var readOnlyElement = new ReadOnlyHtmlFormElement(null, Prefix, Flags);
         PopulateAttributes(readOnlyElement);
         return readOnlyElement;
     }
