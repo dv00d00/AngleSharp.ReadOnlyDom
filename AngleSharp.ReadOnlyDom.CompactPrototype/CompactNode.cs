@@ -71,3 +71,17 @@ public enum CompactMetadataOptions
     ParentLinks = 1 << 0,
     SourceLocations = 1 << 1,
 }
+
+public enum CompactIndexMode
+{
+    None,
+    Dense,
+    Sparse,
+    Dictionary,
+}
+
+public sealed class CompactDomOptions
+{
+    public bool ParentLinks { get; init; }
+    public CompactIndexMode SourceLocationIndexMode { get; init; }
+}

@@ -18,7 +18,7 @@ public sealed class DirectCompactArenaTests
     [Test]
     public async Task InlineReferenceListLayoutsAreExplicit()
     {
-        await Assert.That(Unsafe.SizeOf<SmallReferenceList<object>>()).IsEqualTo(32);
+        await Assert.That(Unsafe.SizeOf<SmallReferenceList2<object>>()).IsEqualTo(32);
         await Assert.That(Unsafe.SizeOf<SmallReferenceList4<object>>()).IsEqualTo(48);
     }
 

@@ -8,8 +8,22 @@ public static class CompactDomBuilder
     public static CompactDocument Build(
         IReadOnlyDocument document,
         CompactMetadataOptions options = CompactMetadataOptions.None
-    )
+    ) =>
+        Build(
+            document,
+            new CompactDomOptions
+            {
+                ParentLinks = options.HasFlag(CompactMetadataOptions.ParentLinks),
+                SourceLocationIndexMode = options.HasFlag(CompactMetadataOptions.SourceLocations)
+                    ? CompactIndexMode.Dense
+                    : CompactIndexMode.None,
+            }
+        );
+
+    public static CompactDocument Build(IReadOnlyDocument document, CompactDomOptions options)
     {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(options);
         var builder = new Builder(options, Measure(document));
         builder.Add(document, -1);
         return builder.Finish();
@@ -17,11 +31,12 @@ public static class CompactDomBuilder
 
     private static Size Measure(IReadOnlyNode node)
     {
-        var size = new Size(1, 0, GetContentLength(node));
+        var content = GetContent(node);
+        var size = new Size(1, 0, content.Length == 0 ? 0 : 1);
         if (node is IReadOnlyElement element)
         {
             foreach (var attribute in element.Attributes)
-                size += new Size(0, 1, attribute.Value.Length);
+                size += new Size(0, 1, attribute.Value.Length == 0 ? 0 : 1);
         }
 
         var children = node is IReadOnlyTemplateElement template ? template.Content : node.ChildNodes;
@@ -39,37 +54,30 @@ public static class CompactDomBuilder
             _ => StringOrMemory.Empty,
         };
 
-    private static int GetContentLength(IReadOnlyNode node) =>
-        node switch
-        {
-            IReadOnlyTextNode text => text.Content.Length,
-            IReadOnlyCommentNode comment => comment.Content.Length,
-            IReadOnlyProcessingInstructionNode instruction => instruction.Content.Length,
-            _ => 0,
-        };
-
     private sealed class Builder
     {
+        private readonly CompactDomOptions _options;
         private readonly CompactNode[] _nodes;
         private readonly CompactAttribute[] _attributes;
+        private readonly ReadOnlyMemory<char>[] _values;
         private readonly Dictionary<StringOrMemory, ushort> _nameIds = [];
         private readonly List<string> _names = [];
-        private readonly char[] _text;
         private readonly int[]? _parents;
-        private readonly CompactSourceLocation[]? _sources;
+        private readonly List<(int Handle, CompactSourceLocation Value)>? _sources;
         private int _nodeIndex;
         private int _attributeIndex;
-        private int _textIndex;
+        private int _valueIndex;
 
-        public Builder(CompactMetadataOptions options, Size size)
+        public Builder(CompactDomOptions options, Size size)
         {
+            _options = options;
             _nodes = new CompactNode[size.Nodes];
             _attributes = new CompactAttribute[size.Attributes];
-            _text = new char[size.TextLength];
-            if (options.HasFlag(CompactMetadataOptions.ParentLinks))
+            _values = new ReadOnlyMemory<char>[size.Values];
+            if (options.ParentLinks)
                 _parents = new int[size.Nodes];
-            if (options.HasFlag(CompactMetadataOptions.SourceLocations))
-                _sources = new CompactSourceLocation[size.Nodes];
+            if (options.SourceLocationIndexMode != CompactIndexMode.None)
+                _sources = [];
         }
 
         public int Add(IReadOnlyNode node, int parent)
@@ -77,8 +85,8 @@ public static class CompactDomBuilder
             var handle = _nodeIndex++;
             if (_parents is not null)
                 _parents[handle] = parent;
-            if (_sources is not null)
-                _sources[handle] = GetSource(node);
+            if (_sources is not null && TryGetSource(node, out var source))
+                _sources.Add((handle, source));
 
             var firstAttribute = _attributeIndex;
             ushort attributeCount = 0;
@@ -86,17 +94,17 @@ public static class CompactDomBuilder
             {
                 foreach (var attribute in element.Attributes)
                 {
-                    var attributeValue = AddText(attribute.Value);
                     _attributes[_attributeIndex++] = new CompactAttribute(
                         GetNameId(attribute.Name),
-                        attributeValue.Start,
-                        attributeValue.Length
+                        AddValue(attribute.Value),
+                        attribute.Value.Length
                     );
                     attributeCount++;
                 }
             }
 
-            var value = AddText(GetContent(node));
+            var content = GetContent(node);
+            var valueIndex = AddValue(content);
             var children = node is IReadOnlyTemplateElement template ? template.Content : node.ChildNodes;
             var firstChild = -1;
             var previousChild = -1;
@@ -114,8 +122,8 @@ public static class CompactDomBuilder
                 firstChild,
                 -1,
                 firstAttribute,
-                value.Start,
-                value.Length,
+                valueIndex,
+                content.Length,
                 GetNameId(node.NodeName),
                 attributeCount,
                 node.Flags,
@@ -124,7 +132,38 @@ public static class CompactDomBuilder
             return handle;
         }
 
-        public CompactDocument Finish() => new(_nodes, _attributes, _names.ToArray(), _text, _parents, _sources);
+        public CompactDocument Finish() => new(_nodes, _attributes, _names, _values, _parents, CreateSourceIndex());
+
+        private INodePayloadIndex<CompactSourceLocation>? CreateSourceIndex()
+        {
+            if (_sources is null)
+                return null;
+
+            return _options.SourceLocationIndexMode switch
+            {
+                CompactIndexMode.Dense => CreateDenseSourceIndex(),
+                CompactIndexMode.Sparse => new SparseNodePayloadIndex<CompactSourceLocation>(
+                    _sources.Select(item => item.Handle).ToArray(),
+                    _sources.Select(item => item.Value).ToArray()
+                ),
+                CompactIndexMode.Dictionary => new DictionaryNodePayloadIndex<CompactSourceLocation>(
+                    _sources.ToDictionary(item => item.Handle, item => item.Value)
+                ),
+                _ => throw new ArgumentOutOfRangeException(),
+            };
+        }
+
+        private INodePayloadIndex<CompactSourceLocation> CreateDenseSourceIndex()
+        {
+            var values = new CompactSourceLocation[_nodes.Length];
+            var present = new bool[_nodes.Length];
+            foreach (var item in _sources!)
+            {
+                values[item.Handle] = item.Value;
+                present[item.Handle] = true;
+            }
+            return new DenseNodePayloadIndex<CompactSourceLocation>(values, present);
+        }
 
         private void SetNextSibling(int handle, int sibling)
         {
@@ -142,14 +181,13 @@ public static class CompactDomBuilder
             );
         }
 
-        private (int Start, int Length) AddText(StringOrMemory value)
+        private int AddValue(StringOrMemory value)
         {
             if (value.Length == 0)
-                return (-1, 0);
-            var start = _textIndex;
-            value.Memory.Span.CopyTo(_text.AsSpan(_textIndex));
-            _textIndex += value.Length;
-            return (start, value.Length);
+                return -1;
+            var index = _valueIndex++;
+            _values[index] = value.Memory;
+            return index;
         }
 
         private ushort GetNameId(StringOrMemory name)
@@ -175,18 +213,23 @@ public static class CompactDomBuilder
                 _ => CompactNodeKind.Other,
             };
 
-        private static CompactSourceLocation GetSource(IReadOnlyNode node)
+        private static bool TryGetSource(IReadOnlyNode node, out CompactSourceLocation location)
         {
-            if (node is not IReadOnlyElement { SourceReference: { } source })
-                return new CompactSourceLocation(-1, 0, 0);
-            var position = source.Position;
-            return new CompactSourceLocation(position.Index, (ushort)position.Line, (ushort)position.Column);
+            if (node is IReadOnlyElement { SourceReference: { } source })
+            {
+                var position = source.Position;
+                location = new CompactSourceLocation(position.Index, (ushort)position.Line, (ushort)position.Column);
+                return true;
+            }
+
+            location = default;
+            return false;
         }
     }
 
-    private readonly record struct Size(int Nodes, int Attributes, int TextLength)
+    private readonly record struct Size(int Nodes, int Attributes, int Values)
     {
         public static Size operator +(Size left, Size right) =>
-            new(left.Nodes + right.Nodes, left.Attributes + right.Attributes, left.TextLength + right.TextLength);
+            new(left.Nodes + right.Nodes, left.Attributes + right.Attributes, left.Values + right.Values);
     }
 }

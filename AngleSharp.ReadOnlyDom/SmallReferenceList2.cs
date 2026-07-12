@@ -1,6 +1,6 @@
 namespace AngleSharp.ReadOnlyDom;
 
-internal struct SmallReferenceList<T>
+internal struct SmallReferenceList2<T>
     where T : class
 {
     private T? _first;
