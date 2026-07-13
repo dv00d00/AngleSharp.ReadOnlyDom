@@ -1,6 +1,6 @@
 # Benchmarking
 
-.NET 10 is the only performance runtime. Tests run on .NET 10 and .NET Framework 4.8.1; the library still builds for
+.NET 10 is the only performance runtime. Tests run on .NET 10 and .NET Framework 4.7.2; the library still builds for
 .NET 8 and netstandard2.0, but those targets do not have dedicated benchmark or test executions.
 
 Run a tier from the repository root:
