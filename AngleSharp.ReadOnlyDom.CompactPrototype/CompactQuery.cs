@@ -40,7 +40,14 @@ public static class CompactQuery
 
         public readonly Node Current => new(_document, _handle);
 
-        public bool MoveNext() => ++_handle < _document.NodeCount;
+        public bool MoveNext()
+        {
+            var next = _handle + 1;
+            while (_document.TryGetContainingTemplateContentEnd(next, out var contentEnd))
+                next = contentEnd;
+            _handle = next;
+            return _handle < _document.NodeCount;
+        }
 
         public readonly DescendantScan GetEnumerator() => this;
     }
@@ -165,6 +172,11 @@ public static class CompactQuery
                 var handle = document.IndexOfName(_query._tagId, _current + 1);
                 while (handle >= 0)
                 {
+                    if (document.TryGetContainingTemplateContentEnd(handle, out var contentEnd))
+                    {
+                        handle = document.IndexOfName(_query._tagId, contentEnd);
+                        continue;
+                    }
                     if (document.KindAt(handle) == CompactNodeKind.Element && _query.Matches(handle))
                     {
                         _current = handle;
