@@ -23,8 +23,7 @@ earlier hyphen fast path. `GeneratedTagMetadataTests` independently compares eve
 AngleSharp factory, and focused tests preserve the read-only specialized form, template, script, and meta types.
 
 The generator targets .NET 10 because it is a repository tool. Generated library code builds on every supported library
-target. The project currently verifies tests on `net10.0` and `net481`; issue #5's older `net472` wording is superseded by
-the repository's active `net481` test target.
+target. The project currently verifies tests on `net10.0` and `net472`, matching issue #5's full-framework target.
 
 ## Performance gate
 
