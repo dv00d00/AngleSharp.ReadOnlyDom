@@ -43,4 +43,20 @@ ShortRun timing confidence intervals can be wide; `Mean` and total `Allocated` a
 and tree-builder work is common to all four methods, expect a much larger allocation win than runtime win. The benchmark
 does not demonstrate bounded-memory stream input.
 
-Authoritative commit-pinned results will be recorded here after the implementation commit.
+## Commit-pinned result
+
+Implementation commit: `2292328`
+
+Artifact: `artifacts/benchmarks/20260713-222924-2292328-long-streaming`
+
+| Method | Mean | Allocated | Relative time | Relative allocation |
+| --- | ---: | ---: | ---: | ---: |
+| Read-only parse and traverse | 40.43 ms | 11.21 MB | 1.00 | 1.00 |
+| Compact parse and plan | 41.70 ms | 6.12 MB | 1.03 | 0.55 |
+| Query-directed construction | 33.53 ms | 1.42 MB | 0.83 | 0.13 |
+| EOF aggregate construction | 33.50 ms | 1.42 MB | 0.83 | 0.13 |
+
+Both construction-time paths avoid Gen0 and Gen1 collections in this run. Against the read-only baseline they reduce
+managed allocation by about 87% and mean runtime by about 17%, despite paying the full tokenization and tree-builder
+cost. The compact result confirms that compact representation alone removes substantial allocation; pushing the
+projection into construction removes the remaining irrelevant value materialization.
