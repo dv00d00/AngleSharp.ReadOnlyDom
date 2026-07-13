@@ -15,6 +15,7 @@ Run a tier from the repository root:
 ./scripts/bench.ps1 plan
 ./scripts/bench.ps1 streaming
 ./scripts/bench.ps1 aggregate
+./scripts/bench.ps1 long-streaming
 ./scripts/bench.ps1 full
 ./scripts/bench.ps1 all
 ```
@@ -34,6 +35,11 @@ Every run writes ignored, versioned output under `artifacts/benchmarks/<timestam
 runtime, job, corpus, and noise metadata. `micro` is the GitHub partial-parse benchmark with full and filtered paths.
 `small` parses five representative checked-in pages. `full` parses all checked-in pages. `retained` runs the small
 forced-GC retained-memory measurement without running BenchmarkDotNet.
+
+`long-streaming` generates a deterministic long page with 5,000 attribute-heavy irrelevant sections and a small target
+near EOF. Every implementation consumes the full rooted string and runs AngleSharp HTML construction semantics. It
+compares read-only DOM traversal, compact materialization plus plan, specialized construction-time extraction, and the
+EOF aggregate; it does not claim bounded-memory input or early termination.
 
 ## Retained-memory method
 
