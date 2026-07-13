@@ -7,13 +7,12 @@ using BenchmarkDotNet.Attributes;
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
 [MemoryDiagnoser]
-public class DirectCompactBuildBenchmark
+public class CompactBuildBenchmark
 {
     private static readonly string StructuralPage = CreateStructuralPage();
     private readonly HtmlParser _readOnlyParser = ReadOnlyParser.CreateParser(ReadOnlyMetadataProfile.Minimal);
-    private readonly DirectCompactParserSession _directPooled = new(ownership: CompactBufferOwnership.Pooled);
-    private readonly DirectCompactParserSession _directPooledNoAttributes = new(
-        ownership: CompactBufferOwnership.Pooled,
+    private readonly CompactParserSession _compactParser = new();
+    private readonly CompactParserSession _compactParserNoAttributes = new(
         attributeFilter: static (ref StructHtmlToken _, ReadOnlyMemory<char> _) => false
     );
 
@@ -25,23 +24,23 @@ public class DirectCompactBuildBenchmark
     }
 
     [Benchmark]
-    public int ParseDirectHotCompactPooled()
+    public int ParseCompact()
     {
-        using var compact = DirectCompactParser.Parse(StructuralPage, ownership: CompactBufferOwnership.Pooled);
+        using var compact = CompactParser.Parse(StructuralPage);
         return compact.NodeCount;
     }
 
     [Benchmark]
-    public int ParseDirectHotCompactPooledReused()
+    public int ParseCompactReused()
     {
-        using var compact = _directPooled.Parse(StructuralPage);
+        using var compact = _compactParser.Parse(StructuralPage);
         return compact.NodeCount;
     }
 
     [Benchmark]
-    public int ParseDirectHotCompactPooledNoAttributes()
+    public int ParseCompactReusedNoAttributes()
     {
-        using var compact = _directPooledNoAttributes.Parse(StructuralPage);
+        using var compact = _compactParserNoAttributes.Parse(StructuralPage);
         return compact.NodeCount;
     }
 
@@ -58,13 +57,13 @@ public class DirectCompactBuildBenchmark
 }
 
 [MemoryDiagnoser]
-public class DirectCompactSetupBenchmark
+public class CompactSetupBenchmark
 {
     [Benchmark(Baseline = true)]
     public HtmlParser CreateReadOnlyParser() => ReadOnlyParser.CreateParser(ReadOnlyMetadataProfile.Minimal);
 
     [Benchmark]
-    public DirectCompactParserSession CreateDirectPooled() => new(ownership: CompactBufferOwnership.Pooled);
+    public CompactParserSession CreateCompactParser() => new();
 }
 
 #endif

@@ -15,9 +15,9 @@ public class CompactQueryWorkloadBenchmark
 {
     private const string TargetId = "selected-region";
     private readonly HtmlParser _readOnlyParser;
-    private readonly DirectCompactParserSession _directParser;
+    private readonly CompactParserSession _compactParser;
     private readonly HtmlParser _readOnlyTextParser;
-    private readonly DirectCompactParserSession _directTextParser;
+    private readonly CompactParserSession _compactTextParser;
     private readonly string _targetPage = CreateTargetPage();
     private readonly string _textPage = CreateTextPage();
 
@@ -25,27 +25,19 @@ public class CompactQueryWorkloadBenchmark
     {
         var selectedOptions = CreateSelectedOptions();
         _readOnlyParser = new HtmlParser(selectedOptions, ReadOnlyParser.DefaultContext);
-        _directParser = new DirectCompactParserSession(
-            CompactMetadataOptions.ParentLinks,
-            CompactBufferOwnership.Pooled,
-            parserOptions: selectedOptions
-        );
+        _compactParser = new CompactParserSession(CompactMetadataOptions.ParentLinks, parserOptions: selectedOptions);
 
         var textOptions = CreateTextOptions();
         _readOnlyTextParser = new HtmlParser(textOptions, ReadOnlyParser.DefaultContext);
-        _directTextParser = new DirectCompactParserSession(
-            CompactMetadataOptions.ParentLinks,
-            CompactBufferOwnership.Pooled,
-            parserOptions: textOptions
-        );
+        _compactTextParser = new CompactParserSession(CompactMetadataOptions.ParentLinks, parserOptions: textOptions);
     }
 
     [GlobalSetup]
     public void ValidateWorkloads()
     {
-        if (ReadOnlySelectedSubtreeQuery() != DirectSelectedSubtreeQuery())
+        if (ReadOnlySelectedSubtreeQuery() != CompactSelectedSubtreeQuery())
             throw new InvalidOperationException("Selected-subtree query implementations disagree.");
-        if (ReadOnlyAttributeFreeTextQuery() != DirectAttributeFreeTextQuery())
+        if (ReadOnlyAttributeFreeTextQuery() != CompactAttributeFreeTextQuery())
             throw new InvalidOperationException("Attribute-free text query implementations disagree.");
     }
 
@@ -58,10 +50,10 @@ public class CompactQueryWorkloadBenchmark
     }
 
     [Benchmark]
-    public int DirectSelectedSubtreeQuery()
+    public int CompactSelectedSubtreeQuery()
     {
         var filter = new OnlyElementWithIdAndDescendants("section", TargetId);
-        using var document = _directParser.Parse(_targetPage.AsMemory(), filter.Loop);
+        using var document = _compactParser.Parse(_targetPage.AsMemory(), filter.Loop);
         return CompactChecksum(document);
     }
 
@@ -74,10 +66,10 @@ public class CompactQueryWorkloadBenchmark
     }
 
     [Benchmark]
-    public int DirectAttributeFreeTextQuery()
+    public int CompactAttributeFreeTextQuery()
     {
         var filter = new FirstTagAndAllChildren("body");
-        using var document = _directTextParser.Parse(_textPage.AsMemory(), filter.Loop);
+        using var document = _compactTextParser.Parse(_textPage.AsMemory(), filter.Loop);
         return CompactChecksum(document);
     }
 
@@ -101,7 +93,7 @@ public class CompactQueryWorkloadBenchmark
         return checksum;
     }
 
-    private static int CompactChecksum(HotCompactDocument document)
+    private static int CompactChecksum(CompactDocument document)
     {
         var checksum = 0;
         for (var handle = 0; handle < document.NodeCount; handle++)

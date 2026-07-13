@@ -1,4 +1,4 @@
-using AngleSharp.Dom;
+using System.Runtime.InteropServices;
 
 namespace AngleSharp.ReadOnlyDom.CompactPrototype;
 
@@ -12,40 +12,49 @@ public enum CompactNodeKind : byte
     Other,
 }
 
+[StructLayout(LayoutKind.Sequential)]
 public readonly struct CompactNode
 {
     internal CompactNode(
         int firstChild,
         int nextSibling,
-        int firstAttribute,
-        int valueStart,
-        int valueLength,
+        int payloadIndex,
         ushort nameId,
-        ushort attributeCount,
-        NodeFlags flags,
-        CompactNodeKind kind
+        CompactNodeKind kind,
+        byte flags
     )
     {
         FirstChild = firstChild;
         NextSibling = nextSibling;
-        FirstAttribute = firstAttribute;
-        ValueStart = valueStart;
-        ValueLength = valueLength;
+        PayloadIndex = payloadIndex;
         NameId = nameId;
-        AttributeCount = attributeCount;
-        Flags = flags;
         Kind = kind;
+        Flags = flags;
     }
 
     public int FirstChild { get; }
     public int NextSibling { get; }
+    public int PayloadIndex { get; }
+    public ushort NameId { get; }
+    public CompactNodeKind Kind { get; }
+    public byte Flags { get; }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public readonly struct CompactNodePayload
+{
+    internal CompactNodePayload(int firstAttribute, int valueStart, int valueLength, ushort attributeCount)
+    {
+        FirstAttribute = firstAttribute;
+        ValueStart = valueStart;
+        ValueLength = valueLength;
+        AttributeCount = attributeCount;
+    }
+
     public int FirstAttribute { get; }
     public int ValueStart { get; }
     public int ValueLength { get; }
-    public ushort NameId { get; }
     public ushort AttributeCount { get; }
-    public NodeFlags Flags { get; }
-    public CompactNodeKind Kind { get; }
 }
 
 public readonly struct CompactAttribute

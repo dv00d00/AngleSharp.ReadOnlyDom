@@ -11,11 +11,10 @@ using AngleSharp.ReadOnlyDom.Html;
 
 namespace AngleSharp.Readonly.Tests;
 
-public sealed class DirectCompactArenaTests
+public sealed class CompactParserTests
 {
     [Test]
-    public async Task HotNodeIsExactlySixteenBytes() =>
-        await Assert.That(Unsafe.SizeOf<HotCompactNode>()).IsEqualTo(16);
+    public async Task CoreNodeIsExactlySixteenBytes() => await Assert.That(Unsafe.SizeOf<CompactNode>()).IsEqualTo(16);
 
     [Test]
     public async Task InlineReferenceListLayoutsAreExplicit()
@@ -41,7 +40,7 @@ public sealed class DirectCompactArenaTests
             using var expected = new HtmlParser(
                 new HtmlParserOptions { SkipComments = true, SkipProcessingInstructions = true }
             ).ParseDocument(html);
-            using var actual = DirectCompactParser.Parse(html);
+            using var actual = CompactParser.Parse(html);
             await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
         }
     }
@@ -51,7 +50,7 @@ public sealed class DirectCompactArenaTests
     {
         const string html = "<svg><foreignObject><div>x</div></foreignObject></svg>";
         using var expected = new HtmlParser().ParseDocument(html);
-        using var actual = DirectCompactParser.Parse(html);
+        using var actual = CompactParser.Parse(html);
 
         await Assert.That(Snapshot(actual, 0)).IsNotEqualTo(Snapshot(expected));
         await Assert.That(Snapshot(expected)).Contains("foreignObject[]{Element:div");
@@ -60,8 +59,8 @@ public sealed class DirectCompactArenaTests
     [Test]
     public async Task MetadataColumnsRemainOptional()
     {
-        using var minimal = DirectCompactParser.Parse("<main><p>x</p></main>");
-        using var navigable = DirectCompactParser.Parse(
+        using var minimal = CompactParser.Parse("<main><p>x</p></main>");
+        using var navigable = CompactParser.Parse(
             "<main><p>x</p></main>",
             CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations
         );
@@ -75,7 +74,7 @@ public sealed class DirectCompactArenaTests
     [Test]
     public async Task PooledDocumentOwnsAndReturnsItsBuffers()
     {
-        var document = DirectCompactParser.Parse("<main><p>x</p></main>", ownership: CompactBufferOwnership.Pooled);
+        var document = CompactParser.Parse("<main><p>x</p></main>");
         await Assert.That(document.NodeCount).IsGreaterThan(3);
         await Assert.That(document.FindNameId("main")).IsNotEqualTo(ushort.MaxValue);
         document.Dispose();
@@ -85,7 +84,7 @@ public sealed class DirectCompactArenaTests
     [Test]
     public async Task ReusableSessionCreatesIndependentDocuments()
     {
-        var session = new DirectCompactParserSession(ownership: CompactBufferOwnership.Pooled);
+        var session = new CompactParserSession();
         using var first = session.Parse("<main><p>first</p></main>");
         var firstCount = first.NodeCount;
         first.Dispose();
@@ -118,9 +117,8 @@ public sealed class DirectCompactArenaTests
                 }
             );
             using var expected = expectedParser.ParseDocument(html);
-            using var actual = DirectCompactParser.Parse(
+            using var actual = CompactParser.Parse(
                 html,
-                ownership: CompactBufferOwnership.Pooled,
                 attributeFilter: static (ref StructHtmlToken _, ReadOnlyMemory<char> _) => false
             );
 
@@ -144,7 +142,7 @@ public sealed class DirectCompactArenaTests
         using var expected = new HtmlParser(
             new HtmlParserOptions { SkipComments = true, SkipProcessingInstructions = true }
         ).ParseDocument(html);
-        using var actual = DirectCompactParser.Parse(html, ownership: CompactBufferOwnership.Pooled, hints: hints);
+        using var actual = CompactParser.Parse(html, hints: hints);
 
         await Assert.That(actual.AttributeCount).IsEqualTo(5);
         await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
@@ -169,8 +167,7 @@ public sealed class DirectCompactArenaTests
         var actualFilter = new FirstTagAndAllChildren("body");
         var expectedParser = new HtmlParser(parserOptions, ReadOnlyParser.DefaultContext);
         using var expected = expectedParser.ParseReadOnlyDocument(html.AsMemory(), expectedFilter.Loop);
-        var session = new DirectCompactParserSession(
-            ownership: CompactBufferOwnership.Pooled,
+        var session = new CompactParserSession(
             parserOptions: parserOptions,
             attributeFilter: static (ref StructHtmlToken token, ReadOnlyMemory<char> name) =>
                 token.Name == "div" && name.Span is "class"
@@ -189,7 +186,7 @@ public sealed class DirectCompactArenaTests
         using var expected = new HtmlParser(
             new HtmlParserOptions { SkipComments = true, SkipProcessingInstructions = true }
         ).ParseDocument(retained);
-        using var actual = DirectCompactParser.Parse(input, retained.Length, ownership: CompactBufferOwnership.Pooled);
+        using var actual = CompactParser.Parse(input, retained.Length);
 
         await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
     }
@@ -208,10 +205,7 @@ public sealed class DirectCompactArenaTests
         };
         var expectedParser = new HtmlParser(parserOptions, ReadOnlyParser.DefaultContext);
         using var expected = expectedParser.ParseReadOnlyDocument(html, expectedFilter.Loop);
-        var session = new DirectCompactParserSession(
-            ownership: CompactBufferOwnership.Pooled,
-            parserOptions: parserOptions
-        );
+        var session = new CompactParserSession(parserOptions: parserOptions);
         using var actual = session.Parse(html, actualFilter.Loop);
 
         await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
@@ -246,7 +240,7 @@ public sealed class DirectCompactArenaTests
         return result + "}";
     }
 
-    private static string Snapshot(HotCompactDocument document, int handle)
+    private static string Snapshot(CompactDocument document, int handle)
     {
         ref readonly var node = ref document.GetNode(handle);
         var result = $"{node.Kind}:{document.GetName(node.NameId)}[";

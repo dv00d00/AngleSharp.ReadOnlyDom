@@ -31,13 +31,8 @@ internal static class RetainedMemoryRunner
                 Median(Enumerable.Range(0, repetitions).Select(_ => MeasureReadOnly(sources, profile)).ToArray())
             )
             .ToArray();
-        var direct = Median(
-            Enumerable
-                .Range(0, repetitions)
-                .Select(_ => MeasureDirectCompact(sources, CompactBufferOwnership.Pooled))
-                .ToArray()
-        );
-        var report = Render(tier, repetitions, sources, standard, readOnly.Append(direct).ToArray());
+        var compact = Median(Enumerable.Range(0, repetitions).Select(_ => MeasureCompact(sources)).ToArray());
+        var report = Render(tier, repetitions, sources, standard, readOnly.Append(compact).ToArray());
 
         if (output is not null)
         {
@@ -79,19 +74,10 @@ internal static class RetainedMemoryRunner
         );
     }
 
-    private static Measurement MeasureDirectCompact(
-        IReadOnlyList<CorpusDocument> sources,
-        CompactBufferOwnership ownership
-    )
+    private static Measurement MeasureCompact(IReadOnlyList<CorpusDocument> sources)
     {
-        var documents = new List<HotCompactDocument>(sources.Count);
-        return Measure(
-            $"Direct compact hot core {ownership}",
-            sources,
-            source => DirectCompactParser.Parse(source, ownership: ownership),
-            documents,
-            Count
-        );
+        var documents = new List<CompactDocument>(sources.Count);
+        return Measure("Compact", sources, source => CompactParser.Parse(source), documents, Count);
     }
 
     private static Measurement Measure<T>(
@@ -166,7 +152,7 @@ internal static class RetainedMemoryRunner
         return counts;
     }
 
-    private static Counts Count(HotCompactDocument document)
+    private static Counts Count(CompactDocument document)
     {
         var counts = new Counts(0, 0, document.AttributeCount);
         for (var handle = 0; handle < document.NodeCount; handle++)

@@ -1,0 +1,483 @@
+﻿using System.Buffers;
+using AngleSharp.Common;
+using AngleSharp.Dom;
+using AngleSharp.Html.Parser.Tokens.Struct;
+using AngleSharp.Text;
+
+namespace AngleSharp.ReadOnlyDom.CompactPrototype.Arena;
+
+internal sealed class Arena : IDisposable
+{
+    private static ReadOnlySpan<char> WhiteSpace => " \t\r\n";
+    private readonly PooledReferenceBuffer<ArenaNode> _nodes;
+    private readonly MutableNodeColumns _columns;
+    private readonly CompactParserHints _hints;
+    private PooledValueBuffer<MutableNodePayload>? _payloads;
+    private PooledValueBuffer<MutableAttribute>? _attributes;
+    private PooledReferenceBuffer<ArenaAttribute>? _attributeWrappers;
+
+    public Arena(CompactParserHints hints, bool trackSourceReferences)
+    {
+        _hints = hints;
+        _nodes = new PooledReferenceBuffer<ArenaNode>(
+            ValidateCapacity(hints.InitialNodeCapacity, nameof(CompactParserHints.InitialNodeCapacity))
+        );
+        _columns = new MutableNodeColumns(hints.InitialNodeCapacity, trackSourceReferences);
+    }
+
+    public ArenaDocument CreateDocument(TextSource source)
+    {
+        var document = new ArenaDocument(this, AddState("#document", NodeFlags.None, CompactNodeKind.Document), source);
+        _nodes.Add(document);
+        return document;
+    }
+
+    public ArenaElement CreateElement(
+        StringOrMemory name,
+        StringOrMemory prefix,
+        StringOrMemory namespaceUri,
+        NodeFlags flags,
+        ElementMarker marker = ElementMarker.None
+    )
+    {
+        var qualifiedName = prefix.IsNullOrEmpty ? name : $"{prefix}:{name}";
+        var handle = AddState(qualifiedName, flags, CompactNodeKind.Element);
+        ArenaElement node = marker switch
+        {
+            ElementMarker.Template => new ArenaTemplateElement(this, handle),
+            ElementMarker.Script => new ArenaScriptElement(this, handle),
+            ElementMarker.Meta => new ArenaMetaElement(this, handle),
+            ElementMarker.Form => new ArenaFormElement(this, handle),
+            ElementMarker.Frame => new ArenaFrameElement(this, handle),
+            ElementMarker.Math => new ArenaMathElement(this, handle),
+            ElementMarker.Svg => new ArenaSvgElement(this, handle),
+            _ => new ArenaElement(this, handle),
+        };
+        _nodes.Add(node);
+        return node;
+    }
+
+    public ArenaNode CreateLeaf(StringOrMemory name, StringOrMemory value, CompactNodeKind kind)
+    {
+        var handle = AddState(name, NodeFlags.None, kind);
+        SetValue(handle, value);
+        var node = new ArenaNode(this, handle);
+        _nodes.Add(node);
+        return node;
+    }
+
+    public ArenaNode Node(int handle) => _nodes[handle];
+
+    public StringOrMemory Name(int handle) => _columns.Names[handle];
+
+    public StringOrMemory LocalName(int handle)
+    {
+        var name = _columns.Names[handle];
+        var separator = name.Memory.Span.IndexOf(':');
+        return separator < 0 ? name : (StringOrMemory)name.Memory.Slice(separator + 1);
+    }
+
+    public StringOrMemory Prefix(int handle)
+    {
+        var name = _columns.Names[handle];
+        var separator = name.Memory.Span.IndexOf(':');
+        return separator < 0 ? default : (StringOrMemory)name.Memory.Slice(0, separator);
+    }
+
+    public StringOrMemory NamespaceUri(int handle) =>
+        (_columns.Flags[handle] & NodeFlags.SvgMember) != 0 ? NamespaceNames.SvgUri
+        : (_columns.Flags[handle] & NodeFlags.MathMember) != 0 ? NamespaceNames.MathMlUri
+        : NamespaceNames.HtmlUri;
+
+    public StringOrMemory Value(int handle)
+    {
+        var payload = _columns.PayloadIndexes[handle];
+        return payload < 0 ? default : _payloads![payload].Value;
+    }
+
+    public NodeFlags Flags(int handle) => _columns.Flags[handle];
+
+    public CompactNodeKind Kind(int handle) => _columns.Kinds[handle];
+
+    public int Parent(int handle) => _columns.Parents[handle];
+
+    public int ChildCount(int handle) => _columns.ChildCounts[handle];
+
+    public int ChildAt(int handle, int index)
+    {
+        if ((uint)index >= (uint)_columns.ChildCounts[handle])
+            throw new ArgumentOutOfRangeException(nameof(index));
+        var child = _columns.FirstChildren[handle];
+        while (index-- > 0)
+            child = _columns.NextSiblings[child];
+        return child;
+    }
+
+    public int AttributeCount(int handle)
+    {
+        var payload = _columns.PayloadIndexes[handle];
+        return payload < 0 ? 0 : _payloads![payload].AttributeCount;
+    }
+
+    public ArenaAttribute? GetAttribute(int handle, StringOrMemory name)
+    {
+        var attribute = FirstAttribute(handle);
+        while (attribute >= 0)
+        {
+            if (_attributes![attribute].Name == name)
+                return _attributeWrappers![attribute];
+            attribute = _attributes[attribute].Next;
+        }
+        return null;
+    }
+
+    public IEnumerable<ArenaAttribute> Attributes(int handle)
+    {
+        for (var attribute = FirstAttribute(handle); attribute >= 0; attribute = _attributes![attribute].Next)
+            yield return _attributeWrappers![attribute];
+    }
+
+    public StringOrMemory AttributeName(int handle) => _attributes![handle].Name;
+
+    public StringOrMemory AttributeValue(int handle) => _attributes![handle].Value;
+
+    public void SetAttributeValue(int handle, StringOrMemory value) => _attributes![handle].Value = value;
+
+    public ISourceReference? SourceReference(int handle) => _columns.SourceReferences?[handle];
+
+    public void SetSourceReference(int handle, ISourceReference? value)
+    {
+        if (_columns.SourceReferences is not null)
+            _columns.SourceReferences[handle] = value;
+    }
+
+    public void AddChild(int parent, int child, int? index = null)
+    {
+        Detach(child);
+        if (index is null || index.Value == _columns.ChildCounts[parent])
+        {
+            AppendChild(parent, child);
+            return;
+        }
+        if ((uint)index.Value > (uint)_columns.ChildCounts[parent])
+            throw new ArgumentOutOfRangeException(nameof(index));
+        InsertBefore(parent, child, ChildAt(parent, index.Value));
+    }
+
+    public void AddText(int parent, StringOrMemory text, bool emitWhiteSpaceOnly, int? index = null)
+    {
+        if (!emitWhiteSpaceOnly && text.Memory.Span.Trim(WhiteSpace).Length == 0)
+            return;
+        var node = CreateLeaf("#text", text, CompactNodeKind.Text);
+        AddChild(parent, node.NodeHandle, index);
+    }
+
+    public void AddComment(int parent, ref StructHtmlToken token)
+    {
+        if (token.IsEmpty)
+            return;
+        if (token.IsProcessingInstruction)
+        {
+            var data = token.Data.Memory;
+            var separator = data.Span.IndexOf(' ');
+            var target = separator <= 0 ? token.Data : (StringOrMemory)data.Slice(0, separator);
+            var value = separator <= 0 ? StringOrMemory.Empty : (StringOrMemory)data.Slice(separator);
+            AddChild(parent, CreateLeaf(target, value, CompactNodeKind.ProcessingInstruction).NodeHandle);
+        }
+        else
+        {
+            AddChild(parent, CreateLeaf("#comment", token.Data, CompactNodeKind.Comment).NodeHandle);
+        }
+    }
+
+    public CompactDocument Finalize(int root, CompactMetadataOptions options)
+    {
+        var order = ArrayPool<int>.Shared.Rent(_nodes.Count);
+        var orderCount = 0;
+        AddPreOrder(root, order, ref orderCount);
+        var remap = ArrayPool<int>.Shared.Rent(_nodes.Count);
+        remap.AsSpan(0, _nodes.Count).Fill(-1);
+        for (var i = 0; i < orderCount; i++)
+            remap[order[i]] = i;
+
+        var nodes = Allocate<CompactNode>(orderCount);
+        var payloads = Allocate<CompactNodePayload>(_payloads?.Count ?? 0);
+        var attributes = Allocate<CompactAttribute>(_attributes?.Count ?? 0);
+        using var textBuilder = new PooledValueBuffer<char>(
+            ValidateCapacity(_hints.InitialTextCapacity, nameof(CompactParserHints.InitialTextCapacity))
+        );
+        var parents = options.HasFlag(CompactMetadataOptions.ParentLinks) ? Allocate<int>(orderCount) : null;
+        var sources = options.HasFlag(CompactMetadataOptions.SourceLocations)
+            ? Allocate<CompactSourceLocation>(orderCount)
+            : null;
+        var names = new NameTable();
+        var attributeIndex = 0;
+        var payloadIndex = 0;
+
+        for (var handle = 0; handle < orderCount; handle++)
+        {
+            var oldHandle = order[handle];
+            var first = FinalFirstChild(oldHandle);
+            var firstChild = first < 0 ? -1 : remap[first];
+            var sibling = _columns.NextSiblings[oldHandle];
+            var nextSibling = sibling < 0 ? -1 : remap[sibling];
+
+            var nodePayload = -1;
+            var stateAttributeCount = AttributeCount(oldHandle);
+            var stateValue = Value(oldHandle);
+            if (stateAttributeCount != 0 || stateValue.Length != 0)
+            {
+                var firstAttribute = attributeIndex;
+                foreach (var attribute in Attributes(oldHandle))
+                {
+                    var value = CopyText(attribute.Value, textBuilder);
+                    attributes[attributeIndex++] = new CompactAttribute(
+                        names.GetId(attribute.Name),
+                        value.Start,
+                        value.Length
+                    );
+                }
+                var nodeValue = CopyText(stateValue, textBuilder);
+                nodePayload = payloadIndex;
+                payloads[payloadIndex++] = new CompactNodePayload(
+                    firstAttribute,
+                    nodeValue.Start,
+                    nodeValue.Length,
+                    checked((ushort)stateAttributeCount)
+                );
+            }
+
+            nodes[handle] = new CompactNode(
+                firstChild,
+                nextSibling,
+                nodePayload,
+                names.GetId(_columns.Names[oldHandle]),
+                _columns.Kinds[oldHandle],
+                (byte)_columns.Flags[oldHandle]
+            );
+            if (parents is not null)
+            {
+                var parent = _columns.Parents[oldHandle];
+                parents[handle] = parent < 0 ? -1 : remap[parent];
+            }
+            if (sources is not null)
+                sources[handle] = GetSource(_columns.SourceReferences?[oldHandle]);
+        }
+
+        var nameArray = Allocate<string>(names.Count);
+        names.CopyTo(nameArray);
+        var (text, textLength) = textBuilder.Detach();
+        var result = new CompactDocument(
+            nodes,
+            payloads,
+            attributes,
+            nameArray,
+            text,
+            parents,
+            sources,
+            orderCount,
+            payloadIndex,
+            attributeIndex,
+            names.Count,
+            textLength
+        );
+        ArrayPool<int>.Shared.Return(order);
+        ArrayPool<int>.Shared.Return(remap);
+        return result;
+    }
+
+    private static T[] Allocate<T>(int length) => ArrayPool<T>.Shared.Rent(length);
+
+    private int AddState(StringOrMemory name, NodeFlags flags, CompactNodeKind kind)
+    {
+        return _columns.Add(name, flags, kind);
+    }
+
+    private void AddPreOrder(int handle, int[] order, ref int count)
+    {
+        order[count++] = handle;
+        for (var child = FinalFirstChild(handle); child >= 0; child = _columns.NextSiblings[child])
+            AddPreOrder(child, order, ref count);
+    }
+
+    private int FinalFirstChild(int handle) =>
+        _columns.TemplateFirstChild(handle) is var template && template >= 0
+            ? template
+            : _columns.FirstChildren[handle];
+
+    private static (int Start, int Length) CopyText(StringOrMemory value, PooledValueBuffer<char> destination)
+    {
+        if (value.Length == 0)
+            return (-1, 0);
+        var start = destination.Count;
+        destination.AddRange(value.Memory.Span);
+        return (start, value.Length);
+    }
+
+    private static CompactSourceLocation GetSource(ISourceReference? source)
+    {
+        if (source is null)
+            return new CompactSourceLocation(-1, 0, 0);
+        var position = source.Position;
+        return new CompactSourceLocation(
+            position.Index,
+            checked((ushort)position.Line),
+            checked((ushort)position.Column)
+        );
+    }
+
+    public void Dispose()
+    {
+        _nodes.Dispose();
+        _attributeWrappers?.Dispose();
+        _attributes?.Dispose();
+        _payloads?.Dispose();
+        _columns.Dispose();
+    }
+
+    public void RemoveFromParent(int child) => Detach(child);
+
+    public void RemoveChild(int parent, int child)
+    {
+        if (_columns.Parents[child] == parent)
+            Detach(child);
+    }
+
+    public void ClearChildren(int parent)
+    {
+        var child = _columns.FirstChildren[parent];
+        while (child >= 0)
+        {
+            var next = _columns.NextSiblings[child];
+            _columns.Parents[child] = -1;
+            _columns.PreviousSiblings[child] = -1;
+            _columns.NextSiblings[child] = -1;
+            child = next;
+        }
+        _columns.FirstChildren[parent] = -1;
+        _columns.LastChildren[parent] = -1;
+        _columns.ChildCounts[parent] = 0;
+    }
+
+    public void PopulateTemplate(int handle)
+    {
+        _columns.SetTemplateFirstChild(handle, _columns.FirstChildren[handle]);
+        _columns.FirstChildren[handle] = -1;
+        _columns.LastChildren[handle] = -1;
+        _columns.ChildCounts[handle] = 0;
+    }
+
+    public void SetOwnAttribute(int handle, StringOrMemory name, StringOrMemory value)
+    {
+        var existing = GetAttribute(handle, name);
+        if (existing is not null)
+        {
+            existing.Value = value;
+            return;
+        }
+
+        _attributes ??= new PooledValueBuffer<MutableAttribute>(
+            ValidateCapacity(_hints.InitialAttributeCapacity, nameof(CompactParserHints.InitialAttributeCapacity))
+        );
+        _attributeWrappers ??= new PooledReferenceBuffer<ArenaAttribute>(
+            ValidateCapacity(_hints.InitialAttributeCapacity, nameof(CompactParserHints.InitialAttributeCapacity))
+        );
+        var payloadIndex = EnsurePayload(handle);
+        ref var payload = ref _payloads![payloadIndex];
+        var attributeHandle = _attributes.Add(new MutableAttribute(name, value));
+        var wrapper = new ArenaAttribute(this, attributeHandle);
+        _attributeWrappers.Add(wrapper);
+        if (payload.FirstAttribute < 0)
+            payload.FirstAttribute = attributeHandle;
+        else
+            _attributes[payload.LastAttribute].Next = attributeHandle;
+        payload.LastAttribute = attributeHandle;
+        payload.AttributeCount++;
+    }
+
+    public void CopyAttributes(int source, int destination)
+    {
+        foreach (var attribute in Attributes(source))
+            SetOwnAttribute(destination, attribute.Name, attribute.Value);
+    }
+
+    private void SetValue(int handle, StringOrMemory value)
+    {
+        if (value.Length != 0)
+        {
+            var payload = EnsurePayload(handle);
+            _payloads![payload].Value = value;
+        }
+    }
+
+    private int FirstAttribute(int handle)
+    {
+        var payload = _columns.PayloadIndexes[handle];
+        return payload < 0 ? -1 : _payloads![payload].FirstAttribute;
+    }
+
+    private int EnsurePayload(int handle)
+    {
+        var payload = _columns.PayloadIndexes[handle];
+        if (payload >= 0)
+            return payload;
+        _payloads ??= new PooledValueBuffer<MutableNodePayload>(
+            ValidateCapacity(_hints.InitialPayloadCapacity, nameof(CompactParserHints.InitialPayloadCapacity))
+        );
+        payload = _payloads.Add(new MutableNodePayload());
+        _columns.PayloadIndexes[handle] = payload;
+        return payload;
+    }
+
+    private static int ValidateCapacity(int capacity, string name) =>
+        capacity > 0 ? capacity : throw new ArgumentOutOfRangeException(name, "Capacity hints must be positive.");
+
+    private void AppendChild(int parent, int child)
+    {
+        var previous = _columns.LastChildren[parent];
+        _columns.Parents[child] = parent;
+        _columns.PreviousSiblings[child] = previous;
+        _columns.NextSiblings[child] = -1;
+        if (previous >= 0)
+            _columns.NextSiblings[previous] = child;
+        else
+            _columns.FirstChildren[parent] = child;
+        _columns.LastChildren[parent] = child;
+        _columns.ChildCounts[parent]++;
+    }
+
+    private void InsertBefore(int parent, int child, int next)
+    {
+        var previous = _columns.PreviousSiblings[next];
+        _columns.Parents[child] = parent;
+        _columns.PreviousSiblings[child] = previous;
+        _columns.NextSiblings[child] = next;
+        _columns.PreviousSiblings[next] = child;
+        if (previous >= 0)
+            _columns.NextSiblings[previous] = child;
+        else
+            _columns.FirstChildren[parent] = child;
+        _columns.ChildCounts[parent]++;
+    }
+
+    private void Detach(int child)
+    {
+        var parent = _columns.Parents[child];
+        if (parent < 0)
+            return;
+        var previous = _columns.PreviousSiblings[child];
+        var next = _columns.NextSiblings[child];
+        if (previous >= 0)
+            _columns.NextSiblings[previous] = next;
+        else
+            _columns.FirstChildren[parent] = next;
+        if (next >= 0)
+            _columns.PreviousSiblings[next] = previous;
+        else
+            _columns.LastChildren[parent] = previous;
+        _columns.Parents[child] = -1;
+        _columns.PreviousSiblings[child] = -1;
+        _columns.NextSiblings[child] = -1;
+        _columns.ChildCounts[parent]--;
+    }
+}

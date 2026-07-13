@@ -1,63 +1,11 @@
 using System.Buffers;
-using System.Runtime.InteropServices;
 
 namespace AngleSharp.ReadOnlyDom.CompactPrototype;
 
-[StructLayout(LayoutKind.Sequential)]
-public readonly struct HotCompactNode
+public sealed class CompactDocument : IDisposable
 {
-    internal HotCompactNode(
-        int firstChild,
-        int nextSibling,
-        int payloadIndex,
-        ushort nameId,
-        CompactNodeKind kind,
-        byte hotFlags
-    )
-    {
-        FirstChild = firstChild;
-        NextSibling = nextSibling;
-        PayloadIndex = payloadIndex;
-        NameId = nameId;
-        Kind = kind;
-        HotFlags = hotFlags;
-    }
-
-    public int FirstChild { get; }
-    public int NextSibling { get; }
-    public int PayloadIndex { get; }
-    public ushort NameId { get; }
-    public CompactNodeKind Kind { get; }
-    public byte HotFlags { get; }
-}
-
-[StructLayout(LayoutKind.Sequential)]
-public readonly struct ColdNodePayload
-{
-    internal ColdNodePayload(int firstAttribute, int valueStart, int valueLength, ushort attributeCount)
-    {
-        FirstAttribute = firstAttribute;
-        ValueStart = valueStart;
-        ValueLength = valueLength;
-        AttributeCount = attributeCount;
-    }
-
-    public int FirstAttribute { get; }
-    public int ValueStart { get; }
-    public int ValueLength { get; }
-    public ushort AttributeCount { get; }
-}
-
-public enum CompactBufferOwnership
-{
-    Owned,
-    Pooled,
-}
-
-public sealed class HotCompactDocument : IDisposable
-{
-    private readonly HotCompactNode[] _nodes;
-    private readonly ColdNodePayload[] _payloads;
+    private readonly CompactNode[] _nodes;
+    private readonly CompactNodePayload[] _payloads;
     private readonly CompactAttribute[] _attributes;
     private readonly string[] _names;
     private readonly char[] _text;
@@ -69,12 +17,11 @@ public sealed class HotCompactDocument : IDisposable
     private readonly int _attributeCount;
     private readonly int _nameCount;
     private readonly int _textLength;
-    private readonly bool _pooled;
     private int _disposed;
 
-    internal HotCompactDocument(
-        HotCompactNode[] nodes,
-        ColdNodePayload[] payloads,
+    internal CompactDocument(
+        CompactNode[] nodes,
+        CompactNodePayload[] payloads,
         CompactAttribute[] attributes,
         string[] names,
         char[] text,
@@ -84,8 +31,7 @@ public sealed class HotCompactDocument : IDisposable
         int payloadCount,
         int attributeCount,
         int nameCount,
-        int textLength,
-        bool pooled
+        int textLength
     )
     {
         _nodes = nodes;
@@ -100,7 +46,6 @@ public sealed class HotCompactDocument : IDisposable
         _attributeCount = attributeCount;
         _nameCount = nameCount;
         _textLength = textLength;
-        _pooled = pooled;
     }
 
     public int NodeCount => _nodeCount;
@@ -110,9 +55,9 @@ public sealed class HotCompactDocument : IDisposable
     public bool HasParentLinks => _parents is not null;
     public bool HasSourceLocations => _sources is not null;
 
-    public ref readonly HotCompactNode GetNode(int handle) => ref _nodes[handle];
+    public ref readonly CompactNode GetNode(int handle) => ref _nodes[handle];
 
-    public ref readonly ColdNodePayload GetPayload(int index) => ref _payloads[index];
+    public ref readonly CompactNodePayload GetPayload(int index) => ref _payloads[index];
 
     public ref readonly CompactAttribute GetAttribute(int index) => ref _attributes[index];
 
@@ -153,11 +98,11 @@ public sealed class HotCompactDocument : IDisposable
 
     public void Dispose()
     {
-        if (!_pooled || Interlocked.Exchange(ref _disposed, 1) != 0)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
 
-        ArrayPool<HotCompactNode>.Shared.Return(_nodes);
-        ArrayPool<ColdNodePayload>.Shared.Return(_payloads);
+        ArrayPool<CompactNode>.Shared.Return(_nodes);
+        ArrayPool<CompactNodePayload>.Shared.Return(_payloads);
         ArrayPool<CompactAttribute>.Shared.Return(_attributes);
         ArrayPool<string>.Shared.Return(_names, clearArray: true);
         ArrayPool<char>.Shared.Return(_text, clearArray: true);
