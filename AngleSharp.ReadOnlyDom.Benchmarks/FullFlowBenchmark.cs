@@ -6,16 +6,6 @@ using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
-// Full round-trip on baked HTML (no network): parse a parcel-tracking page -> select the history
-// table rows -> project each row into an Event POCO (Location/Status/Date) -> dispose. Every engine
-// yields the same number of events, so the measurement covers parse + selection + POCO projection.
-//
-// The arena has two selection variants:
-//   ArenaScalar - walk every handle, reconstruct each node, test kind+name-id.
-//   ArenaSimd   - enumerate <tr> via CompactDocument.IndexOfName, a vectorized IndexOf over the
-//                 contiguous name-id column (ushort reinterpreted as char). This is only possible
-//                 because the columnar layout keeps name-ids in one flat array; an object-graph DOM
-//                 (AngleSharp / read-only) cannot vectorize a "find all <tr>" scan at all.
 [MemoryDiagnoser]
 [GcServer(true)]
 public class FullFlowBenchmark
@@ -44,7 +34,6 @@ public class FullFlowBenchmark
     {
         _html = Bake(Rows);
 
-        // Correctness gate: every engine must project the same number of events.
         var angle = AngleSharp().Count;
         var readOnly = ReadOnly().Count;
         var arenaScalar = ArenaScalar().Count;
@@ -98,7 +87,6 @@ public class FullFlowBenchmark
         return events;
     }
 
-    // Familiar surface: preorder cursor scan + predicate.
     [Benchmark]
     public List<Event> ArenaScalar()
     {
@@ -114,7 +102,6 @@ public class FullFlowBenchmark
         return events;
     }
 
-    // Fast surface: tag pushed into the SIMD name-id scan, then cursor navigation for cells.
     [Benchmark]
     public List<Event> ArenaSimd()
     {

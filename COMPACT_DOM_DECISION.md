@@ -10,14 +10,14 @@ over that arena, not a second materialized tree:
 
 1. AngleSharp finishes all construction calls against the reference facades.
 2. The arena verifies that document order still matches construction order and no detached nodes remain.
-3. Node and attribute name IDs and logical text length are completed once.
+3. Node and attribute names are interned during construction, and logical text length is maintained incrementally.
 4. Reference-facade buffers are released; the document takes ownership of the arena columns and input source.
 5. `CompactDocument` accessors synthesize the same public node, payload, and attribute views directly from the columns.
 6. `CompactDocument.Dispose()` returns the arena columns and name-ID buffers and disposes the source.
 
-The frozen representation keeps construction-only columns alive until disposal. That is intentional for the dominant
-parse/query/dispose use case: avoiding a second traversal and copy is more valuable than minimizing retained footprint.
-Parent and sibling mutation links are no longer exposed for mutation after ownership transfer.
+The frozen representation releases construction-only columns and wrapper buffers, then keeps the query-facing arena
+columns until disposal. This avoids a second traversal and copy. Parent and sibling mutation links are no longer exposed
+after ownership transfer.
 
 If HTML tree construction detached, reparented, or reordered nodes, the parser automatically falls back to packed
 finalization so unreachable nodes cannot leak into the visible traversal. Callers can also request
@@ -89,9 +89,9 @@ Post-parse source-slice recovery was also rejected. AngleSharp token values do n
 identity when source positions are disabled, so recovery required content searches. Allocation fell only 1.6-3.3 KB while
 query time regressed roughly 19-22%. Source-backed values require token ranges at the AngleSharp construction boundary.
 
-Assigning name IDs during mutation was also rejected after measurement. It required another dynamically grown per-node
-column and interleaved name hashing with tree construction. A generated linear dispatch across all standard names regressed
-the query workloads more severely. IDs are therefore assigned in the tight frozen/packed publication pass.
+An earlier name-ID experiment added a second dynamically grown column and used generated linear dispatch during mutation;
+that version regressed the query workloads. The surviving design instead stores IDs directly in the arena's existing name
+column and uses the generated known-name dictionary plus a per-document custom-name table, eliminating the freeze re-walk.
 
 The surviving hybrid generates 305 stable `ushort` IDs from AngleSharp's canonical tag and attribute constants. A small
 per-document lookup cache contains only names encountered by that document; standard entries point at process-wide strings,
@@ -106,10 +106,10 @@ than unsafe token dropping.
 
 ## Next optimization boundary
 
-The default path no longer performs reachable preorder/remapping, text copying, standard-name string allocation, or a text
-length scan. Publication still fills the final name-ID arrays and creates a small per-document dictionary cache. Removing
-that cache would require a pooled specialized lookup that beats the measured tight dictionary pass, not a broad generated
-switch. The larger remaining capability boundary is safe foreign-content suppression in AngleSharp's tree builder.
+The default path no longer performs reachable preorder/remapping, text copying, standard-name string allocation, a text
+length scan, or a publication-time name-ID pass. Removing the per-document name lookup cache would require a pooled
+specialized lookup that beats the current dictionary, not a broad generated switch. The larger remaining capability
+boundary is safe foreign-content suppression in AngleSharp's tree builder.
 
 The generic construction factory still has a known foreign-content correctness boundary where AngleSharp checks concrete
 core element types. An upstream opaque-handle construction sink remains the clean architectural fix if this prototype moves
