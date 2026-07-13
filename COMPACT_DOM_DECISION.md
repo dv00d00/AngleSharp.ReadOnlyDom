@@ -1,7 +1,7 @@
-# Compact DOM prototype
+# Compact DOM
 
-The isolated `AngleSharp.ReadOnlyDom.CompactPrototype` project tests direct HTML construction into a disposable,
-document-scoped columnar representation. It does not change the production read-only DOM hierarchy.
+`AngleSharp.ReadOnlyDom.Compact` provides direct HTML construction into a disposable, document-scoped columnar
+representation. It remains independent from the object-oriented read-only DOM hierarchy.
 
 ## Surviving design
 
@@ -111,6 +111,6 @@ length scan, or a publication-time name-ID pass. Removing the per-document name 
 specialized lookup that beats the current dictionary, not a broad generated switch. The larger remaining capability
 boundary is safe foreign-content suppression in AngleSharp's tree builder.
 
-The generic construction factory still has a known foreign-content correctness boundary where AngleSharp checks concrete
-core element types. An upstream opaque-handle construction sink remains the clean architectural fix if this prototype moves
-toward production.
+The compact construction path uses stable arena-backed facades at AngleSharp's existing generic builder boundary. The full
+Packed and FrozenColumns smoke matrix covers templates, foreign content, foster parenting, and formatting adoption. A new
+upstream opaque-handle sink is therefore optional future wrapper-removal work, not a correctness prerequisite.
