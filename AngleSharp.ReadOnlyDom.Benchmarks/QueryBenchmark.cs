@@ -24,7 +24,7 @@ public class QueryBenchmark
         Options,
         ReadOnlyParser.CreateContext(ReadOnlyMetadataProfile.Minimal)
     );
-    private readonly CompactParserSession _arenaParser = new(parserOptions: Options);
+    private readonly HtmlParser _arenaParser = CompactParser.CreateParser(parserOptions: Options);
 
     private IDocument _angleSharp = null!;
     private IReadOnlyDocument _readOnly = null!;
@@ -40,7 +40,7 @@ public class QueryBenchmark
         var html = Bake(Noise, out _expected);
         _angleSharp = _angleSharpParser.ParseDocument(html);
         _readOnly = _readOnlyParser.ParseReadOnlyDocument(html);
-        _arena = _arenaParser.Parse(html);
+        _arena = _arenaParser.ParseCompactDocument(html);
 
         var angle = AngleSharp();
         var readOnly = ReadOnly();

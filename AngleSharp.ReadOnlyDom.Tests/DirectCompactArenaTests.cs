@@ -19,15 +19,26 @@ public sealed class CompactParserTests
     [Test]
     public async Task AppendOnlyDocumentsFreezeColumnsByDefault()
     {
-        using var document = CompactParser.Parse("<main><p>x</p></main>");
+        using var document = CompactParser.CreateParser().ParseCompactDocument("<main><p>x</p></main>");
 
         await Assert.That(document.Layout).IsEqualTo(CompactDocumentLayout.FrozenColumns);
     }
 
     [Test]
+    public async Task DefaultContextSupportsTheSameExtensionPatternAsReadOnlyDom()
+    {
+        var parser = new HtmlParser(default, CompactParser.DefaultContext);
+        using var document = parser.ParseCompactDocument("<main><p>x</p></main>");
+
+        await Assert.That(document.Elements("main").Count()).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task PackedLayoutRemainsExplicitlyAvailable()
     {
-        using var document = CompactParser.Parse("<main><p>x</p></main>", layout: CompactDocumentLayout.Packed);
+        using var document = CompactParser
+            .CreateParser(layout: CompactDocumentLayout.Packed)
+            .ParseCompactDocument("<main><p>x</p></main>");
 
         await Assert.That(document.Layout).IsEqualTo(CompactDocumentLayout.Packed);
     }
@@ -37,7 +48,7 @@ public sealed class CompactParserTests
     [Arguments(CompactDocumentLayout.Packed)]
     public async Task ElementQueriesExcludeNonElementNames(CompactDocumentLayout layout)
     {
-        using var document = CompactParser.Parse("<main>text</main>", layout: layout);
+        using var document = CompactParser.CreateParser(layout: layout).ParseCompactDocument("<main>text</main>");
 
         await Assert.That(document.Elements("#text").Count()).IsEqualTo(0);
     }
@@ -45,7 +56,9 @@ public sealed class CompactParserTests
     [Test]
     public async Task MutationHeavyMarkupFallsBackToPackedLayout()
     {
-        using var document = CompactParser.Parse("<main><table>before<tr><td>x</td></tr></table></main>");
+        using var document = CompactParser
+            .CreateParser()
+            .ParseCompactDocument("<main><table>before<tr><td>x</td></tr></table></main>");
 
         await Assert.That(document.Layout).IsEqualTo(CompactDocumentLayout.Packed);
     }
@@ -75,7 +88,7 @@ public sealed class CompactParserTests
             using var expected = new HtmlParser(
                 new HtmlParserOptions { SkipComments = true, SkipProcessingInstructions = true }
             ).ParseDocument(html);
-            using var actual = CompactParser.Parse(html);
+            using var actual = CompactParser.CreateParser().ParseCompactDocument(html);
             await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
         }
     }
@@ -88,7 +101,7 @@ public sealed class CompactParserTests
         const string html =
             "<div id=content><b>one<i> &amp; two</b> three</i><template><p>template text</p></template></div>";
         using var expected = new HtmlParser().ParseDocument(html);
-        using var actual = CompactParser.Parse(html, layout: layout);
+        using var actual = CompactParser.CreateParser(layout: layout).ParseCompactDocument(html);
         var actualContent = actual.Elements("div").WithAttribute("id", "content").First();
         var actualTemplate = actual.Elements("template").First();
 
@@ -102,10 +115,9 @@ public sealed class CompactParserTests
     [Arguments(CompactDocumentLayout.Packed)]
     public async Task TemplateContentHasASeparateTraversalBoundary(CompactDocumentLayout layout)
     {
-        using var document = CompactParser.Parse(
-            "<template><section><p>inside</p></section></template><main>outside</main>",
-            layout: layout
-        );
+        using var document = CompactParser
+            .CreateParser(layout: layout)
+            .ParseCompactDocument("<template><section><p>inside</p></section></template><main>outside</main>");
         var template = document.Elements("template").First();
         var childCount = 0;
         foreach (var _ in template.Children())
@@ -125,7 +137,9 @@ public sealed class CompactParserTests
     [Test]
     public async Task ForeignElementNamedTemplateKeepsOrdinaryChildren()
     {
-        using var document = CompactParser.Parse("<svg><template><circle></circle></template></svg>");
+        using var document = CompactParser
+            .CreateParser()
+            .ParseCompactDocument("<svg><template><circle></circle></template></svg>");
         var template = document.Elements("template").First();
         var childCount = 0;
         foreach (var _ in template.Children())
@@ -152,7 +166,7 @@ public sealed class CompactParserTests
     public async Task FactoryPathMatchesForeignElementIntegrationPoint(string html)
     {
         using var expected = new HtmlParser().ParseDocument(html);
-        using var actual = CompactParser.Parse(html);
+        using var actual = CompactParser.CreateParser().ParseCompactDocument(html);
 
         await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
     }
@@ -160,11 +174,12 @@ public sealed class CompactParserTests
     [Test]
     public async Task MetadataColumnsRemainOptional()
     {
-        using var minimal = CompactParser.Parse("<main><p>x</p></main>");
-        using var navigable = CompactParser.Parse(
-            "<main><p>x</p></main>",
+        using var minimal = CompactParser.CreateParser().ParseCompactDocument("<main><p>x</p></main>");
+        using var navigable = CompactParser
+            .CreateParser(
             CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations
-        );
+            )
+            .ParseCompactDocument("<main><p>x</p></main>");
         await Assert.That(minimal.HasParentLinks).IsFalse();
         await Assert.That(minimal.HasSourceLocations).IsFalse();
         await Assert.That(navigable.HasParentLinks).IsTrue();
@@ -175,7 +190,7 @@ public sealed class CompactParserTests
     [Test]
     public async Task PooledDocumentOwnsAndReturnsItsBuffers()
     {
-        var document = CompactParser.Parse("<main><p>x</p></main>");
+        var document = CompactParser.CreateParser().ParseCompactDocument("<main><p>x</p></main>");
         await Assert.That(document.NodeCount).IsGreaterThan(3);
         await Assert.That(document.FindNameId("main")).IsNotEqualTo(ushort.MaxValue);
         document.Dispose();
@@ -183,14 +198,14 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task ReusableSessionCreatesIndependentDocuments()
+    public async Task ReusableParserCreatesIndependentDocuments()
     {
-        var session = new CompactParserSession();
-        using var first = session.Parse("<main><p>first</p></main>");
+        var parser = CompactParser.CreateParser();
+        using var first = parser.ParseCompactDocument("<main><p>first</p></main>");
         var firstCount = first.NodeCount;
         first.Dispose();
 
-        using var second = session.Parse("<main><p>second</p><p>third</p></main>");
+        using var second = parser.ParseCompactDocument("<main><p>second</p><p>third</p></main>");
         await Assert.That(second.NodeCount).IsGreaterThan(firstCount);
         await Assert.That(second.FindNameId("main")).IsNotEqualTo(ushort.MaxValue);
     }
@@ -199,11 +214,15 @@ public sealed class CompactParserTests
     public async Task FrozenDocumentOwnsValuesAfterTokenizerBuffersAreReused()
     {
         var expectedClass = $"stable-{new string('a', 512)}";
-        using var first = CompactParser.Parse($"<main class='{expectedClass}'>stable text</main>");
+        using var first = CompactParser
+            .CreateParser()
+            .ParseCompactDocument($"<main class='{expectedClass}'>stable text</main>");
 
         for (var i = 0; i < 32; i++)
         {
-            using var other = CompactParser.Parse($"<main class='replacement-{i}-{new string('z', 512)}'>other</main>");
+            using var other = CompactParser
+                .CreateParser()
+                .ParseCompactDocument($"<main class='replacement-{i}-{new string('z', 512)}'>other</main>");
         }
 
         var main = first.Elements("main").First();
@@ -214,7 +233,9 @@ public sealed class CompactParserTests
     [Test]
     public async Task KnownAndCustomNamesShareStableDocumentIds()
     {
-        using var document = CompactParser.Parse("<main><x-widget data-custom='x'></x-widget></main>");
+        using var document = CompactParser
+            .CreateParser()
+            .ParseCompactDocument("<main><x-widget data-custom='x'></x-widget></main>");
 
         var main = document.FindNameId("main");
         var customElement = document.FindNameId("x-widget");
@@ -267,10 +288,11 @@ public sealed class CompactParserTests
                 }
             );
             using var expected = expectedParser.ParseDocument(html);
-            using var actual = CompactParser.Parse(
-                html,
+            using var actual = CompactParser
+                .CreateParser(
                 attributeFilter: static (ref StructHtmlToken _, ReadOnlyMemory<char> _) => false
-            );
+                )
+                .ParseCompactDocument(html);
 
             await Assert.That(actual.AttributeCount).IsEqualTo(0);
             await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
@@ -292,7 +314,7 @@ public sealed class CompactParserTests
         using var expected = new HtmlParser(
             new HtmlParserOptions { SkipComments = true, SkipProcessingInstructions = true }
         ).ParseDocument(html);
-        using var actual = CompactParser.Parse(html, hints: hints);
+        using var actual = CompactParser.CreateParser(hints: hints).ParseCompactDocument(html);
 
         await Assert.That(actual.AttributeCount).IsEqualTo(5);
         await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
@@ -317,12 +339,12 @@ public sealed class CompactParserTests
         var actualFilter = new FirstTagAndAllChildren("body");
         var expectedParser = new HtmlParser(parserOptions, ReadOnlyParser.DefaultContext);
         using var expected = expectedParser.ParseReadOnlyDocument(html.AsMemory(), expectedFilter.Loop);
-        var session = new CompactParserSession(
+        var parser = CompactParser.CreateParser(
             parserOptions: parserOptions,
             attributeFilter: static (ref StructHtmlToken token, ReadOnlyMemory<char> name) =>
                 token.Name == "div" && name.Span is "class"
         );
-        using var actual = session.Parse(html.AsMemory(), actualFilter.Loop);
+        using var actual = parser.ParseCompactDocument(html.AsMemory(), actualFilter.Loop);
 
         await Assert.That(actual.AttributeCount).IsEqualTo(1);
         await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
@@ -336,7 +358,7 @@ public sealed class CompactParserTests
         using var expected = new HtmlParser(
             new HtmlParserOptions { SkipComments = true, SkipProcessingInstructions = true }
         ).ParseDocument(retained);
-        using var actual = CompactParser.Parse(input, retained.Length);
+        using var actual = CompactParser.CreateParser().ParseCompactDocument(input, retained.Length);
 
         await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
     }
@@ -355,8 +377,8 @@ public sealed class CompactParserTests
         };
         var expectedParser = new HtmlParser(parserOptions, ReadOnlyParser.DefaultContext);
         using var expected = expectedParser.ParseReadOnlyDocument(html, expectedFilter.Loop);
-        var session = new CompactParserSession(parserOptions: parserOptions);
-        using var actual = session.Parse(html, actualFilter.Loop);
+        var parser = CompactParser.CreateParser(parserOptions: parserOptions);
+        using var actual = parser.ParseCompactDocument(html, actualFilter.Loop);
 
         await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
         await Assert.That(actual.FindNameId("aside")).IsEqualTo(ushort.MaxValue);

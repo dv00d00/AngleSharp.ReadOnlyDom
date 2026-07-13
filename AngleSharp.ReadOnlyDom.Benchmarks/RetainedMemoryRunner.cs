@@ -77,7 +77,8 @@ internal static class RetainedMemoryRunner
     private static Measurement MeasureCompact(IReadOnlyList<CorpusDocument> sources)
     {
         var documents = new List<CompactDocument>(sources.Count);
-        return Measure("Compact", sources, source => CompactParser.Parse(source), documents, Count);
+        var parser = CompactParser.CreateParser();
+        return Measure("Compact", sources, source => parser.ParseCompactDocument(source), documents, Count);
     }
 
     private static Measurement Measure<T>(

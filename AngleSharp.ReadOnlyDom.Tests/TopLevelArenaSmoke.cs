@@ -27,11 +27,12 @@ public class TopLevelArenaSmoke
             ParsedArenaDocs.GetOrAdd(
                 (fileName, layout),
                 static key =>
-                    CompactParser.Parse(
-                        GetHtml(key.FileName),
+                    CompactParser
+                        .CreateParser(
                         CompactMetadataOptions.ParentLinks,
                         layout: key.Layout
-                    )
+                        )
+                        .ParseCompactDocument(GetHtml(key.FileName))
             )
         );
 
@@ -126,11 +127,12 @@ public class TopLevelArenaSmoke
     [Arguments(CompactDocumentLayout.FrozenColumns)]
     public async Task ParentLinksSupportDescendantMatching(CompactDocumentLayout layout)
     {
-        using var document = CompactParser.Parse(
-            "<main><ul class=navigation><li><span>x</span></li></ul></main>",
+        using var document = CompactParser
+            .CreateParser(
             CompactMetadataOptions.ParentLinks,
             layout: layout
-        );
+            )
+            .ParseCompactDocument("<main><ul class=navigation><li><span>x</span></li></ul></main>");
 
         await Assert
             .That(Count(document, n => n.Is("ul") && n.HasClass("navigation"), n => n.Is("span")))
