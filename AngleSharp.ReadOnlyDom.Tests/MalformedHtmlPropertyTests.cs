@@ -1,10 +1,15 @@
 using System.Text;
 using AngleSharp.Dom;
+using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom;
 using AngleSharp.ReadOnlyDom.Html;
 using FsCheck;
 using FsCheck.Fluent;
+#if NET10_0
+using AngleSharp.ReadOnlyDom.CompactPrototype;
+#endif
+
 
 namespace AngleSharp.Readonly.Tests;
 
@@ -52,21 +57,8 @@ public class MalformedHtmlPropertyTests
     [Test]
     public void GeneratedMalformedHtmlMatchesAngleSharpMutableDom()
     {
-        var fragment = Gen.Frequency(
-            (9, Gen.Elements(Fragments)),
-            (
-                1,
-                from name in Gen.Elements("div", "span", "p", "li", "svg", "math", "x-z")
-                from delimiter in Gen.Elements(">", "/> ", "", " attr='", " attr=\"")
-                select $"<{name}{delimiter}"
-            )
-        );
-        var html =
-            from count in Gen.Choose(1, 48)
-            from fragments in fragment.ListOf(count)
-            select string.Concat(fragments);
         var property = Prop.ForAll(
-            html.ToArbitrary(),
+            MalformedHtml(includeKnownCompactBoundaries: true).ToArbitrary(),
             source =>
             {
                 using var mutable = new HtmlParser().ParseDocument(source);
@@ -87,6 +79,140 @@ public class MalformedHtmlPropertyTests
 
         Check.One(Config.QuickThrowOnFailure.WithMaxTest(500), property);
     }
+
+#if NET10_0
+    [Test]
+    public void GeneratedMalformedHtmlWithinCompactSupportMatchesAngleSharpMutableDomForCompactArena()
+    {
+        var property = Prop.ForAll(
+            MalformedHtml(includeKnownCompactBoundaries: false).ToArbitrary(),
+            source =>
+            {
+                using var mutable = new HtmlParser().ParseDocument(source);
+                using var compact = CompactParser.Parse(source);
+
+                var expected = NormalizeForCompact(mutable);
+                var actual = Normalize(compact);
+                if (!expected.Equals(actual, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"Compact DOM mismatch for generated HTML:\n{Escape(source)}\n\nMutable:\n{expected}\n\nCompact:\n{actual}"
+                    );
+                }
+            }
+        );
+
+        Check.One(Config.QuickThrowOnFailure.WithMaxTest(500), property);
+    }
+#endif
+
+    private static Gen<string> MalformedHtml(bool includeKnownCompactBoundaries)
+    {
+        var availableFragments = includeKnownCompactBoundaries
+            ? Fragments
+            : Fragments
+                .Where(static value =>
+                    !value.StartsWith("<svg", StringComparison.Ordinal)
+                    && !value.StartsWith("<math", StringComparison.Ordinal)
+                )
+                .ToArray();
+        var generatedNames = includeKnownCompactBoundaries
+            ? new[] { "div", "span", "p", "li", "svg", "math", "x-z" }
+            : new[] { "div", "span", "p", "li", "x-z" };
+        var fragment = Gen.Frequency(
+            (9, Gen.Elements(availableFragments)),
+            (
+                1,
+                from name in Gen.Elements(generatedNames)
+                from delimiter in Gen.Elements(">", "/> ", "", " attr='", " attr=\"")
+                select $"<{name}{delimiter}"
+            )
+        );
+        return from count in Gen.Choose(1, 48) from fragments in fragment.ListOf(count) select string.Concat(fragments);
+    }
+
+#if NET10_0
+    private static string NormalizeForCompact(IDocument document)
+    {
+        var result = new StringBuilder();
+        AppendCompactChildren(document.ChildNodes, result);
+        return result.ToString();
+    }
+
+    private static string Normalize(CompactDocument document)
+    {
+        var result = new StringBuilder();
+        AppendCompactChildren(document, document.GetNode(0).FirstChild, result);
+        return result.ToString();
+    }
+
+    private static void AppendCompactChildren(INodeList children, StringBuilder result)
+    {
+        var text = new StringBuilder();
+        foreach (var child in children)
+        {
+            if (child is IText textNode)
+            {
+                text.Append(textNode.Data);
+            }
+            else if (child is IElement element)
+            {
+                AppendText(text, result);
+                result.Append("E[").Append(element.LocalName);
+                foreach (
+                    var attribute in element.Attributes.OrderBy(attribute => attribute.Name, StringComparer.Ordinal)
+                )
+                    result.Append('|').Append(attribute.Name).Append('=').Append(Escape(attribute.Value));
+                result.Append("]{");
+                AppendCompactChildren(
+                    element is IHtmlTemplateElement template ? template.Content.ChildNodes : element.ChildNodes,
+                    result
+                );
+                result.Append('}');
+            }
+        }
+        AppendText(text, result);
+    }
+
+    private static void AppendCompactChildren(CompactDocument document, int child, StringBuilder result)
+    {
+        var text = new StringBuilder();
+        while (child >= 0)
+        {
+            var node = document.GetNode(child);
+            if (node.Kind == CompactNodeKind.Text && node.PayloadIndex >= 0)
+            {
+                var payload = document.GetPayload(node.PayloadIndex);
+                text.Append(document.GetValue(payload.ValueStart, payload.ValueLength));
+            }
+            else if (node.Kind == CompactNodeKind.Element)
+            {
+                AppendText(text, result);
+                result.Append("E[").Append(document.GetName(node.NameId));
+                if (node.PayloadIndex >= 0)
+                {
+                    var payload = document.GetPayload(node.PayloadIndex);
+                    var attributes = new List<string>(payload.AttributeCount);
+                    for (var i = 0; i < payload.AttributeCount; i++)
+                    {
+                        var attribute = document.GetAttribute(payload.FirstAttribute + i);
+                        attributes.Add(
+                            $"{document.GetName(attribute.NameId)}={Escape(document.GetValue(attribute.ValueStart, attribute.ValueLength).ToString())}"
+                        );
+                    }
+                    attributes.Sort(StringComparer.Ordinal);
+                    foreach (var attribute in attributes)
+                        result.Append('|').Append(attribute);
+                }
+                result.Append("]{");
+                AppendCompactChildren(document, node.FirstChild, result);
+                result.Append('}');
+            }
+            child = node.NextSibling;
+        }
+        AppendText(text, result);
+    }
+#endif
 
     private static string Normalize(IDocument document)
     {

@@ -51,9 +51,12 @@ internal sealed class MutableNodeColumns : IDisposable
         LastChildren[handle] = -1;
         PreviousSiblings[handle] = -1;
         NextSiblings[handle] = -1;
+        ChildCounts[handle] = 0;
         if (TemplateFirstChildren is not null)
             TemplateFirstChildren[handle] = -1;
         PayloadIndexes[handle] = -1;
+        if (SourceReferences is not null)
+            SourceReferences[handle] = null;
         return handle;
     }
 

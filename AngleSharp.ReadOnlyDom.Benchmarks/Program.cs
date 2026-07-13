@@ -17,6 +17,11 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
             }
 
 #if NET10_0
+            if (args.Length > 0 && args[0].Equals("--query-workloads", StringComparison.OrdinalIgnoreCase))
+            {
+                return QueryWorkloadRunner.Run(args.Skip(1).ToArray());
+            }
+
             if (args.Length > 0 && args[0].Equals("--compact-trace", StringComparison.OrdinalIgnoreCase))
             {
                 return CompactTraceRunner.Run(args.Skip(1).ToArray());
