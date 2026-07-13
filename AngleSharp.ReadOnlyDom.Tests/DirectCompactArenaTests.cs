@@ -1,5 +1,6 @@
 #if NET10_0
 using System.Runtime.CompilerServices;
+using System.Text;
 using AngleSharp.Dom;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
@@ -56,6 +57,99 @@ public sealed class CompactParserTests
         await Assert.That(templateParagraph.IsDescendantOf(section)).IsFalse();
         await Assert.That(aside.IsDescendantOf(section)).IsFalse();
         await Assert.That(directChildren).IsEquivalentTo(["section", "aside"]);
+    }
+
+    [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task InterpretedExtractionPlanExplainsAndExecutesRequiredFeatures(CompactDocumentLayout layout)
+    {
+        const string html =
+            "<main><section id=content class='selected wide' data-ready><article><a href='/item'> one <b>two</b> </a></article></section></main>";
+        var plan = CompactExtractionPlan
+            .Start("section")
+            .WithId("content")
+            .WithClass("wide")
+            .WithAttribute("data-ready")
+            .Child("article")
+            .Descendant("a")
+            .WithAttribute("href", "/item")
+            .TakeFirst()
+            .SelectAttribute("href", "href", required: true)
+            .SelectNormalizedText("text", required: true)
+            .Compile();
+
+        using var document = CompactParser.CreateParser(layout: layout).ParseCompactDocument(html);
+        var result = plan.Execute(document);
+        var explanation = plan.Explain();
+
+        await Assert.That(result.Rows.Count).IsEqualTo(1);
+        await Assert.That(result.Rows[0]["href"].Span.ToString()).IsEqualTo("/item");
+        await Assert.That(result.Rows[0]["href"].Ownership).IsEqualTo(CompactValueOwnership.BorrowedDocumentSlice);
+        await Assert.That(result.Rows[0]["text"].ToString()).IsEqualTo("one two");
+        await Assert.That(result.Rows[0]["text"].Ownership).IsEqualTo(CompactValueOwnership.Owned);
+        await Assert.That(result.Counters.RowsProduced).IsEqualTo(1);
+        await Assert.That(result.Counters.AttributesInspected).IsGreaterThan(0);
+        await Assert.That(plan.Requirements.MetadataOptions).IsEqualTo(CompactMetadataOptions.None);
+        await Assert.That(explanation).Contains("mode=interpreted compact-preorder");
+        await Assert.That(explanation).Contains("termination=first valid row after path evaluation");
+    }
+
+    [Test]
+    [Arguments("<div id=content><p class=item data-v=one>A<p class=item>B")]
+    [Arguments("<table><div id=content><span class=item data-v=one>A</span></div></table>")]
+    [Arguments("<div id=content><b><i><span class=item data-v=one>A</b>B</i></span>")]
+    public async Task InterpretedExtractionPlanMatchesAngleSharpOnMalformedMarkup(string html)
+    {
+        var plan = CompactExtractionPlan
+            .Start("div")
+            .WithId("content")
+            .Descendant("span")
+            .WithClass("item")
+            .TakeAll()
+            .SelectAttribute("value", "data-v", required: true, own: true)
+            .SelectNormalizedText("text")
+            .Compile();
+        using var expected = new HtmlParser().ParseDocument(html);
+        using var actual = CompactParser.CreateParser().ParseCompactDocument(html);
+
+        var expectedRows = expected
+            .QuerySelectorAll("div#content span.item[data-v]")
+            .Select(element => $"{element.GetAttribute("data-v")}|{NormalizeWhitespace(element.TextContent)}")
+            .ToArray();
+        var result = plan.Execute(actual);
+        var actualRows = result.Rows.Select(row => $"{row["value"]}|{row["text"]}").ToArray();
+
+        await Assert.That(actualRows).IsEquivalentTo(expectedRows);
+        foreach (var row in result.Rows)
+            await Assert.That(row["value"].Ownership).IsEqualTo(CompactValueOwnership.Owned);
+    }
+
+    [Test]
+    public async Task ExtractionRequiredFieldsRejectOnlyMissingValues()
+    {
+        using var document = CompactParser
+            .CreateParser()
+            .ParseCompactDocument("<p data-v=''>empty</p><p>missing</p><p data-v=x>value</p>");
+        var required = CompactExtractionPlan
+            .Start("p")
+            .TakeAll()
+            .SelectAttribute("value", "data-v", required: true)
+            .Compile()
+            .Execute(document);
+        var optional = CompactExtractionPlan
+            .Start("p")
+            .TakeAll()
+            .SelectAttribute("value", "data-v")
+            .Compile()
+            .Execute(document);
+
+        await Assert.That(required.Rows.Count).IsEqualTo(2);
+        await Assert.That(required.Rows[0]["value"].Exists).IsTrue();
+        await Assert.That(required.Rows[0]["value"].Span.Length).IsEqualTo(0);
+        await Assert.That(required.Counters.RowsRejected).IsEqualTo(1);
+        await Assert.That(optional.Rows.Count).IsEqualTo(3);
+        await Assert.That(optional.Rows[1]["value"].Exists).IsFalse();
     }
 
     [Test]
@@ -478,6 +572,27 @@ public sealed class CompactParserTests
             child = document.GetNode(child).SubtreeEndExclusive;
         }
         return result + "}";
+    }
+
+    private static string NormalizeWhitespace(string value)
+    {
+        var result = new StringBuilder(value.Length);
+        var pendingSpace = false;
+        foreach (var character in value)
+        {
+            if (char.IsWhiteSpace(character))
+            {
+                pendingSpace = result.Length != 0;
+                continue;
+            }
+            if (pendingSpace)
+            {
+                result.Append(' ');
+                pendingSpace = false;
+            }
+            result.Append(character);
+        }
+        return result.ToString();
     }
 
     private static CompactNodeKind Kind(INode node) =>
