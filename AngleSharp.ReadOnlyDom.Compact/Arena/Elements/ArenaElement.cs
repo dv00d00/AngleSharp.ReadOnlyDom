@@ -36,6 +36,7 @@ internal class ArenaElement : ArenaNode, IConstructableElement
     {
         for (var i = 0; i < attributes.Count; i++)
             SetOwnAttribute(attributes[i].Name, attributes[i].Value);
+        Arena.CompleteAttributes(NodeHandle);
     }
 
     public bool HasAttribute(StringOrMemory name) => Arena.GetAttribute(NodeHandle, name) is not null;
