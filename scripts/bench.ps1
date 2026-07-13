@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("micro", "small", "full", "retained", "compact", "query", "plan", "streaming", "aggregate", "all")]
+    [ValidateSet("micro", "small", "full", "retained", "compact", "query", "plan", "streaming", "aggregate", "long-streaming", "all")]
     [string] $Tier = "all"
 )
 
@@ -35,6 +35,10 @@ function Invoke-Benchmark([string] $filter, [string] $name, [string] $corpusTier
         dotnet run --project $project -c Release -f net10.0 --no-build -- `
             --filter $filter --join --artifacts $artifacts
         if ($LASTEXITCODE -ne 0) { throw "$name benchmark failed." }
+        $reports = Get-ChildItem -Path $artifacts -Recurse -Filter "*-report-github.md"
+        if (-not $reports -or ($reports | Select-String -SimpleMatch "There are not any results runs")) {
+            throw "$name benchmark produced no results. Check its setup output above."
+        }
     }
     finally {
         Remove-Item Env:AS_BENCH_CORPUS_TIER -ErrorAction SilentlyContinue
@@ -52,6 +56,9 @@ if ($Tier -in @("plan", "all")) {
 }
 if ($Tier -in @("streaming", "aggregate", "all")) {
     Invoke-Benchmark "*CompactStreamingExtractionBenchmark*" "streaming"
+}
+if ($Tier -in @("long-streaming", "all")) {
+    Invoke-Benchmark "*LongSyntheticConstructionBenchmark*" "long-streaming"
 }
 if ($Tier -in @("small", "all")) {
     Invoke-Benchmark "*CorpusBenchmark*" "corpus-small" "small"
