@@ -13,7 +13,7 @@ public class CompactBuildBenchmark
     private readonly HtmlParser _readOnlyParser = ReadOnlyParser.CreateParser(ReadOnlyMetadataProfile.Minimal);
     private readonly CompactParserSession _compactParser = new();
     private readonly CompactParserSession _compactParserNoAttributes = new(
-        attributeFilter: static (ref StructHtmlToken _, ReadOnlyMemory<char> _) => false
+        attributeFilter: static (ref _, _) => false
     );
 
     [Benchmark(Baseline = true)]

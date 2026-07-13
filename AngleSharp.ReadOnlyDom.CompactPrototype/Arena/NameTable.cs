@@ -53,4 +53,23 @@ internal sealed class NameTable
     }
 
     public void CopyCustomNamesTo(string[] destination) => _customNames?.CopyTo(destination);
+
+    public StringOrMemory GetName(ushort id)
+    {
+        if (id < GeneratedTagMetadata.KnownNameCount)
+            return GeneratedTagMetadata.GetKnownName(id);
+        else
+            return _customNames![id - GeneratedTagMetadata.KnownNameCount];
+    }
+
+    public bool TryGetId(StringOrMemory name, out ushort id)
+    {
+        if (GeneratedTagMetadata.TryGetKnownNameId(name, out id))
+            return true;
+#if NET10_0
+        return _ids.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(name.Memory.Span, out id);
+#else
+        return _ids.TryGetValue(name, out id);
+#endif
+    }
 }
