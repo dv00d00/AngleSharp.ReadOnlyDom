@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("micro", "small", "full", "retained", "compact", "all")]
+    [ValidateSet("micro", "small", "full", "retained", "compact", "query", "all")]
     [string] $Tier = "all"
 )
 
@@ -56,6 +56,11 @@ if ($Tier -in @("retained", "all")) {
     dotnet run --project $project -c Release -f net10.0 --no-build -- `
         --retained --tier small --repetitions 3 --output (Join-Path $output "retained-small.md")
     if ($LASTEXITCODE -ne 0) { throw "Retained-memory benchmark failed." }
+}
+if ($Tier -in @("query", "all")) {
+    dotnet run --project $project -c Release -f net10.0 --no-build -- `
+        --query-workloads --iterations 30 --output (Join-Path $output "query-workloads.md")
+    if ($LASTEXITCODE -ne 0) { throw "Query workload measurement failed." }
 }
 if ($Tier -eq "full" -or $Tier -eq "all") {
     dotnet run --project $project -c Release -f net10.0 --no-build -- `

@@ -8,6 +8,7 @@ namespace AngleSharp.ReadOnlyDom.CompactPrototype;
 /// </summary>
 public readonly struct Node
 {
+    private static readonly ushort TemplateNameId = GetTemplateNameId();
     private readonly CompactDocument? _document;
     private readonly int _handle;
 
@@ -49,9 +50,7 @@ public readonly struct Node
 
     /// <summary>The parent node, or a non-existent cursor when parent links were not retained.</summary>
     public Node Parent =>
-        _document is not null && _document.HasParentLinks
-            ? new Node(_document, _document.GetParent(_handle))
-            : default;
+        _document is not null && _document.HasParentLinks ? new Node(_document, _document.GetParent(_handle)) : default;
 
     /// <summary>The attribute value (empty span if absent — use <see cref="HasAttr(string)"/> to disambiguate).</summary>
     public ReadOnlySpan<char> Attr(string name) => Attr(name.AsSpan());
@@ -96,6 +95,8 @@ public readonly struct Node
         where TSink : ISpanSink
     {
         var node = Raw;
+        if (node.Kind == CompactNodeKind.Element && node.NameId == TemplateNameId)
+            return;
         if (node.Kind == CompactNodeKind.Text && node.PayloadIndex >= 0)
         {
             var payload = _document!.GetPayload(node.PayloadIndex);
@@ -136,6 +137,8 @@ public readonly struct Node
     private bool WriteInto(Span<char> destination, ref int written)
     {
         var node = Raw;
+        if (node.Kind == CompactNodeKind.Element && node.NameId == TemplateNameId)
+            return true;
         if (node.Kind == CompactNodeKind.Text && node.PayloadIndex >= 0)
         {
             var payload = _document!.GetPayload(node.PayloadIndex);
@@ -150,6 +153,9 @@ public readonly struct Node
                 return false;
         return true;
     }
+
+    private static ushort GetTemplateNameId() =>
+        GeneratedTagMetadata.TryGetKnownNameId("template", out var id) ? id : ushort.MaxValue;
 
     public ChildCursor Children() => new(_document!, _handle);
 
