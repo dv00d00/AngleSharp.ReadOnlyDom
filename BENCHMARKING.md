@@ -14,6 +14,7 @@ Run a tier from the repository root:
 ./scripts/bench.ps1 retained
 ./scripts/bench.ps1 plan
 ./scripts/bench.ps1 streaming
+./scripts/bench.ps1 aggregate
 ./scripts/bench.ps1 full
 ./scripts/bench.ps1 all
 ```

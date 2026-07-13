@@ -11,21 +11,21 @@ internal sealed class ArenaConstructionFactory : IDomConstructionElementFactory<
     private readonly bool _trackSourceReferences;
     private readonly CompactMetadataOptions _options;
     private readonly CompactDocumentLayout _layout;
-    private readonly CompactStreamingExtractionDefinition? _streamingExtraction;
+    private readonly ICompactConstructionViewDefinition? _constructionView;
 
     public ArenaConstructionFactory(
         CompactParserHints hints,
         bool trackSourceReferences,
         CompactMetadataOptions options,
         CompactDocumentLayout layout,
-        CompactStreamingExtractionDefinition? streamingExtraction = null
+        ICompactConstructionViewDefinition? constructionView = null
     )
     {
         _hints = hints;
         _trackSourceReferences = trackSourceReferences;
         _options = options;
         _layout = layout;
-        _streamingExtraction = streamingExtraction;
+        _constructionView = constructionView;
     }
 
     public ArenaElement Create(
@@ -107,7 +107,7 @@ internal sealed class ArenaConstructionFactory : IDomConstructionElementFactory<
         new Arena(
             _hints,
             _trackSourceReferences,
-            _streamingExtraction?.CreateState(source.Text)
+            _constructionView?.CreateState(source)
         ).CreateDocument(source, _options, _layout);
 
     private static ArenaElement CreateKnown(ArenaDocument document, StringOrMemory name, ElementMarker marker)

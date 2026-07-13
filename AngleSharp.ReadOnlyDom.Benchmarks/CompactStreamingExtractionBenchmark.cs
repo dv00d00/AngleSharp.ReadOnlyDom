@@ -22,12 +22,21 @@ public class CompactStreamingExtractionBenchmark
         .Compile();
     private readonly CompactStreamingExtractionPlan _streamingPlan = CompactStreamingExtractor
         .CompileFirstNormalizedText();
+    private readonly CompactAggregatePlan _aggregatePlan = CompactAggregate
+        .First(CompactAggregateSelector.Tag("div").WithId("content"))
+        .Field("text", CompactAggregateProjection.SelfNormalizedText(), required: true)
+        .Compile();
 
     [GlobalSetup]
     public void Validate()
     {
         var expected = ReadOnlyParseAndTraverse();
-        if (CompactParseAndPlan() != expected || QueryDirectedConstruction() != expected || NaiveTokenClose() != expected)
+        if (
+            CompactParseAndPlan() != expected
+            || QueryDirectedConstruction() != expected
+            || EofAggregateConstruction() != expected
+            || NaiveTokenClose() != expected
+        )
             throw new InvalidOperationException("Streaming extraction benchmark implementations disagree.");
     }
 
@@ -48,6 +57,13 @@ public class CompactStreamingExtractionBenchmark
 
     [Benchmark]
     public string QueryDirectedConstruction() => _streamingPlan.Execute(_html).Value.Own();
+
+    [Benchmark]
+    public string EofAggregateConstruction()
+    {
+        var result = _aggregatePlan.Execute(_html);
+        return result.Rows.Count == 0 ? string.Empty : result.Rows[0]["text"].Own();
+    }
 
     [Benchmark]
     public string NaiveTokenClose()

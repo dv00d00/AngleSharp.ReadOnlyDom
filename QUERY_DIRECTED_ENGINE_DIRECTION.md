@@ -77,6 +77,11 @@ The first tree-builder-integrated concrete view is recorded in
 no escaping DOM, and beat the compact plan by 47.1% allocation and 19.8% mean time on its purpose-built fixture. This is
 evidence for a small construction-time view kernel, not evidence for pushing arbitrary result shapes into the tokenizer.
 
+The EOF aggregate follow-up is recorded in [ISSUE_31_EOF_AGGREGATES.md](ISSUE_31_EOF_AGGREGATES.md). It generalizes the
+same construction seam to C#-configured object rows, normalized text, and deliberately minimal Markdown without adding a
+query language or incremental result emission. AngleSharp's current stream-backed `TextSource` reads incrementally but
+retains the decoded input, so bounded-memory input remains a separate tokenizer/source-substrate problem.
+
 ## Scope discipline
 
 Start with tag, id, class token, attribute equality, descendant/direct-child paths, first/all cardinality, attribute projection, and normalized subtree text. Use an inspectable interpreted plan. Do not begin with a full CSS language, generic optimizer, generated IL, SIMD selectors, bitmap rank/select storage, or a universal column framework.

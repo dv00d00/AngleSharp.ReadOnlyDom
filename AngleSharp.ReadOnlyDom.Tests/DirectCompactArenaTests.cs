@@ -194,6 +194,167 @@ public sealed class CompactParserTests
     }
 
     [Test]
+    public async Task EofAggregateProjectsArticleAsJsonTextAndMarkdown()
+    {
+        const string Html = """
+            <article id="content">
+              <h1>Parsing <em>real</em> HTML</h1>
+              <p>Use the <a href="/parser">HTML parser</a>, not regex.</p>
+              <ul><li>Correct tables</li><li>Malformed markup</li></ul>
+            </article>
+            """;
+        var article = CompactAggregateSelector.Tag("article").WithId("content");
+        var plan = CompactAggregate
+            .First(article)
+            .Field(
+                "title",
+                CompactAggregateProjection.FirstNormalizedText(
+                    CompactAggregateSelector.Tag("h1")
+                )
+            )
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Field("markdown", CompactAggregateProjection.SelfMarkdown())
+            .Compile();
+
+        var result = plan.Execute(Html);
+
+        await Assert.That(result.Rows.Count).IsEqualTo(1);
+        await Assert.That(result.Rows[0]["title"].ToString()).IsEqualTo("Parsing real HTML");
+        await Assert
+            .That(result.Rows[0]["text"].ToString())
+            .IsEqualTo(
+                "Parsing real HTML Use the HTML parser, not regex. Correct tablesMalformed markup"
+            );
+        await Assert
+            .That(result.Rows[0]["markdown"].ToString())
+            .IsEqualTo(
+                "# Parsing *real* HTML\n\nUse the [HTML parser](/parser), not regex.\n\n- Correct tables\n- Malformed markup"
+            );
+        await Assert.That(result.Rows[0]["title"].Ownership).IsEqualTo(CompactValueOwnership.Owned);
+        await Assert.That(result.Counters.InputBytesConsumed).IsEqualTo(Encoding.UTF8.GetByteCount(Html));
+        await Assert.That(result.Counters.RowsProduced).IsEqualTo(1);
+        await Assert.That(result.ToJson()).Contains("\"markdown\":\"# Parsing *real* HTML");
+        await Assert.That(plan.Explain()).Contains("termination=end-of-document");
+    }
+
+    [Test]
+    public async Task EofAggregateProjectsRepeatedSearchResultObjects()
+    {
+        const string Html = """
+            <main>
+              <article class="result"><h2><a href="/a">Arena parsing</a></h2><p class="snippet">Build only what you need.</p></article>
+              <article class="result"><h2><a href="/b">Compact DOM</a></h2><p class="snippet">Retain a reusable tree.</p></article>
+            </main>
+            """;
+        var plan = CompactAggregate
+            .ForEach(CompactAggregateSelector.Tag("article").WithClass("result"))
+            .Field(
+                "title",
+                CompactAggregateProjection.FirstNormalizedText(
+                    CompactAggregateSelector.Tag("h2")
+                )
+            )
+            .Field(
+                "url",
+                CompactAggregateProjection.FirstAttribute(
+                    CompactAggregateSelector.Tag("a"),
+                    "href"
+                ),
+                required: true
+            )
+            .Field(
+                "snippet",
+                CompactAggregateProjection.FirstNormalizedText(
+                    CompactAggregateSelector.Tag("p").WithClass("snippet")
+                )
+            )
+            .Compile();
+
+        var result = plan.Execute(Html);
+
+        await Assert.That(result.Rows.Count).IsEqualTo(2);
+        await Assert.That(result.Rows[0]["title"].ToString()).IsEqualTo("Arena parsing");
+        await Assert.That(result.Rows[0]["url"].ToString()).IsEqualTo("/a");
+        await Assert.That(result.Rows[1]["snippet"].ToString()).IsEqualTo("Retain a reusable tree.");
+        await Assert.That(result.ToJson()).StartsWith("[{\"title\":\"Arena parsing\"");
+        await Assert.That(result.Counters.RowsRejected).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task EofAggregateRequiredAttributeDistinguishesEmptyFromMissing()
+    {
+        const string Html = "<article class=result><a href=''>empty</a></article><article class=result><a>missing</a></article>";
+        var plan = CompactAggregate
+            .ForEach(CompactAggregateSelector.Tag("article").WithClass("result"))
+            .Field(
+                "url",
+                CompactAggregateProjection.FirstAttribute(CompactAggregateSelector.Tag("a"), "href"),
+                required: true
+            )
+            .Compile();
+
+        var result = plan.Execute(Html);
+
+        await Assert.That(result.Rows.Count).IsEqualTo(1);
+        await Assert.That(result.Rows[0]["url"].Exists).IsTrue();
+        await Assert.That(result.Rows[0]["url"].Span.Length).IsEqualTo(0);
+        await Assert.That(result.Counters.RowsRejected).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task EofAggregateMarkdownSupportsExclusionsAndPreservedCode()
+    {
+        const string Html = """
+            <main id="docs">
+              <nav>Previous | Next</nav>
+              <h1>Authentication</h1>
+              <p>Send an <code>Authorization</code> header.</p>
+              <pre><code>curl -H "Authorization: Bearer TOKEN"</code></pre>
+              <aside>Internal advertisement</aside>
+            </main>
+            """;
+        var plan = CompactAggregate
+            .First(CompactAggregateSelector.Tag("main").WithId("docs"))
+            .Field(
+                "markdown",
+                CompactAggregateProjection.SelfMarkdown(
+                    CompactAggregateSelector.Tag("nav"),
+                    CompactAggregateSelector.Tag("aside")
+                )
+            )
+            .Compile();
+
+        var result = plan.Execute(Html);
+
+        await Assert
+            .That(result.Rows[0]["markdown"].ToString())
+            .IsEqualTo(
+                "# Authentication\n\nSend an `Authorization` header.\n\n```text\ncurl -H \"Authorization: Bearer TOKEN\"\n```"
+            );
+        await Assert.That(result.Rows[0]["markdown"].ToString()).DoesNotContain("Previous");
+        await Assert.That(result.Rows[0]["markdown"].ToString()).DoesNotContain("advertisement");
+    }
+
+    [Test]
+    [Arguments("<article class=result><b><i>one</b> two</i><p>three")]
+    [Arguments("<table><article class=result>before<span>inside</span></article><tr><td>cell</table>")]
+    public async Task EofAggregateNormalizedTextMatchesFinalAngleSharpTopology(string html)
+    {
+        using var expectedDocument = new HtmlParser().ParseDocument(html);
+        var expected = expectedDocument.QuerySelector("article.result");
+        var plan = CompactAggregate
+            .First(CompactAggregateSelector.Tag("article").WithClass("result"))
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Compile();
+
+        var actual = plan.Execute(html);
+
+        await Assert.That(actual.Rows.Count).IsEqualTo(expected is null ? 0 : 1);
+        if (expected is not null)
+            await Assert.That(actual.Rows[0]["text"].ToString()).IsEqualTo(NormalizeWhitespace(expected.TextContent));
+    }
+
+    [Test]
     public async Task StreamingExtractionReportsMissingTarget()
     {
         var result = CompactStreamingExtractor.ExtractFirstNormalizedText("<main><p>none</p></main>");
