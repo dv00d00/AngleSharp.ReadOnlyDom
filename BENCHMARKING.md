@@ -12,6 +12,7 @@ Run a tier from the repository root:
 ./scripts/bench.ps1 micro
 ./scripts/bench.ps1 small
 ./scripts/bench.ps1 retained
+./scripts/bench.ps1 plan
 ./scripts/bench.ps1 full
 ./scripts/bench.ps1 all
 ```

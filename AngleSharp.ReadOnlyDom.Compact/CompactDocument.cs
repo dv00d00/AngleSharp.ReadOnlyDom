@@ -139,6 +139,24 @@ public sealed class CompactDocument : IDisposable
         );
     }
 
+    internal bool TryGetAttribute(int handle, ushort nameId, out CompactAttribute attribute, ref int inspected)
+    {
+        var node = GetNode(handle);
+        if (nameId != ushort.MaxValue && node.PayloadIndex >= 0)
+        {
+            var payload = GetPayload(node.PayloadIndex);
+            for (var index = 0; index < payload.AttributeCount; index++)
+            {
+                attribute = GetAttribute(payload.FirstAttribute + index);
+                inspected++;
+                if (attribute.NameId == nameId)
+                    return true;
+            }
+        }
+        attribute = default;
+        return false;
+    }
+
     /// <summary>
     /// Returns the next node at or after <paramref name="start"/> with the given name ID, or -1.
     /// Frozen columns use a vectorized scan; packed documents use a scalar scan.
