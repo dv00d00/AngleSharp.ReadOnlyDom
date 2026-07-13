@@ -341,6 +341,12 @@ internal sealed class Arena : IDisposable
         }
 
         var nameArray = CopyCustomNames(_names);
+        var templateBoundaries = CreateTemplateBoundaries(
+            orderCount,
+            preservesConstructionHandles,
+            order,
+            remap
+        );
         var (text, textLength) = textBuilder.Detach();
         var result = new CompactDocument(
             nodes,
@@ -350,6 +356,7 @@ internal sealed class Arena : IDisposable
             text,
             parents,
             sources,
+            templateBoundaries,
             orderCount,
             payloadIndex,
             attributeIndex,
@@ -372,6 +379,7 @@ internal sealed class Arena : IDisposable
 
         var attributeCount = _attributes?.Count ?? 0;
         var nameArray = CopyCustomNames(_names);
+        var templateBoundaries = CreateTemplateBoundaries(_columns.Count, true, null, null);
         _columns.ReleaseConstructionColumns();
         _nodes.Dispose();
         _attributeWrappers?.Dispose();
@@ -384,7 +392,8 @@ internal sealed class Arena : IDisposable
             attributeCount,
             _names.CustomCount,
             _textLength,
-            options
+            options,
+            templateBoundaries
         );
     }
 
@@ -439,6 +448,51 @@ internal sealed class Arena : IDisposable
         _columns.TemplateFirstChild(handle) is var template && template >= 0
             ? template
             : _columns.FirstChildren[handle];
+
+    private CompactTemplateBoundary[] CreateTemplateBoundaries(
+        int outputCount,
+        bool preservesConstructionHandles,
+        int[]? order,
+        int[]? remap
+    )
+    {
+        List<CompactTemplateBoundary>? boundaries = null;
+        for (var outputHandle = 0; outputHandle < outputCount; outputHandle++)
+        {
+            var constructionHandle = preservesConstructionHandles ? outputHandle : order![outputHandle];
+            if (_nodes[constructionHandle] is not ArenaTemplateElement)
+                continue;
+
+            var constructionStart = _columns.TemplateFirstChild(constructionHandle);
+            var contentStart =
+                constructionStart < 0 ? -1
+                : preservesConstructionHandles ? constructionStart
+                : remap![constructionStart];
+            var contentEnd = contentStart;
+            if (contentStart >= 0)
+            {
+                contentEnd = outputHandle + 1;
+                while (contentEnd < outputCount)
+                {
+                    var candidate = preservesConstructionHandles ? contentEnd : order![contentEnd];
+                    if (!IsDescendantOf(candidate, constructionHandle))
+                        break;
+                    contentEnd++;
+                }
+            }
+
+            (boundaries ??= []).Add(new CompactTemplateBoundary(outputHandle, contentStart, contentEnd));
+        }
+        return boundaries?.ToArray() ?? [];
+    }
+
+    private bool IsDescendantOf(int candidate, int ancestor)
+    {
+        for (var parent = _columns.Parents[candidate]; parent >= 0; parent = _columns.Parents[parent])
+            if (parent == ancestor)
+                return true;
+        return false;
+    }
 
     private static (int Start, int Length) CopyText(StringOrMemory value, PooledValueBuffer<char> destination)
     {

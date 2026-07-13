@@ -13,6 +13,7 @@ public sealed class CompactDocument : IDisposable
     private readonly char[]? _text;
     private readonly int[]? _parents;
     private readonly CompactSourceLocation[]? _sources;
+    private readonly CompactTemplateBoundary[] _templateBoundaries;
 
     private readonly ArenaStorage? _arena;
     private readonly TextSource? _source;
@@ -34,6 +35,7 @@ public sealed class CompactDocument : IDisposable
         char[] text,
         int[]? parents,
         CompactSourceLocation[]? sources,
+        CompactTemplateBoundary[] templateBoundaries,
         int nodeCount,
         int payloadCount,
         int attributeCount,
@@ -48,6 +50,7 @@ public sealed class CompactDocument : IDisposable
         _text = text;
         _parents = parents;
         _sources = sources;
+        _templateBoundaries = templateBoundaries;
         _nodeCount = nodeCount;
         _payloadCount = payloadCount;
         _attributeCount = attributeCount;
@@ -64,7 +67,8 @@ public sealed class CompactDocument : IDisposable
         int attributeCount,
         int nameCount,
         int textLength,
-        CompactMetadataOptions metadataOptions
+        CompactMetadataOptions metadataOptions,
+        CompactTemplateBoundary[] templateBoundaries
     )
     {
         _arena = arena;
@@ -76,6 +80,7 @@ public sealed class CompactDocument : IDisposable
         _nameCount = nameCount;
         _textLength = textLength;
         _metadataOptions = metadataOptions;
+        _templateBoundaries = templateBoundaries;
     }
 
     public CompactDocumentLayout Layout =>
@@ -201,11 +206,48 @@ public sealed class CompactDocument : IDisposable
         var count = 0;
         for (var handle = 0; handle < _nodeCount; handle++)
         {
+            if (TryGetContainingTemplateContentEnd(handle, out var contentEnd))
+            {
+                handle = contentEnd - 1;
+                continue;
+            }
             var node = GetNode(handle);
             if (node.Kind == CompactNodeKind.Element && node.NameId == nameId)
                 count++;
         }
         return count;
+    }
+
+    internal bool IsTemplate(int handle)
+    {
+        foreach (var boundary in _templateBoundaries)
+            if (boundary.Handle == handle)
+                return true;
+        return false;
+    }
+
+    internal bool TryGetTemplateContent(int handle, out int contentStart)
+    {
+        foreach (var boundary in _templateBoundaries)
+        {
+            if (boundary.Handle != handle)
+                continue;
+            contentStart = boundary.ContentStart;
+            return contentStart >= 0;
+        }
+        contentStart = -1;
+        return false;
+    }
+
+    internal bool TryGetContainingTemplateContentEnd(int handle, out int contentEnd)
+    {
+        contentEnd = -1;
+        foreach (var boundary in _templateBoundaries)
+        {
+            if (handle >= boundary.ContentStart && handle < boundary.ContentEnd)
+                contentEnd = Math.Max(contentEnd, boundary.ContentEnd);
+        }
+        return contentEnd >= 0;
     }
 
     /// <summary>

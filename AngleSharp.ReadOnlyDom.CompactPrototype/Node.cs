@@ -8,7 +8,6 @@ namespace AngleSharp.ReadOnlyDom.CompactPrototype;
 /// </summary>
 public readonly struct Node
 {
-    private static readonly ushort TemplateNameId = GetTemplateNameId();
     private readonly CompactDocument? _document;
     private readonly int _handle;
 
@@ -95,7 +94,7 @@ public readonly struct Node
         where TSink : ISpanSink
     {
         var node = Raw;
-        if (node.Kind == CompactNodeKind.Element && node.NameId == TemplateNameId)
+        if (_document!.IsTemplate(_handle))
             return;
         if (node.Kind == CompactNodeKind.Text && node.PayloadIndex >= 0)
         {
@@ -137,7 +136,7 @@ public readonly struct Node
     private bool WriteInto(Span<char> destination, ref int written)
     {
         var node = Raw;
-        if (node.Kind == CompactNodeKind.Element && node.NameId == TemplateNameId)
+        if (_document!.IsTemplate(_handle))
             return true;
         if (node.Kind == CompactNodeKind.Text && node.PayloadIndex >= 0)
         {
@@ -154,10 +153,14 @@ public readonly struct Node
         return true;
     }
 
-    private static ushort GetTemplateNameId() =>
-        GeneratedTagMetadata.TryGetKnownNameId("template", out var id) ? id : ushort.MaxValue;
+    public ChildCursor Children() =>
+        new(_document!, _document!.IsTemplate(_handle) ? -1 : Raw.FirstChild);
 
-    public ChildCursor Children() => new(_document!, _handle);
+    public ChildCursor TemplateContent() =>
+        new(
+            _document!,
+            _document!.TryGetTemplateContent(_handle, out var contentStart) ? contentStart : -1
+        );
 
     private bool TryFindAttribute(ushort nameId, out ReadOnlySpan<char> value)
     {
@@ -199,14 +202,14 @@ public readonly struct Node
     public struct ChildCursor
     {
         private readonly CompactDocument _document;
-        private readonly int _parent;
+        private readonly int _first;
         private int _current;
         private bool _started;
 
-        internal ChildCursor(CompactDocument document, int parent)
+        internal ChildCursor(CompactDocument document, int first)
         {
             _document = document;
-            _parent = parent;
+            _first = first;
             _current = -1;
             _started = false;
         }
@@ -218,7 +221,7 @@ public readonly struct Node
             if (!_started)
             {
                 _started = true;
-                _current = _document.GetNode(_parent).FirstChild;
+                _current = _first;
             }
             else if (_current >= 0)
             {

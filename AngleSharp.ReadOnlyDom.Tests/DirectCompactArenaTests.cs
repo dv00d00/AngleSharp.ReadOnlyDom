@@ -98,6 +98,48 @@ public sealed class CompactParserTests
     }
 
     [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task TemplateContentHasASeparateTraversalBoundary(CompactDocumentLayout layout)
+    {
+        using var document = CompactParser.Parse(
+            "<template><section><p>inside</p></section></template><main>outside</main>",
+            layout: layout
+        );
+        var template = document.Elements("template").First();
+        var childCount = 0;
+        foreach (var _ in template.Children())
+            childCount++;
+        var contentCount = 0;
+        foreach (var _ in template.TemplateContent())
+            contentCount++;
+
+        await Assert.That(childCount).IsEqualTo(0);
+        await Assert.That(contentCount).IsEqualTo(1);
+        await Assert.That(document.Elements("section").Count()).IsEqualTo(0);
+        await Assert.That(document.Elements("p").Count()).IsEqualTo(0);
+        await Assert.That(document.Elements("main").Count()).IsEqualTo(1);
+        await Assert.That(document.CountElements(document.Name("p"))).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task ForeignElementNamedTemplateKeepsOrdinaryChildren()
+    {
+        using var document = CompactParser.Parse("<svg><template><circle></circle></template></svg>");
+        var template = document.Elements("template").First();
+        var childCount = 0;
+        foreach (var _ in template.Children())
+            childCount++;
+        var contentCount = 0;
+        foreach (var _ in template.TemplateContent())
+            contentCount++;
+
+        await Assert.That(childCount).IsEqualTo(1);
+        await Assert.That(contentCount).IsEqualTo(0);
+        await Assert.That(document.Elements("circle").Count()).IsEqualTo(1);
+    }
+
+    [Test]
     [Arguments("<svg><foreignObject><div>x</div></foreignObject></svg>")]
     [Arguments("<svg><desc><div>x</div></desc></svg>")]
     [Arguments("<svg><title><div>x</div></title></svg>")]
