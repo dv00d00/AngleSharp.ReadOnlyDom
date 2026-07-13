@@ -45,4 +45,30 @@ public class GeneratedTagMetadataTests
         await Assert.That(document.QueryOne(node => node.Tag("script"))).IsTypeOf<ReadOnlyHtmlScript>();
         await Assert.That(document.QueryOne(node => node.Tag("meta"))).IsTypeOf<ReadOnlyHtmlMeta>();
     }
+
+    [Test]
+    public async Task GeneratedKnownNameIdsRoundTripCanonicalNames()
+    {
+        var names = new[] { "#comment", "#document", "#text" }
+            .Concat(GetStringConstants(typeof(TagNames)))
+            .Concat(GetStringConstants(typeof(AttributeNames)))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var ids = new HashSet<ushort>();
+
+        foreach (var name in names)
+        {
+            var found = GeneratedTagMetadata.TryGetKnownNameId(name.AsSpan(), out var id);
+            await Assert.That(found).IsTrue().Because($"name '{name}' must have a generated ID");
+            await Assert.That(ids.Add(id)).IsTrue().Because($"name '{name}' must have a unique ID");
+            await Assert.That(GeneratedTagMetadata.GetKnownName(id)).IsEqualTo(name);
+        }
+
+        await Assert.That(ids.Count).IsEqualTo(GeneratedTagMetadata.KnownNameCount);
+    }
+
+    private static IEnumerable<string> GetStringConstants(Type type) =>
+        type.GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(field => field.FieldType == typeof(string))
+            .Select(field => (string)field.GetValue(null)!);
 }

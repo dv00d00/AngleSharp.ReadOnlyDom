@@ -13,6 +13,17 @@ Run a tier from the repository root:
 ./scripts/bench.ps1 all
 ```
 
+Run the anonymous three-document fat-page comparison directly:
+
+```powershell
+dotnet run --project AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- `
+  --filter "*FatDocumentParsingBenchmark*" --job short
+```
+
+It selects the three largest checked-in HTML fixtures as `LargeA`, `LargeB`, and `LargeC`, then compares default
+AngleSharp, the production read-only DOM, and the frozen arena. Setup verifies equal element counts including template
+contents and fails if an arena document falls back to packed layout.
+
 Every run writes ignored, versioned output under `artifacts/benchmarks/<timestamp>-<commit>-<tier>/`, including commit,
 runtime, job, corpus, and noise metadata. `micro` is the GitHub partial-parse benchmark with full and filtered paths.
 `small` parses five representative checked-in pages. `full` parses all checked-in pages. `retained` runs the small

@@ -8,6 +8,8 @@ namespace AngleSharp.ReadOnlyDom;
 
 internal static class GeneratedTagMetadata
 {
+    public const ushort KnownNameCount = 305;
+
     public static NodeFlags GetFlags(StringOrMemory localName)
     {
         switch (localName.Length)
@@ -248,4 +250,1901 @@ internal static class GeneratedTagMetadata
 
         return NodeFlags.None;
     }
+
+    public static bool TryGetKnownNameId(StringOrMemory name, out ushort id) =>
+        TryGetKnownNameId(name.Memory.Span, out id);
+
+    public static bool TryGetKnownNameId(ReadOnlySpan<char> name, out ushort id)
+    {
+#if NET10_0
+        return KnownNameIds.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(name, out id);
+#else
+        switch (name.Length)
+        {
+            case 8:
+                if (name.SequenceEqual("#comment"))
+                {
+                    id = 0;
+                    return true;
+                }
+                if (name.SequenceEqual("autoplay"))
+                {
+                    id = 27;
+                    return true;
+                }
+                if (name.SequenceEqual("basefont"))
+                {
+                    id = 32;
+                    return true;
+                }
+                if (name.SequenceEqual("codetype"))
+                {
+                    id = 56;
+                    return true;
+                }
+                if (name.SequenceEqual("colgroup"))
+                {
+                    id = 58;
+                    return true;
+                }
+                if (name.SequenceEqual("controls"))
+                {
+                    id = 67;
+                    return true;
+                }
+                if (name.SequenceEqual("datalist"))
+                {
+                    id = 71;
+                    return true;
+                }
+                if (name.SequenceEqual("datetime"))
+                {
+                    id = 72;
+                    return true;
+                }
+                if (name.SequenceEqual("disabled"))
+                {
+                    id = 85;
+                    return true;
+                }
+                if (name.SequenceEqual("download"))
+                {
+                    id = 88;
+                    return true;
+                }
+                if (name.SequenceEqual("dropzone"))
+                {
+                    id = 90;
+                    return true;
+                }
+                if (name.SequenceEqual("encoding"))
+                {
+                    id = 94;
+                    return true;
+                }
+                if (name.SequenceEqual("fieldset"))
+                {
+                    id = 98;
+                    return true;
+                }
+                if (name.SequenceEqual("frameset"))
+                {
+                    id = 113;
+                    return true;
+                }
+                if (name.SequenceEqual("hreflang"))
+                {
+                    id = 129;
+                    return true;
+                }
+                if (name.SequenceEqual("language"))
+                {
+                    id = 149;
+                    return true;
+                }
+                if (name.SequenceEqual("longdesc"))
+                {
+                    id = 155;
+                    return true;
+                }
+                if (name.SequenceEqual("manifest"))
+                {
+                    id = 159;
+                    return true;
+                }
+                if (name.SequenceEqual("menuitem"))
+                {
+                    id = 171;
+                    return true;
+                }
+                if (name.SequenceEqual("multiple"))
+                {
+                    id = 182;
+                    return true;
+                }
+                if (name.SequenceEqual("noframes"))
+                {
+                    id = 188;
+                    return true;
+                }
+                if (name.SequenceEqual("noresize"))
+                {
+                    id = 191;
+                    return true;
+                }
+                if (name.SequenceEqual("noscript"))
+                {
+                    id = 192;
+                    return true;
+                }
+                if (name.SequenceEqual("optgroup"))
+                {
+                    id = 199;
+                    return true;
+                }
+                if (name.SequenceEqual("progress"))
+                {
+                    id = 213;
+                    return true;
+                }
+                if (name.SequenceEqual("readonly"))
+                {
+                    id = 219;
+                    return true;
+                }
+                if (name.SequenceEqual("required"))
+                {
+                    id = 222;
+                    return true;
+                }
+                if (name.SequenceEqual("reversed"))
+                {
+                    id = 224;
+                    return true;
+                }
+                if (name.SequenceEqual("seamless"))
+                {
+                    id = 241;
+                    return true;
+                }
+                if (name.SequenceEqual("selected"))
+                {
+                    id = 244;
+                    return true;
+                }
+                if (name.SequenceEqual("tabindex"))
+                {
+                    id = 270;
+                    return true;
+                }
+                if (name.SequenceEqual("template"))
+                {
+                    id = 275;
+                    return true;
+                }
+                if (name.SequenceEqual("textarea"))
+                {
+                    id = 277;
+                    return true;
+                }
+                break;
+            case 9:
+                if (name.SequenceEqual("#document"))
+                {
+                    id = 1;
+                    return true;
+                }
+                if (name.SequenceEqual("accesskey"))
+                {
+                    id = 8;
+                    return true;
+                }
+                if (name.SequenceEqual("autofocus"))
+                {
+                    id = 26;
+                    return true;
+                }
+                if (name.SequenceEqual("challenge"))
+                {
+                    id = 48;
+                    return true;
+                }
+                if (name.SequenceEqual("direction"))
+                {
+                    id = 83;
+                    return true;
+                }
+                if (name.SequenceEqual("draggable"))
+                {
+                    id = 89;
+                    return true;
+                }
+                if (name.SequenceEqual("integrity"))
+                {
+                    id = 140;
+                    return true;
+                }
+                if (name.SequenceEqual("maxlength"))
+                {
+                    id = 167;
+                    return true;
+                }
+                if (name.SequenceEqual("minlength"))
+                {
+                    id = 177;
+                    return true;
+                }
+                if (name.SequenceEqual("plaintext"))
+                {
+                    id = 209;
+                    return true;
+                }
+                if (name.SequenceEqual("scrolling"))
+                {
+                    id = 240;
+                    return true;
+                }
+                if (name.SequenceEqual("translate"))
+                {
+                    id = 285;
+                    return true;
+                }
+                if (name.SequenceEqual("valuetype"))
+                {
+                    id = 294;
+                    return true;
+                }
+                break;
+            case 5:
+                if (name.SequenceEqual("#text"))
+                {
+                    id = 2;
+                    return true;
+                }
+                if (name.SequenceEqual("align"))
+                {
+                    id = 12;
+                    return true;
+                }
+                if (name.SequenceEqual("alink"))
+                {
+                    id = 13;
+                    return true;
+                }
+                if (name.SequenceEqual("aside"))
+                {
+                    id = 22;
+                    return true;
+                }
+                if (name.SequenceEqual("async"))
+                {
+                    id = 23;
+                    return true;
+                }
+                if (name.SequenceEqual("audio"))
+                {
+                    id = 24;
+                    return true;
+                }
+                if (name.SequenceEqual("class"))
+                {
+                    id = 53;
+                    return true;
+                }
+                if (name.SequenceEqual("clear"))
+                {
+                    id = 54;
+                    return true;
+                }
+                if (name.SequenceEqual("color"))
+                {
+                    id = 59;
+                    return true;
+                }
+                if (name.SequenceEqual("defer"))
+                {
+                    id = 76;
+                    return true;
+                }
+                if (name.SequenceEqual("embed"))
+                {
+                    id = 93;
+                    return true;
+                }
+                if (name.SequenceEqual("event"))
+                {
+                    id = 96;
+                    return true;
+                }
+                if (name.SequenceEqual("frame"))
+                {
+                    id = 111;
+                    return true;
+                }
+                if (name.SequenceEqual("image"))
+                {
+                    id = 136;
+                    return true;
+                }
+                if (name.SequenceEqual("input"))
+                {
+                    id = 138;
+                    return true;
+                }
+                if (name.SequenceEqual("ismap"))
+                {
+                    id = 142;
+                    return true;
+                }
+                if (name.SequenceEqual("label"))
+                {
+                    id = 147;
+                    return true;
+                }
+                if (name.SequenceEqual("media"))
+                {
+                    id = 168;
+                    return true;
+                }
+                if (name.SequenceEqual("meter"))
+                {
+                    id = 173;
+                    return true;
+                }
+                if (name.SequenceEqual("mtext"))
+                {
+                    id = 181;
+                    return true;
+                }
+                if (name.SequenceEqual("muted"))
+                {
+                    id = 183;
+                    return true;
+                }
+                if (name.SequenceEqual("nonce"))
+                {
+                    id = 190;
+                    return true;
+                }
+                if (name.SequenceEqual("param"))
+                {
+                    id = 204;
+                    return true;
+                }
+                if (name.SequenceEqual("quote"))
+                {
+                    id = 216;
+                    return true;
+                }
+                if (name.SequenceEqual("rules"))
+                {
+                    id = 232;
+                    return true;
+                }
+                if (name.SequenceEqual("scope"))
+                {
+                    id = 237;
+                    return true;
+                }
+                if (name.SequenceEqual("shape"))
+                {
+                    id = 246;
+                    return true;
+                }
+                if (name.SequenceEqual("sizes"))
+                {
+                    id = 249;
+                    return true;
+                }
+                if (name.SequenceEqual("small"))
+                {
+                    id = 251;
+                    return true;
+                }
+                if (name.SequenceEqual("space"))
+                {
+                    id = 253;
+                    return true;
+                }
+                if (name.SequenceEqual("start"))
+                {
+                    id = 261;
+                    return true;
+                }
+                if (name.SequenceEqual("style"))
+                {
+                    id = 265;
+                    return true;
+                }
+                if (name.SequenceEqual("table"))
+                {
+                    id = 271;
+                    return true;
+                }
+                if (name.SequenceEqual("tbody"))
+                {
+                    id = 273;
+                    return true;
+                }
+                if (name.SequenceEqual("tfoot"))
+                {
+                    id = 278;
+                    return true;
+                }
+                if (name.SequenceEqual("thead"))
+                {
+                    id = 280;
+                    return true;
+                }
+                if (name.SequenceEqual("title"))
+                {
+                    id = 282;
+                    return true;
+                }
+                if (name.SequenceEqual("track"))
+                {
+                    id = 284;
+                    return true;
+                }
+                if (name.SequenceEqual("value"))
+                {
+                    id = 293;
+                    return true;
+                }
+                if (name.SequenceEqual("video"))
+                {
+                    id = 297;
+                    return true;
+                }
+                if (name.SequenceEqual("vlink"))
+                {
+                    id = 298;
+                    return true;
+                }
+                if (name.SequenceEqual("width"))
+                {
+                    id = 300;
+                    return true;
+                }
+                break;
+            case 7:
+                if (name.SequenceEqual("DOCTYPE"))
+                {
+                    id = 3;
+                    return true;
+                }
+                if (name.SequenceEqual("actuate"))
+                {
+                    id = 10;
+                    return true;
+                }
+                if (name.SequenceEqual("address"))
+                {
+                    id = 11;
+                    return true;
+                }
+                if (name.SequenceEqual("arcrole"))
+                {
+                    id = 19;
+                    return true;
+                }
+                if (name.SequenceEqual("article"))
+                {
+                    id = 21;
+                    return true;
+                }
+                if (name.SequenceEqual("bgcolor"))
+                {
+                    id = 35;
+                    return true;
+                }
+                if (name.SequenceEqual("bgsound"))
+                {
+                    id = 36;
+                    return true;
+                }
+                if (name.SequenceEqual("caption"))
+                {
+                    id = 44;
+                    return true;
+                }
+                if (name.SequenceEqual("charset"))
+                {
+                    id = 49;
+                    return true;
+                }
+                if (name.SequenceEqual("checked"))
+                {
+                    id = 50;
+                    return true;
+                }
+                if (name.SequenceEqual("colspan"))
+                {
+                    id = 61;
+                    return true;
+                }
+                if (name.SequenceEqual("command"))
+                {
+                    id = 62;
+                    return true;
+                }
+                if (name.SequenceEqual("compact"))
+                {
+                    id = 63;
+                    return true;
+                }
+                if (name.SequenceEqual("content"))
+                {
+                    id = 64;
+                    return true;
+                }
+                if (name.SequenceEqual("declare"))
+                {
+                    id = 74;
+                    return true;
+                }
+                if (name.SequenceEqual("default"))
+                {
+                    id = 75;
+                    return true;
+                }
+                if (name.SequenceEqual("details"))
+                {
+                    id = 79;
+                    return true;
+                }
+                if (name.SequenceEqual("dirname"))
+                {
+                    id = 84;
+                    return true;
+                }
+                if (name.SequenceEqual("enctype"))
+                {
+                    id = 95;
+                    return true;
+                }
+                if (name.SequenceEqual("headers"))
+                {
+                    id = 122;
+                    return true;
+                }
+                if (name.SequenceEqual("isindex"))
+                {
+                    id = 141;
+                    return true;
+                }
+                if (name.SequenceEqual("keytype"))
+                {
+                    id = 145;
+                    return true;
+                }
+                if (name.SequenceEqual("listing"))
+                {
+                    id = 154;
+                    return true;
+                }
+                if (name.SequenceEqual("marquee"))
+                {
+                    id = 164;
+                    return true;
+                }
+                if (name.SequenceEqual("noembed"))
+                {
+                    id = 187;
+                    return true;
+                }
+                if (name.SequenceEqual("noshade"))
+                {
+                    id = 193;
+                    return true;
+                }
+                if (name.SequenceEqual("optimum"))
+                {
+                    id = 200;
+                    return true;
+                }
+                if (name.SequenceEqual("pattern"))
+                {
+                    id = 205;
+                    return true;
+                }
+                if (name.SequenceEqual("picture"))
+                {
+                    id = 206;
+                    return true;
+                }
+                if (name.SequenceEqual("preload"))
+                {
+                    id = 212;
+                    return true;
+                }
+                if (name.SequenceEqual("rowspan"))
+                {
+                    id = 227;
+                    return true;
+                }
+                if (name.SequenceEqual("sandbox"))
+                {
+                    id = 235;
+                    return true;
+                }
+                if (name.SequenceEqual("section"))
+                {
+                    id = 242;
+                    return true;
+                }
+                if (name.SequenceEqual("srclang"))
+                {
+                    id = 258;
+                    return true;
+                }
+                if (name.SequenceEqual("summary"))
+                {
+                    id = 267;
+                    return true;
+                }
+                if (name.SequenceEqual("version"))
+                {
+                    id = 296;
+                    return true;
+                }
+                break;
+            case 1:
+                if (name.SequenceEqual("a"))
+                {
+                    id = 4;
+                    return true;
+                }
+                if (name.SequenceEqual("b"))
+                {
+                    id = 29;
+                    return true;
+                }
+                if (name.SequenceEqual("i"))
+                {
+                    id = 132;
+                    return true;
+                }
+                if (name.SequenceEqual("p"))
+                {
+                    id = 203;
+                    return true;
+                }
+                if (name.SequenceEqual("q"))
+                {
+                    id = 215;
+                    return true;
+                }
+                if (name.SequenceEqual("s"))
+                {
+                    id = 233;
+                    return true;
+                }
+                if (name.SequenceEqual("u"))
+                {
+                    id = 289;
+                    return true;
+                }
+                break;
+            case 4:
+                if (name.SequenceEqual("abbr"))
+                {
+                    id = 5;
+                    return true;
+                }
+                if (name.SequenceEqual("area"))
+                {
+                    id = 20;
+                    return true;
+                }
+                if (name.SequenceEqual("axis"))
+                {
+                    id = 28;
+                    return true;
+                }
+                if (name.SequenceEqual("base"))
+                {
+                    id = 31;
+                    return true;
+                }
+                if (name.SequenceEqual("body"))
+                {
+                    id = 39;
+                    return true;
+                }
+                if (name.SequenceEqual("cite"))
+                {
+                    id = 52;
+                    return true;
+                }
+                if (name.SequenceEqual("code"))
+                {
+                    id = 55;
+                    return true;
+                }
+                if (name.SequenceEqual("cols"))
+                {
+                    id = 60;
+                    return true;
+                }
+                if (name.SequenceEqual("data"))
+                {
+                    id = 70;
+                    return true;
+                }
+                if (name.SequenceEqual("desc"))
+                {
+                    id = 78;
+                    return true;
+                }
+                if (name.SequenceEqual("face"))
+                {
+                    id = 97;
+                    return true;
+                }
+                if (name.SequenceEqual("font"))
+                {
+                    id = 101;
+                    return true;
+                }
+                if (name.SequenceEqual("form"))
+                {
+                    id = 105;
+                    return true;
+                }
+                if (name.SequenceEqual("head"))
+                {
+                    id = 120;
+                    return true;
+                }
+                if (name.SequenceEqual("high"))
+                {
+                    id = 126;
+                    return true;
+                }
+                if (name.SequenceEqual("href"))
+                {
+                    id = 128;
+                    return true;
+                }
+                if (name.SequenceEqual("html"))
+                {
+                    id = 130;
+                    return true;
+                }
+                if (name.SequenceEqual("icon"))
+                {
+                    id = 133;
+                    return true;
+                }
+                if (name.SequenceEqual("kind"))
+                {
+                    id = 146;
+                    return true;
+                }
+                if (name.SequenceEqual("lang"))
+                {
+                    id = 148;
+                    return true;
+                }
+                if (name.SequenceEqual("link"))
+                {
+                    id = 152;
+                    return true;
+                }
+                if (name.SequenceEqual("list"))
+                {
+                    id = 153;
+                    return true;
+                }
+                if (name.SequenceEqual("loop"))
+                {
+                    id = 156;
+                    return true;
+                }
+                if (name.SequenceEqual("main"))
+                {
+                    id = 158;
+                    return true;
+                }
+                if (name.SequenceEqual("mark"))
+                {
+                    id = 163;
+                    return true;
+                }
+                if (name.SequenceEqual("math"))
+                {
+                    id = 165;
+                    return true;
+                }
+                if (name.SequenceEqual("menu"))
+                {
+                    id = 170;
+                    return true;
+                }
+                if (name.SequenceEqual("meta"))
+                {
+                    id = 172;
+                    return true;
+                }
+                if (name.SequenceEqual("name"))
+                {
+                    id = 184;
+                    return true;
+                }
+                if (name.SequenceEqual("nobr"))
+                {
+                    id = 186;
+                    return true;
+                }
+                if (name.SequenceEqual("open"))
+                {
+                    id = 198;
+                    return true;
+                }
+                if (name.SequenceEqual("ping"))
+                {
+                    id = 207;
+                    return true;
+                }
+                if (name.SequenceEqual("role"))
+                {
+                    id = 225;
+                    return true;
+                }
+                if (name.SequenceEqual("rows"))
+                {
+                    id = 226;
+                    return true;
+                }
+                if (name.SequenceEqual("ruby"))
+                {
+                    id = 231;
+                    return true;
+                }
+                if (name.SequenceEqual("samp"))
+                {
+                    id = 234;
+                    return true;
+                }
+                if (name.SequenceEqual("show"))
+                {
+                    id = 247;
+                    return true;
+                }
+                if (name.SequenceEqual("size"))
+                {
+                    id = 248;
+                    return true;
+                }
+                if (name.SequenceEqual("slot"))
+                {
+                    id = 250;
+                    return true;
+                }
+                if (name.SequenceEqual("span"))
+                {
+                    id = 254;
+                    return true;
+                }
+                if (name.SequenceEqual("step"))
+                {
+                    id = 262;
+                    return true;
+                }
+                if (name.SequenceEqual("text"))
+                {
+                    id = 276;
+                    return true;
+                }
+                if (name.SequenceEqual("time"))
+                {
+                    id = 281;
+                    return true;
+                }
+                if (name.SequenceEqual("type"))
+                {
+                    id = 287;
+                    return true;
+                }
+                if (name.SequenceEqual("wrap"))
+                {
+                    id = 302;
+                    return true;
+                }
+                break;
+            case 6:
+                if (name.SequenceEqual("accept"))
+                {
+                    id = 6;
+                    return true;
+                }
+                if (name.SequenceEqual("action"))
+                {
+                    id = 9;
+                    return true;
+                }
+                if (name.SequenceEqual("applet"))
+                {
+                    id = 18;
+                    return true;
+                }
+                if (name.SequenceEqual("border"))
+                {
+                    id = 40;
+                    return true;
+                }
+                if (name.SequenceEqual("button"))
+                {
+                    id = 42;
+                    return true;
+                }
+                if (name.SequenceEqual("canvas"))
+                {
+                    id = 43;
+                    return true;
+                }
+                if (name.SequenceEqual("center"))
+                {
+                    id = 47;
+                    return true;
+                }
+                if (name.SequenceEqual("circle"))
+                {
+                    id = 51;
+                    return true;
+                }
+                if (name.SequenceEqual("coords"))
+                {
+                    id = 68;
+                    return true;
+                }
+                if (name.SequenceEqual("dialog"))
+                {
+                    id = 81;
+                    return true;
+                }
+                if (name.SequenceEqual("figure"))
+                {
+                    id = 100;
+                    return true;
+                }
+                if (name.SequenceEqual("footer"))
+                {
+                    id = 102;
+                    return true;
+                }
+                if (name.SequenceEqual("header"))
+                {
+                    id = 121;
+                    return true;
+                }
+                if (name.SequenceEqual("height"))
+                {
+                    id = 123;
+                    return true;
+                }
+                if (name.SequenceEqual("hgroup"))
+                {
+                    id = 124;
+                    return true;
+                }
+                if (name.SequenceEqual("hidden"))
+                {
+                    id = 125;
+                    return true;
+                }
+                if (name.SequenceEqual("iframe"))
+                {
+                    id = 135;
+                    return true;
+                }
+                if (name.SequenceEqual("keygen"))
+                {
+                    id = 144;
+                    return true;
+                }
+                if (name.SequenceEqual("legend"))
+                {
+                    id = 150;
+                    return true;
+                }
+                if (name.SequenceEqual("method"))
+                {
+                    id = 174;
+                    return true;
+                }
+                if (name.SequenceEqual("nohref"))
+                {
+                    id = 189;
+                    return true;
+                }
+                if (name.SequenceEqual("nowrap"))
+                {
+                    id = 195;
+                    return true;
+                }
+                if (name.SequenceEqual("object"))
+                {
+                    id = 196;
+                    return true;
+                }
+                if (name.SequenceEqual("option"))
+                {
+                    id = 201;
+                    return true;
+                }
+                if (name.SequenceEqual("output"))
+                {
+                    id = 202;
+                    return true;
+                }
+                if (name.SequenceEqual("poster"))
+                {
+                    id = 210;
+                    return true;
+                }
+                if (name.SequenceEqual("prompt"))
+                {
+                    id = 214;
+                    return true;
+                }
+                if (name.SequenceEqual("scheme"))
+                {
+                    id = 236;
+                    return true;
+                }
+                if (name.SequenceEqual("scoped"))
+                {
+                    id = 238;
+                    return true;
+                }
+                if (name.SequenceEqual("script"))
+                {
+                    id = 239;
+                    return true;
+                }
+                if (name.SequenceEqual("select"))
+                {
+                    id = 243;
+                    return true;
+                }
+                if (name.SequenceEqual("source"))
+                {
+                    id = 252;
+                    return true;
+                }
+                if (name.SequenceEqual("srcdoc"))
+                {
+                    id = 257;
+                    return true;
+                }
+                if (name.SequenceEqual("srcset"))
+                {
+                    id = 259;
+                    return true;
+                }
+                if (name.SequenceEqual("strike"))
+                {
+                    id = 263;
+                    return true;
+                }
+                if (name.SequenceEqual("strong"))
+                {
+                    id = 264;
+                    return true;
+                }
+                if (name.SequenceEqual("target"))
+                {
+                    id = 272;
+                    return true;
+                }
+                if (name.SequenceEqual("usemap"))
+                {
+                    id = 291;
+                    return true;
+                }
+                if (name.SequenceEqual("valign"))
+                {
+                    id = 292;
+                    return true;
+                }
+                if (name.SequenceEqual("window"))
+                {
+                    id = 301;
+                    return true;
+                }
+                break;
+            case 14:
+                if (name.SequenceEqual("accept-charset"))
+                {
+                    id = 7;
+                    return true;
+                }
+                if (name.SequenceEqual("annotation-xml"))
+                {
+                    id = 17;
+                    return true;
+                }
+                if (name.SequenceEqual("formnovalidate"))
+                {
+                    id = 109;
+                    return true;
+                }
+                if (name.SequenceEqual("referrerpolicy"))
+                {
+                    id = 220;
+                    return true;
+                }
+                break;
+            case 15:
+                if (name.SequenceEqual("allowfullscreen"))
+                {
+                    id = 14;
+                    return true;
+                }
+                if (name.SequenceEqual("contenteditable"))
+                {
+                    id = 65;
+                    return true;
+                }
+                if (name.SequenceEqual("selectedcontent"))
+                {
+                    id = 245;
+                    return true;
+                }
+                break;
+            case 19:
+                if (name.SequenceEqual("allowpaymentrequest"))
+                {
+                    id = 15;
+                    return true;
+                }
+                break;
+            case 3:
+                if (name.SequenceEqual("alt"))
+                {
+                    id = 16;
+                    return true;
+                }
+                if (name.SequenceEqual("bdi"))
+                {
+                    id = 33;
+                    return true;
+                }
+                if (name.SequenceEqual("bdo"))
+                {
+                    id = 34;
+                    return true;
+                }
+                if (name.SequenceEqual("big"))
+                {
+                    id = 37;
+                    return true;
+                }
+                if (name.SequenceEqual("col"))
+                {
+                    id = 57;
+                    return true;
+                }
+                if (name.SequenceEqual("del"))
+                {
+                    id = 77;
+                    return true;
+                }
+                if (name.SequenceEqual("dfn"))
+                {
+                    id = 80;
+                    return true;
+                }
+                if (name.SequenceEqual("dir"))
+                {
+                    id = 82;
+                    return true;
+                }
+                if (name.SequenceEqual("div"))
+                {
+                    id = 86;
+                    return true;
+                }
+                if (name.SequenceEqual("for"))
+                {
+                    id = 103;
+                    return true;
+                }
+                if (name.SequenceEqual("img"))
+                {
+                    id = 137;
+                    return true;
+                }
+                if (name.SequenceEqual("ins"))
+                {
+                    id = 139;
+                    return true;
+                }
+                if (name.SequenceEqual("kbd"))
+                {
+                    id = 143;
+                    return true;
+                }
+                if (name.SequenceEqual("low"))
+                {
+                    id = 157;
+                    return true;
+                }
+                if (name.SequenceEqual("map"))
+                {
+                    id = 160;
+                    return true;
+                }
+                if (name.SequenceEqual("max"))
+                {
+                    id = 166;
+                    return true;
+                }
+                if (name.SequenceEqual("min"))
+                {
+                    id = 176;
+                    return true;
+                }
+                if (name.SequenceEqual("nav"))
+                {
+                    id = 185;
+                    return true;
+                }
+                if (name.SequenceEqual("pre"))
+                {
+                    id = 211;
+                    return true;
+                }
+                if (name.SequenceEqual("rel"))
+                {
+                    id = 221;
+                    return true;
+                }
+                if (name.SequenceEqual("rev"))
+                {
+                    id = 223;
+                    return true;
+                }
+                if (name.SequenceEqual("rtc"))
+                {
+                    id = 230;
+                    return true;
+                }
+                if (name.SequenceEqual("src"))
+                {
+                    id = 256;
+                    return true;
+                }
+                if (name.SequenceEqual("sub"))
+                {
+                    id = 266;
+                    return true;
+                }
+                if (name.SequenceEqual("sup"))
+                {
+                    id = 268;
+                    return true;
+                }
+                if (name.SequenceEqual("svg"))
+                {
+                    id = 269;
+                    return true;
+                }
+                if (name.SequenceEqual("var"))
+                {
+                    id = 295;
+                    return true;
+                }
+                if (name.SequenceEqual("wbr"))
+                {
+                    id = 299;
+                    return true;
+                }
+                if (name.SequenceEqual("xml"))
+                {
+                    id = 303;
+                    return true;
+                }
+                if (name.SequenceEqual("xmp"))
+                {
+                    id = 304;
+                    return true;
+                }
+                break;
+            case 12:
+                if (name.SequenceEqual("autocomplete"))
+                {
+                    id = 25;
+                    return true;
+                }
+                if (name.SequenceEqual("marginheight"))
+                {
+                    id = 161;
+                    return true;
+                }
+                break;
+            case 10:
+                if (name.SequenceEqual("background"))
+                {
+                    id = 30;
+                    return true;
+                }
+                if (name.SequenceEqual("blockquote"))
+                {
+                    id = 38;
+                    return true;
+                }
+                if (name.SequenceEqual("figcaption"))
+                {
+                    id = 99;
+                    return true;
+                }
+                if (name.SequenceEqual("formaction"))
+                {
+                    id = 106;
+                    return true;
+                }
+                if (name.SequenceEqual("formmethod"))
+                {
+                    id = 108;
+                    return true;
+                }
+                if (name.SequenceEqual("formtarget"))
+                {
+                    id = 110;
+                    return true;
+                }
+                if (name.SequenceEqual("http-equiv"))
+                {
+                    id = 131;
+                    return true;
+                }
+                if (name.SequenceEqual("mediagroup"))
+                {
+                    id = 169;
+                    return true;
+                }
+                if (name.SequenceEqual("novalidate"))
+                {
+                    id = 194;
+                    return true;
+                }
+                if (name.SequenceEqual("radiogroup"))
+                {
+                    id = 217;
+                    return true;
+                }
+                if (name.SequenceEqual("spellcheck"))
+                {
+                    id = 255;
+                    return true;
+                }
+                if (name.SequenceEqual("standalone"))
+                {
+                    id = 260;
+                    return true;
+                }
+                break;
+            case 2:
+                if (name.SequenceEqual("br"))
+                {
+                    id = 41;
+                    return true;
+                }
+                if (name.SequenceEqual("dd"))
+                {
+                    id = 73;
+                    return true;
+                }
+                if (name.SequenceEqual("dl"))
+                {
+                    id = 87;
+                    return true;
+                }
+                if (name.SequenceEqual("dt"))
+                {
+                    id = 91;
+                    return true;
+                }
+                if (name.SequenceEqual("em"))
+                {
+                    id = 92;
+                    return true;
+                }
+                if (name.SequenceEqual("h1"))
+                {
+                    id = 114;
+                    return true;
+                }
+                if (name.SequenceEqual("h2"))
+                {
+                    id = 115;
+                    return true;
+                }
+                if (name.SequenceEqual("h3"))
+                {
+                    id = 116;
+                    return true;
+                }
+                if (name.SequenceEqual("h4"))
+                {
+                    id = 117;
+                    return true;
+                }
+                if (name.SequenceEqual("h5"))
+                {
+                    id = 118;
+                    return true;
+                }
+                if (name.SequenceEqual("h6"))
+                {
+                    id = 119;
+                    return true;
+                }
+                if (name.SequenceEqual("hr"))
+                {
+                    id = 127;
+                    return true;
+                }
+                if (name.SequenceEqual("id"))
+                {
+                    id = 134;
+                    return true;
+                }
+                if (name.SequenceEqual("li"))
+                {
+                    id = 151;
+                    return true;
+                }
+                if (name.SequenceEqual("mi"))
+                {
+                    id = 175;
+                    return true;
+                }
+                if (name.SequenceEqual("mn"))
+                {
+                    id = 178;
+                    return true;
+                }
+                if (name.SequenceEqual("mo"))
+                {
+                    id = 179;
+                    return true;
+                }
+                if (name.SequenceEqual("ms"))
+                {
+                    id = 180;
+                    return true;
+                }
+                if (name.SequenceEqual("ol"))
+                {
+                    id = 197;
+                    return true;
+                }
+                if (name.SequenceEqual("rb"))
+                {
+                    id = 218;
+                    return true;
+                }
+                if (name.SequenceEqual("rp"))
+                {
+                    id = 228;
+                    return true;
+                }
+                if (name.SequenceEqual("rt"))
+                {
+                    id = 229;
+                    return true;
+                }
+                if (name.SequenceEqual("td"))
+                {
+                    id = 274;
+                    return true;
+                }
+                if (name.SequenceEqual("th"))
+                {
+                    id = 279;
+                    return true;
+                }
+                if (name.SequenceEqual("tr"))
+                {
+                    id = 283;
+                    return true;
+                }
+                if (name.SequenceEqual("tt"))
+                {
+                    id = 286;
+                    return true;
+                }
+                if (name.SequenceEqual("ul"))
+                {
+                    id = 290;
+                    return true;
+                }
+                break;
+            case 11:
+                if (name.SequenceEqual("cellpadding"))
+                {
+                    id = 45;
+                    return true;
+                }
+                if (name.SequenceEqual("cellspacing"))
+                {
+                    id = 46;
+                    return true;
+                }
+                if (name.SequenceEqual("contextmenu"))
+                {
+                    id = 66;
+                    return true;
+                }
+                if (name.SequenceEqual("crossorigin"))
+                {
+                    id = 69;
+                    return true;
+                }
+                if (name.SequenceEqual("formenctype"))
+                {
+                    id = 107;
+                    return true;
+                }
+                if (name.SequenceEqual("frameborder"))
+                {
+                    id = 112;
+                    return true;
+                }
+                if (name.SequenceEqual("marginwidth"))
+                {
+                    id = 162;
+                    return true;
+                }
+                if (name.SequenceEqual("placeholder"))
+                {
+                    id = 208;
+                    return true;
+                }
+                break;
+            case 13:
+                if (name.SequenceEqual("foreignObject"))
+                {
+                    id = 104;
+                    return true;
+                }
+                if (name.SequenceEqual("typemustmatch"))
+                {
+                    id = 288;
+                    return true;
+                }
+                break;
+        }
+
+        id = ushort.MaxValue;
+        return false;
+#endif
+    }
+
+    public static string GetKnownName(ushort id) => KnownNames[id];
+
+    private static readonly string[] KnownNames =
+    [
+        "#comment",
+        "#document",
+        "#text",
+        "DOCTYPE",
+        "a",
+        "abbr",
+        "accept",
+        "accept-charset",
+        "accesskey",
+        "action",
+        "actuate",
+        "address",
+        "align",
+        "alink",
+        "allowfullscreen",
+        "allowpaymentrequest",
+        "alt",
+        "annotation-xml",
+        "applet",
+        "arcrole",
+        "area",
+        "article",
+        "aside",
+        "async",
+        "audio",
+        "autocomplete",
+        "autofocus",
+        "autoplay",
+        "axis",
+        "b",
+        "background",
+        "base",
+        "basefont",
+        "bdi",
+        "bdo",
+        "bgcolor",
+        "bgsound",
+        "big",
+        "blockquote",
+        "body",
+        "border",
+        "br",
+        "button",
+        "canvas",
+        "caption",
+        "cellpadding",
+        "cellspacing",
+        "center",
+        "challenge",
+        "charset",
+        "checked",
+        "circle",
+        "cite",
+        "class",
+        "clear",
+        "code",
+        "codetype",
+        "col",
+        "colgroup",
+        "color",
+        "cols",
+        "colspan",
+        "command",
+        "compact",
+        "content",
+        "contenteditable",
+        "contextmenu",
+        "controls",
+        "coords",
+        "crossorigin",
+        "data",
+        "datalist",
+        "datetime",
+        "dd",
+        "declare",
+        "default",
+        "defer",
+        "del",
+        "desc",
+        "details",
+        "dfn",
+        "dialog",
+        "dir",
+        "direction",
+        "dirname",
+        "disabled",
+        "div",
+        "dl",
+        "download",
+        "draggable",
+        "dropzone",
+        "dt",
+        "em",
+        "embed",
+        "encoding",
+        "enctype",
+        "event",
+        "face",
+        "fieldset",
+        "figcaption",
+        "figure",
+        "font",
+        "footer",
+        "for",
+        "foreignObject",
+        "form",
+        "formaction",
+        "formenctype",
+        "formmethod",
+        "formnovalidate",
+        "formtarget",
+        "frame",
+        "frameborder",
+        "frameset",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "head",
+        "header",
+        "headers",
+        "height",
+        "hgroup",
+        "hidden",
+        "high",
+        "hr",
+        "href",
+        "hreflang",
+        "html",
+        "http-equiv",
+        "i",
+        "icon",
+        "id",
+        "iframe",
+        "image",
+        "img",
+        "input",
+        "ins",
+        "integrity",
+        "isindex",
+        "ismap",
+        "kbd",
+        "keygen",
+        "keytype",
+        "kind",
+        "label",
+        "lang",
+        "language",
+        "legend",
+        "li",
+        "link",
+        "list",
+        "listing",
+        "longdesc",
+        "loop",
+        "low",
+        "main",
+        "manifest",
+        "map",
+        "marginheight",
+        "marginwidth",
+        "mark",
+        "marquee",
+        "math",
+        "max",
+        "maxlength",
+        "media",
+        "mediagroup",
+        "menu",
+        "menuitem",
+        "meta",
+        "meter",
+        "method",
+        "mi",
+        "min",
+        "minlength",
+        "mn",
+        "mo",
+        "ms",
+        "mtext",
+        "multiple",
+        "muted",
+        "name",
+        "nav",
+        "nobr",
+        "noembed",
+        "noframes",
+        "nohref",
+        "nonce",
+        "noresize",
+        "noscript",
+        "noshade",
+        "novalidate",
+        "nowrap",
+        "object",
+        "ol",
+        "open",
+        "optgroup",
+        "optimum",
+        "option",
+        "output",
+        "p",
+        "param",
+        "pattern",
+        "picture",
+        "ping",
+        "placeholder",
+        "plaintext",
+        "poster",
+        "pre",
+        "preload",
+        "progress",
+        "prompt",
+        "q",
+        "quote",
+        "radiogroup",
+        "rb",
+        "readonly",
+        "referrerpolicy",
+        "rel",
+        "required",
+        "rev",
+        "reversed",
+        "role",
+        "rows",
+        "rowspan",
+        "rp",
+        "rt",
+        "rtc",
+        "ruby",
+        "rules",
+        "s",
+        "samp",
+        "sandbox",
+        "scheme",
+        "scope",
+        "scoped",
+        "script",
+        "scrolling",
+        "seamless",
+        "section",
+        "select",
+        "selected",
+        "selectedcontent",
+        "shape",
+        "show",
+        "size",
+        "sizes",
+        "slot",
+        "small",
+        "source",
+        "space",
+        "span",
+        "spellcheck",
+        "src",
+        "srcdoc",
+        "srclang",
+        "srcset",
+        "standalone",
+        "start",
+        "step",
+        "strike",
+        "strong",
+        "style",
+        "sub",
+        "summary",
+        "sup",
+        "svg",
+        "tabindex",
+        "table",
+        "target",
+        "tbody",
+        "td",
+        "template",
+        "text",
+        "textarea",
+        "tfoot",
+        "th",
+        "thead",
+        "time",
+        "title",
+        "tr",
+        "track",
+        "translate",
+        "tt",
+        "type",
+        "typemustmatch",
+        "u",
+        "ul",
+        "usemap",
+        "valign",
+        "value",
+        "valuetype",
+        "var",
+        "version",
+        "video",
+        "vlink",
+        "wbr",
+        "width",
+        "window",
+        "wrap",
+        "xml",
+        "xmp",
+    ];
+
+#if NET10_0
+    private static readonly Dictionary<string, ushort> KnownNameIds = CreateKnownNameIds();
+
+    private static Dictionary<string, ushort> CreateKnownNameIds()
+    {
+        var result = new Dictionary<string, ushort>(KnownNames.Length, StringComparer.Ordinal);
+        for (ushort id = 0; id < KnownNames.Length; id++)
+            result.Add(KnownNames[id], id);
+        return result;
+    }
+#endif
 }

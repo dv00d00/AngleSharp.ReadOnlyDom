@@ -8,15 +8,18 @@ public sealed class CompactParserSession
 {
     private readonly HtmlParser _parser;
     private readonly CompactMetadataOptions _options;
+    private readonly CompactDocumentLayout _layout;
 
     public CompactParserSession(
         CompactMetadataOptions options = CompactMetadataOptions.None,
         CompactParserHints? hints = null,
         CompactAttributeFilter? attributeFilter = null,
-        HtmlParserOptions? parserOptions = null
+        HtmlParserOptions? parserOptions = null,
+        CompactDocumentLayout layout = CompactDocumentLayout.FrozenColumns
     )
     {
         _options = options;
+        _layout = layout;
         hints ??= new CompactParserHints();
         var effectiveParserOptions = parserOptions ?? CompactParser.CreateParserOptions(options);
         CompactParser.ApplyAttributeFilter(ref effectiveParserOptions, attributeFilter);
@@ -42,7 +45,7 @@ public sealed class CompactParserSession
         var document = _parser.ParseDocument<ArenaDocument, ArenaElement>(source, middleware);
         try
         {
-            return document.Arena.Finalize(document.NodeHandle, _options);
+            return document.CreateCompactDocument(_options, _layout);
         }
         finally
         {

@@ -5,7 +5,24 @@ document-scoped columnar representation. It does not change the production read-
 
 ## Surviving design
 
-AngleSharp constructs through short-lived reference facades backed by a mutable arena. Finalization retains only:
+AngleSharp constructs through short-lived reference facades backed by a mutable arena. The default result is a frozen view
+over that arena, not a second materialized tree:
+
+1. AngleSharp finishes all construction calls against the reference facades.
+2. The arena verifies that document order still matches construction order and no detached nodes remain.
+3. Node and attribute name IDs and logical text length are completed once.
+4. Reference-facade buffers are released; the document takes ownership of the arena columns and input source.
+5. `CompactDocument` accessors synthesize the same public node, payload, and attribute views directly from the columns.
+6. `CompactDocument.Dispose()` returns the arena columns and name-ID buffers and disposes the source.
+
+The frozen representation keeps construction-only columns alive until disposal. That is intentional for the dominant
+parse/query/dispose use case: avoiding a second traversal and copy is more valuable than minimizing retained footprint.
+Parent and sibling mutation links are no longer exposed for mutation after ownership transfer.
+
+If HTML tree construction detached, reparented, or reordered nodes, the parser automatically falls back to packed
+finalization so unreachable nodes cannot leak into the visible traversal. Callers can also request
+`CompactDocumentLayout.Packed` explicitly. Packed finalization performs reachable preorder traversal, remaps handles, and
+copies only final columns into these buffers:
 
 - a 16-byte `CompactNode` core containing traversal links, payload index, name ID, kind, and compact flags;
 - sparse `CompactNodePayload` records for nodes with values or attributes;
@@ -13,10 +30,11 @@ AngleSharp constructs through short-lived reference facades backed by a mutable 
 - interned names and a shared character buffer;
 - optional parent and source-location columns.
 
-All construction and final document arrays are rented. `CompactDocument.Dispose()` returns them idempotently. The removed
-owned/list-backed variants represented a different lifetime model and added branches throughout the hot construction path.
-If a long-lived independently owned representation is required later, it should be an explicit deep copy rather than a
-second construction mode.
+All construction and document arrays are rented. `CompactDocument.Dispose()` returns them idempotently. Packed layout is
+appropriate when a document will be retained long enough for locality and smaller retained size to repay the copy, or when
+the final representation must be independent of the construction arena and source. It is not the default extraction path.
+The removed owned/list-backed variants represented a different lifetime model and added branches throughout construction.
+If a permanently owned representation is required later, it should be an explicit deep copy.
 
 `CompactParser` and reusable `CompactParserSession` accept caller `HtmlParserOptions`, a token-aware attribute predicate,
 `TokenizerMiddleware`, and string, memory, or char-buffer input. Middleware and attribute filtering are predicate pushdown:
@@ -30,13 +48,31 @@ attribute arena is allocated only after the first accepted attribute.
 Anonymous query-level .NET 10 ShortRun workloads include parsing, predicate pushdown, materialization, query/checksum, and
 disposal:
 
-| Workload | Read-only | Compact | Read-only allocation | Compact allocation |
-| --- | ---: | ---: | ---: | ---: |
-| Selected subtree with sparse attributes | 148.47 us | 171.30 us | 59.51 KB | 35.77 KB |
-| Attribute-free text subtree | 81.90 us | 91.04 us | 32.33 KB | 17.28 KB |
+| Workload | Read-only | Frozen | Packed | Read-only allocation | Frozen allocation | Packed allocation |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Selected subtree with sparse attributes | 150.04 us | 159.55 us | 167.83 us | 59.51 KB | 22.56 KB | 35.80 KB |
+| Attribute-free text subtree | 81.34 us | 84.08 us | 88.99 us | 32.33 KB | 10.66 KB | 17.31 KB |
 
-The compact path allocates materially less on these extraction shapes but remains 11-15% slower. Time and total managed
-allocation are the optimization gates; retained footprint is recorded but is not itself a chase target.
+Frozen construction is about 6% slower than read-only on the selected-subtree workload and 3% slower on text extraction,
+while allocating 62% and 67% less respectively. Explicit packing costs another 5-6% time and 6.7-13.2 KB per parse in
+these workloads. Time and total managed allocation are the optimization gates; retained footprint is recorded but is not
+itself a chase target. These are ShortRun measurements, so use them as directional gates rather than precision claims.
+
+The three largest checked-in HTML documents add a parse-only scale check. Their benchmark labels are anonymous; the cases
+represent approximately 13.5 MB of dense markup, 2.1 MB of attribute-heavy markup, and 1.5 MB with relatively few nodes and
+substantial embedded content. All three retain frozen layout and produce matching element counts, including template
+contents:
+
+| Document | AngleSharp | Read-only | Frozen | AngleSharp allocation | Read-only allocation | Frozen allocation |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| LargeA | 1,193.86 ms | 479.29 ms | 395.87 ms | 218.86 MB | 60.62 MB | 27.98 MB |
+| LargeB | 47.28 ms | 19.29 ms | 21.06 ms | 14.15 MB | 2.64 MB | 1.59 MB |
+| LargeC | 11.81 ms | 7.40 ms | 9.05 ms | 7.39 MB | 0.50 MB | 0.41 MB |
+
+Frozen is 17% faster than read-only on the node-dense case, but 9% and 22% slower on the two lower-density cases. It still
+allocates 54%, 40%, and 17% less than read-only respectively. This argues against optimizing exclusively for the giant
+dense document: name processing and arena construction overhead remain visible when input bytes do not materialize into
+many nodes.
 
 An access-shape benchmark rejected density-only selection for optional columns. Binary-searching sparse payloads for every
 node was 23-64 times slower than dense lookup across 1-90% density, while forward iteration over sparse values was efficient.
@@ -53,11 +89,27 @@ Post-parse source-slice recovery was also rejected. AngleSharp token values do n
 identity when source positions are disabled, so recovery required content searches. Allocation fell only 1.6-3.3 KB while
 query time regressed roughly 19-22%. Source-backed values require token ranges at the AngleSharp construction boundary.
 
+Assigning name IDs during mutation was also rejected after measurement. It required another dynamically grown per-node
+column and interleaved name hashing with tree construction. A generated linear dispatch across all standard names regressed
+the query workloads more severely. IDs are therefore assigned in the tight frozen/packed publication pass.
+
+The surviving hybrid generates 305 stable `ushort` IDs from AngleSharp's canonical tag and attribute constants. A small
+per-document lookup cache contains only names encountered by that document; standard entries point at process-wide strings,
+and only unknown names enter the document-owned custom-name list. The text length is maintained during construction rather
+than rescanned at publication. Follow-up frozen-only ShortRun results were 161.24 us / 22.37 KB for selected-subtree parsing
+and 83.90 us / 10.50 KB for text extraction, effectively preserving time while shaving roughly 0.2 KB per operation.
+
+`CompactParserProfiles.Extraction` consolidates the safe default skips for comments, processing instructions, script text,
+raw/style text, frames, source references, position tracking, and preserved attribute casing. Attribute predicate pushdown
+remains caller-specific. SVG/Math subtree suppression is deliberately not included: it needs a tree-builder policy rather
+than unsafe token dropping.
+
 ## Next optimization boundary
 
-The remaining speed gap is primarily reachable preorder/remapping, per-document name interning, and text copying. The next
-iteration should benchmark stable well-known tag and attribute IDs and investigate construction-order handles that can avoid
-remapping while still excluding detached nodes. Changes remain gated by the anonymous query-level workloads.
+The default path no longer performs reachable preorder/remapping, text copying, standard-name string allocation, or a text
+length scan. Publication still fills the final name-ID arrays and creates a small per-document dictionary cache. Removing
+that cache would require a pooled specialized lookup that beats the measured tight dictionary pass, not a broad generated
+switch. The larger remaining capability boundary is safe foreign-content suppression in AngleSharp's tree builder.
 
 The generic construction factory still has a known foreign-content correctness boundary where AngleSharp checks concrete
 core element types. An upstream opaque-handle construction sink remains the clean architectural fix if this prototype moves

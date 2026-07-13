@@ -15,9 +15,11 @@ public class CompactQueryWorkloadBenchmark
 {
     private const string TargetId = "selected-region";
     private readonly HtmlParser _readOnlyParser;
-    private readonly CompactParserSession _compactParser;
+    private readonly CompactParserSession _frozenParser;
+    private readonly CompactParserSession _packedParser;
     private readonly HtmlParser _readOnlyTextParser;
-    private readonly CompactParserSession _compactTextParser;
+    private readonly CompactParserSession _frozenTextParser;
+    private readonly CompactParserSession _packedTextParser;
     private readonly string _targetPage = CreateTargetPage();
     private readonly string _textPage = CreateTextPage();
 
@@ -25,20 +27,34 @@ public class CompactQueryWorkloadBenchmark
     {
         var selectedOptions = CreateSelectedOptions();
         _readOnlyParser = new HtmlParser(selectedOptions, ReadOnlyParser.DefaultContext);
-        _compactParser = new CompactParserSession(CompactMetadataOptions.ParentLinks, parserOptions: selectedOptions);
+        _frozenParser = new CompactParserSession(CompactMetadataOptions.ParentLinks, parserOptions: selectedOptions);
+        _packedParser = new CompactParserSession(
+            CompactMetadataOptions.ParentLinks,
+            parserOptions: selectedOptions,
+            layout: CompactDocumentLayout.Packed
+        );
 
         var textOptions = CreateTextOptions();
         _readOnlyTextParser = new HtmlParser(textOptions, ReadOnlyParser.DefaultContext);
-        _compactTextParser = new CompactParserSession(CompactMetadataOptions.ParentLinks, parserOptions: textOptions);
+        _frozenTextParser = new CompactParserSession(CompactMetadataOptions.ParentLinks, parserOptions: textOptions);
+        _packedTextParser = new CompactParserSession(
+            CompactMetadataOptions.ParentLinks,
+            parserOptions: textOptions,
+            layout: CompactDocumentLayout.Packed
+        );
     }
 
     [GlobalSetup]
     public void ValidateWorkloads()
     {
-        if (ReadOnlySelectedSubtreeQuery() != CompactSelectedSubtreeQuery())
+        if (ReadOnlySelectedSubtreeQuery() != FrozenSelectedSubtreeQuery())
             throw new InvalidOperationException("Selected-subtree query implementations disagree.");
-        if (ReadOnlyAttributeFreeTextQuery() != CompactAttributeFreeTextQuery())
+        if (ReadOnlySelectedSubtreeQuery() != PackedSelectedSubtreeQuery())
+            throw new InvalidOperationException("Packed selected-subtree query implementations disagree.");
+        if (ReadOnlyAttributeFreeTextQuery() != FrozenAttributeFreeTextQuery())
             throw new InvalidOperationException("Attribute-free text query implementations disagree.");
+        if (ReadOnlyAttributeFreeTextQuery() != PackedAttributeFreeTextQuery())
+            throw new InvalidOperationException("Packed attribute-free query implementations disagree.");
     }
 
     [Benchmark(Baseline = true)]
@@ -50,10 +66,18 @@ public class CompactQueryWorkloadBenchmark
     }
 
     [Benchmark]
-    public int CompactSelectedSubtreeQuery()
+    public int FrozenSelectedSubtreeQuery()
     {
         var filter = new OnlyElementWithIdAndDescendants("section", TargetId);
-        using var document = _compactParser.Parse(_targetPage.AsMemory(), filter.Loop);
+        using var document = _frozenParser.Parse(_targetPage.AsMemory(), filter.Loop);
+        return CompactChecksum(document);
+    }
+
+    [Benchmark]
+    public int PackedSelectedSubtreeQuery()
+    {
+        var filter = new OnlyElementWithIdAndDescendants("section", TargetId);
+        using var document = _packedParser.Parse(_targetPage.AsMemory(), filter.Loop);
         return CompactChecksum(document);
     }
 
@@ -66,10 +90,18 @@ public class CompactQueryWorkloadBenchmark
     }
 
     [Benchmark]
-    public int CompactAttributeFreeTextQuery()
+    public int FrozenAttributeFreeTextQuery()
     {
         var filter = new FirstTagAndAllChildren("body");
-        using var document = _compactTextParser.Parse(_textPage.AsMemory(), filter.Loop);
+        using var document = _frozenTextParser.Parse(_textPage.AsMemory(), filter.Loop);
+        return CompactChecksum(document);
+    }
+
+    [Benchmark]
+    public int PackedAttributeFreeTextQuery()
+    {
+        var filter = new FirstTagAndAllChildren("body");
+        using var document = _packedTextParser.Parse(_textPage.AsMemory(), filter.Loop);
         return CompactChecksum(document);
     }
 
@@ -98,16 +130,16 @@ public class CompactQueryWorkloadBenchmark
         var checksum = 0;
         for (var handle = 0; handle < document.NodeCount; handle++)
         {
-            ref readonly var node = ref document.GetNode(handle);
+            var node = document.GetNode(handle);
             checksum += document.GetName(node.NameId).Length;
             if (node.PayloadIndex < 0)
                 continue;
-            ref readonly var payload = ref document.GetPayload(node.PayloadIndex);
+            var payload = document.GetPayload(node.PayloadIndex);
             checksum += payload.AttributeCount * 17;
             checksum += payload.ValueLength;
             for (var index = 0; index < payload.AttributeCount; index++)
             {
-                ref readonly var attribute = ref document.GetAttribute(payload.FirstAttribute + index);
+                var attribute = document.GetAttribute(payload.FirstAttribute + index);
                 checksum += document.GetName(attribute.NameId).Length + attribute.ValueLength;
             }
         }

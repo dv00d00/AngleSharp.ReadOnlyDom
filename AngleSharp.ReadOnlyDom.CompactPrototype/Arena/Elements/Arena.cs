@@ -15,6 +15,9 @@ internal sealed class Arena : IDisposable
     private PooledValueBuffer<MutableNodePayload>? _payloads;
     private PooledValueBuffer<MutableAttribute>? _attributes;
     private PooledReferenceBuffer<ArenaAttribute>? _attributeWrappers;
+    private int _unattachedNodeCount;
+    private int _textLength;
+    private bool _requiresRemap;
 
     public Arena(CompactParserHints hints, bool trackSourceReferences)
     {
@@ -28,6 +31,7 @@ internal sealed class Arena : IDisposable
     public ArenaDocument CreateDocument(TextSource source)
     {
         var document = new ArenaDocument(this, AddState("#document", NodeFlags.None, CompactNodeKind.Document), source);
+        _unattachedNodeCount--;
         _nodes.Add(document);
         return document;
     }
@@ -141,7 +145,42 @@ internal sealed class Arena : IDisposable
 
     public StringOrMemory AttributeValue(int handle) => _attributes![handle].Value;
 
-    public void SetAttributeValue(int handle, StringOrMemory value) => _attributes![handle].Value = value;
+    internal int FirstAttributeHandle(int handle) => FirstAttribute(handle);
+
+    internal int NextAttribute(int attribute) => _attributes![attribute].Next;
+
+    internal bool AttributesSame(int left, int right)
+    {
+        if (AttributeCount(left) != AttributeCount(right))
+            return false;
+        var attributes = _attributes;
+        if (attributes is null)
+            return true;
+        for (var attribute = FirstAttribute(left); attribute >= 0; attribute = attributes[attribute].Next)
+        {
+            var candidate = FirstAttribute(right);
+            while (
+                candidate >= 0
+                && (
+                    attributes[candidate].Name != attributes[attribute].Name
+                    || attributes[candidate].Value != attributes[attribute].Value
+                )
+            )
+            {
+                candidate = attributes[candidate].Next;
+            }
+            if (candidate < 0)
+                return false;
+        }
+        return true;
+    }
+
+    public void SetAttributeValue(int handle, StringOrMemory value)
+    {
+        ref var attribute = ref _attributes![handle];
+        _textLength = checked(_textLength - attribute.Value.Length + value.Length);
+        attribute.Value = value;
+    }
 
     public ISourceReference? SourceReference(int handle) => _columns.SourceReferences?[handle];
 
@@ -153,7 +192,10 @@ internal sealed class Arena : IDisposable
 
     public void AddChild(int parent, int child, int? index = null)
     {
+        if (_columns.Parents[child] >= 0 || child != _nodes.Count - 1)
+            _requiresRemap = true;
         Detach(child);
+        _unattachedNodeCount--;
         if (index is null || index.Value == _columns.ChildCounts[parent])
         {
             AppendChild(parent, child);
@@ -192,13 +234,20 @@ internal sealed class Arena : IDisposable
 
     public CompactDocument Finalize(int root, CompactMetadataOptions options)
     {
-        var order = ArrayPool<int>.Shared.Rent(_nodes.Count);
-        var orderCount = 0;
-        AddPreOrder(root, order, ref orderCount);
-        var remap = ArrayPool<int>.Shared.Rent(_nodes.Count);
-        remap.AsSpan(0, _nodes.Count).Fill(-1);
-        for (var i = 0; i < orderCount; i++)
-            remap[order[i]] = i;
+        var preservesConstructionHandles = root == 0 && !_requiresRemap && _unattachedNodeCount == 0;
+        int[]? order = null;
+        int[]? remap = null;
+        var orderCount = _nodes.Count;
+        if (!preservesConstructionHandles)
+        {
+            order = ArrayPool<int>.Shared.Rent(_nodes.Count);
+            orderCount = 0;
+            AddPreOrder(root, order, ref orderCount);
+            remap = ArrayPool<int>.Shared.Rent(_nodes.Count);
+            remap.AsSpan(0, _nodes.Count).Fill(-1);
+            for (var i = 0; i < orderCount; i++)
+                remap[order[i]] = i;
+        }
 
         var nodes = Allocate<CompactNode>(orderCount);
         var payloads = Allocate<CompactNodePayload>(_payloads?.Count ?? 0);
@@ -216,11 +265,17 @@ internal sealed class Arena : IDisposable
 
         for (var handle = 0; handle < orderCount; handle++)
         {
-            var oldHandle = order[handle];
+            var oldHandle = preservesConstructionHandles ? handle : order![handle];
             var first = FinalFirstChild(oldHandle);
-            var firstChild = first < 0 ? -1 : remap[first];
+            var firstChild =
+                first < 0 ? -1
+                : preservesConstructionHandles ? first
+                : remap![first];
             var sibling = _columns.NextSiblings[oldHandle];
-            var nextSibling = sibling < 0 ? -1 : remap[sibling];
+            var nextSibling =
+                sibling < 0 ? -1
+                : preservesConstructionHandles ? sibling
+                : remap![sibling];
 
             var nodePayload = -1;
             var stateAttributeCount = AttributeCount(oldHandle);
@@ -258,14 +313,16 @@ internal sealed class Arena : IDisposable
             if (parents is not null)
             {
                 var parent = _columns.Parents[oldHandle];
-                parents[handle] = parent < 0 ? -1 : remap[parent];
+                parents[handle] =
+                    parent < 0 ? -1
+                    : preservesConstructionHandles ? parent
+                    : remap![parent];
             }
             if (sources is not null)
                 sources[handle] = GetSource(_columns.SourceReferences?[oldHandle]);
         }
 
-        var nameArray = Allocate<string>(names.Count);
-        names.CopyTo(nameArray);
+        var nameArray = CopyCustomNames(names);
         var (text, textLength) = textBuilder.Detach();
         var result = new CompactDocument(
             nodes,
@@ -278,18 +335,93 @@ internal sealed class Arena : IDisposable
             orderCount,
             payloadIndex,
             attributeIndex,
-            names.Count,
+            names.CustomCount,
             textLength
         );
-        ArrayPool<int>.Shared.Return(order);
-        ArrayPool<int>.Shared.Return(remap);
+        if (order is not null)
+            ArrayPool<int>.Shared.Return(order);
+        if (remap is not null)
+            ArrayPool<int>.Shared.Return(remap);
         return result;
+    }
+
+    public bool CanFreeze(int root) => root == 0 && !_requiresRemap && _unattachedNodeCount == 0;
+
+    public CompactDocument Freeze(int root, CompactMetadataOptions options, TextSource source)
+    {
+        if (!CanFreeze(root))
+            throw new InvalidOperationException("This arena requires packed finalization.");
+
+        var nodeNameIds = Allocate<ushort>(_nodes.Count);
+        var attributeCount = _attributes?.Count ?? 0;
+        var attributeNameIds = Allocate<ushort>(attributeCount);
+        string[]? nameArray = null;
+        try
+        {
+            var names = new NameTable();
+            for (var handle = 0; handle < _nodes.Count; handle++)
+                nodeNameIds[handle] = names.GetId(_columns.Names[handle]);
+            for (var attribute = 0; attribute < attributeCount; attribute++)
+                attributeNameIds[attribute] = names.GetId(_attributes![attribute].Name);
+
+            nameArray = CopyCustomNames(names);
+            _nodes.Dispose();
+            _attributeWrappers?.Dispose();
+            return new CompactDocument(
+                this,
+                source,
+                nodeNameIds,
+                attributeNameIds,
+                nameArray,
+                _columns.Count,
+                _payloads?.Count ?? 0,
+                attributeCount,
+                names.CustomCount,
+                _textLength,
+                options
+            );
+        }
+        catch
+        {
+            ArrayPool<ushort>.Shared.Return(nodeNameIds);
+            ArrayPool<ushort>.Shared.Return(attributeNameIds);
+            if (nameArray is { Length: > 0 })
+                ArrayPool<string>.Shared.Return(nameArray, clearArray: true);
+            throw;
+        }
+    }
+
+    internal int FrozenFirstChild(int handle) => FinalFirstChild(handle);
+
+    internal int FrozenNextSibling(int handle) => _columns.NextSiblings[handle];
+
+    internal int FrozenPayloadIndex(int handle) => _columns.PayloadIndexes[handle];
+
+    internal CompactNodeKind FrozenKind(int handle) => _columns.Kinds[handle];
+
+    internal byte FrozenFlags(int handle) => (byte)_columns.Flags[handle];
+
+    internal int FrozenParent(int handle) => _columns.Parents[handle];
+
+    internal int FrozenFirstAttribute(int payload) => _payloads![payload].FirstAttribute;
+
+    internal ushort FrozenAttributeCount(int payload) => _payloads![payload].AttributeCount;
+
+    internal ReadOnlyMemory<char> FrozenPayloadValue(int payload) => _payloads![payload].Value.Memory;
+
+    internal ReadOnlyMemory<char> FrozenAttributeValue(int attribute) => _attributes![attribute].Value.Memory;
+
+    internal bool TryGetFrozenSourceLocation(int handle, out CompactSourceLocation source)
+    {
+        source = GetSource(_columns.SourceReferences?[handle]);
+        return source.Index >= 0;
     }
 
     private static T[] Allocate<T>(int length) => ArrayPool<T>.Shared.Rent(length);
 
     private int AddState(StringOrMemory name, NodeFlags flags, CompactNodeKind kind)
     {
+        _unattachedNodeCount++;
         return _columns.Add(name, flags, kind);
     }
 
@@ -335,16 +467,26 @@ internal sealed class Arena : IDisposable
         _columns.Dispose();
     }
 
-    public void RemoveFromParent(int child) => Detach(child);
+    public void RemoveFromParent(int child)
+    {
+        if (_columns.Parents[child] >= 0)
+            _requiresRemap = true;
+        Detach(child);
+    }
 
     public void RemoveChild(int parent, int child)
     {
         if (_columns.Parents[child] == parent)
+        {
+            _requiresRemap = true;
             Detach(child);
+        }
     }
 
     public void ClearChildren(int parent)
     {
+        if (_columns.ChildCounts[parent] != 0)
+            _requiresRemap = true;
         var child = _columns.FirstChildren[parent];
         while (child >= 0)
         {
@@ -352,6 +494,7 @@ internal sealed class Arena : IDisposable
             _columns.Parents[child] = -1;
             _columns.PreviousSiblings[child] = -1;
             _columns.NextSiblings[child] = -1;
+            _unattachedNodeCount++;
             child = next;
         }
         _columns.FirstChildren[parent] = -1;
@@ -385,6 +528,7 @@ internal sealed class Arena : IDisposable
         var payloadIndex = EnsurePayload(handle);
         ref var payload = ref _payloads![payloadIndex];
         var attributeHandle = _attributes.Add(new MutableAttribute(name, value));
+        _textLength = checked(_textLength + value.Length);
         var wrapper = new ArenaAttribute(this, attributeHandle);
         _attributeWrappers.Add(wrapper);
         if (payload.FirstAttribute < 0)
@@ -406,8 +550,18 @@ internal sealed class Arena : IDisposable
         if (value.Length != 0)
         {
             var payload = EnsurePayload(handle);
+            _textLength = checked(_textLength - _payloads![payload].Value.Length + value.Length);
             _payloads![payload].Value = value;
         }
+    }
+
+    private static string[] CopyCustomNames(NameTable nameTable)
+    {
+        if (nameTable.CustomCount == 0)
+            return [];
+        var names = Allocate<string>(nameTable.CustomCount);
+        nameTable.CopyCustomNamesTo(names);
+        return names;
     }
 
     private int FirstAttribute(int handle)
@@ -448,6 +602,7 @@ internal sealed class Arena : IDisposable
 
     private void InsertBefore(int parent, int child, int next)
     {
+        _requiresRemap = true;
         var previous = _columns.PreviousSiblings[next];
         _columns.Parents[child] = parent;
         _columns.PreviousSiblings[child] = previous;
@@ -479,5 +634,6 @@ internal sealed class Arena : IDisposable
         _columns.PreviousSiblings[child] = -1;
         _columns.NextSiblings[child] = -1;
         _columns.ChildCounts[parent]--;
+        _unattachedNodeCount++;
     }
 }

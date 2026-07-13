@@ -38,6 +38,8 @@ internal sealed class MutableNodeColumns : IDisposable
     public int[] PayloadIndexes;
     public ISourceReference?[]? SourceReferences;
 
+    public int Count => _count;
+
     public int Add(StringOrMemory name, NodeFlags flags, CompactNodeKind kind)
     {
         EnsureCapacity();

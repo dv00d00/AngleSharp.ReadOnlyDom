@@ -5,6 +5,8 @@ namespace AngleSharp.ReadOnlyDom.CompactPrototype.Arena;
 
 internal sealed class ArenaAttribute(Arena arena, int handle) : IConstructableAttr
 {
+    internal int NodeHandle => handle;
+
     public StringOrMemory Name => arena.AttributeName(handle);
     public StringOrMemory Value
     {

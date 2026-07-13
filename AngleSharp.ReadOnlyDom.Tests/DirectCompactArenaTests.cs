@@ -17,6 +17,30 @@ public sealed class CompactParserTests
     public async Task CoreNodeIsExactlySixteenBytes() => await Assert.That(Unsafe.SizeOf<CompactNode>()).IsEqualTo(16);
 
     [Test]
+    public async Task AppendOnlyDocumentsFreezeColumnsByDefault()
+    {
+        using var document = CompactParser.Parse("<main><p>x</p></main>");
+
+        await Assert.That(document.Layout).IsEqualTo(CompactDocumentLayout.FrozenColumns);
+    }
+
+    [Test]
+    public async Task PackedLayoutRemainsExplicitlyAvailable()
+    {
+        using var document = CompactParser.Parse("<main><p>x</p></main>", layout: CompactDocumentLayout.Packed);
+
+        await Assert.That(document.Layout).IsEqualTo(CompactDocumentLayout.Packed);
+    }
+
+    [Test]
+    public async Task MutationHeavyMarkupFallsBackToPackedLayout()
+    {
+        using var document = CompactParser.Parse("<main><table>before<tr><td>x</td></tr></table></main>");
+
+        await Assert.That(document.Layout).IsEqualTo(CompactDocumentLayout.Packed);
+    }
+
+    [Test]
     public async Task InlineReferenceListLayoutsAreExplicit()
     {
         await Assert.That(Unsafe.SizeOf<SmallReferenceList2<object>>()).IsEqualTo(32);
@@ -31,6 +55,7 @@ public sealed class CompactParserTests
             "<p>one<div>two</p>three",
             "<!doctype html><!--a--><html><head><title>x</title><body><ul><li>a<li>b</ul>",
             "<b><i>one</b>two</i>",
+            "<b class='same'><b class='same'><b class='same'><b class='same'>x</b></b></b></b>",
             "<template><section data-x='1'>inside</section></template><main>outside</main>",
             "text &amp; &#x1f600; <!-- broken",
         ];
@@ -92,6 +117,39 @@ public sealed class CompactParserTests
         using var second = session.Parse("<main><p>second</p><p>third</p></main>");
         await Assert.That(second.NodeCount).IsGreaterThan(firstCount);
         await Assert.That(second.FindNameId("main")).IsNotEqualTo(ushort.MaxValue);
+    }
+
+    [Test]
+    public async Task KnownAndCustomNamesShareStableDocumentIds()
+    {
+        using var document = CompactParser.Parse("<main><x-widget data-custom='x'></x-widget></main>");
+
+        var main = document.FindNameId("main");
+        var customElement = document.FindNameId("x-widget");
+        var customAttribute = document.FindNameId("data-custom");
+        await Assert.That(main).IsNotEqualTo(ushort.MaxValue);
+        await Assert.That(customElement).IsNotEqualTo(ushort.MaxValue);
+        await Assert.That(customAttribute).IsNotEqualTo(ushort.MaxValue);
+        await Assert.That(document.GetName(main)).IsEqualTo("main");
+        await Assert.That(document.GetName(customElement)).IsEqualTo("x-widget");
+        await Assert.That(document.GetName(customAttribute)).IsEqualTo("data-custom");
+        await Assert.That(document.FindNameId("aside")).IsEqualTo(ushort.MaxValue);
+    }
+
+    [Test]
+    public async Task ExtractionProfileDisablesNonExtractionFeatures()
+    {
+        var options = CompactParserProfiles.Extraction;
+
+        await Assert.That(options.IsScripting).IsFalse();
+        await Assert.That(options.IsNotSupportingFrames).IsTrue();
+        await Assert.That(options.IsKeepingSourceReferences).IsFalse();
+        await Assert.That(options.IsPreservingAttributeNames).IsFalse();
+        await Assert.That(options.DisableElementPositionTracking).IsTrue();
+        await Assert.That(options.SkipComments).IsTrue();
+        await Assert.That(options.SkipProcessingInstructions).IsTrue();
+        await Assert.That(options.SkipScriptText).IsTrue();
+        await Assert.That(options.SkipRawText).IsTrue();
     }
 
     [Test]
@@ -242,16 +300,16 @@ public sealed class CompactParserTests
 
     private static string Snapshot(CompactDocument document, int handle)
     {
-        ref readonly var node = ref document.GetNode(handle);
+        var node = document.GetNode(handle);
         var result = $"{node.Kind}:{document.GetName(node.NameId)}[";
         if (node.PayloadIndex >= 0)
         {
-            ref readonly var payload = ref document.GetPayload(node.PayloadIndex);
+            var payload = document.GetPayload(node.PayloadIndex);
             for (var i = 0; i < payload.AttributeCount; i++)
             {
                 if (i != 0)
                     result += ",";
-                ref readonly var attribute = ref document.GetAttribute(payload.FirstAttribute + i);
+                var attribute = document.GetAttribute(payload.FirstAttribute + i);
                 result +=
                     $"{document.GetName(attribute.NameId)}={document.GetValue(attribute.ValueStart, attribute.ValueLength)}";
             }
