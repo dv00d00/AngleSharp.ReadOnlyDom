@@ -44,7 +44,7 @@ if ($Tier -in @("micro", "all")) {
     Invoke-Benchmark "*OverheadBenchmark*" "micro"
 }
 if ($Tier -in @("compact", "all")) {
-    Invoke-Benchmark "*CompactDom*" "compact"
+    Invoke-Benchmark "*CompactBuildBenchmark*" "compact"
 }
 if ($Tier -in @("small", "all")) {
     Invoke-Benchmark "*CorpusBenchmark*" "corpus-small" "small"

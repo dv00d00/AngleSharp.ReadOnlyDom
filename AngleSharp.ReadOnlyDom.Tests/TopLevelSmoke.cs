@@ -7,7 +7,8 @@ using AngleSharp.ReadOnlyDom.Html;
 
 namespace AngleSharp.Readonly.Tests;
 
-// Do not run from the IDE; each top-level oracle generates about 166K test cases.
+// Do not run from the IDE; OG -> RO generates about 60K distinct cases and OG -> Arena about 120K
+// because it covers both compact layouts.
 // OG -> RO: --treenode-filter "/*/AngleSharp.Readonly.Tests/TopLevelSmoke/*"
 // OG -> Arena: --treenode-filter "/*/AngleSharp.Readonly.Tests/TopLevelArenaSmoke/*"
 public class TopLevelSmoke
@@ -244,13 +245,15 @@ public class TopLevelSmoke
         Directory
             .EnumerateFiles(BaseDir)
             .Where(it => new FileInfo(it).Length < MaxSize)
-            .SelectMany(path => Tags.Select(t => (Path.GetFileName(path), t)));
+            .SelectMany(path => Tags.Select(t => (Path.GetFileName(path), t)))
+            .Distinct();
 
     public static IEnumerable<(string FileName, string Tag1, string Tag2)> TwoTags() =>
         Directory
             .EnumerateFiles(BaseDir)
             .Where(it => new FileInfo(it).Length < MaxSize)
-            .SelectMany(path => TagsShort.SelectMany(t1 => TagsShort.Select(t2 => (Path.GetFileName(path), t1, t2))));
+            .SelectMany(path => TagsShort.SelectMany(t1 => TagsShort.Select(t2 => (Path.GetFileName(path), t1, t2))))
+            .Distinct();
 
     public static IEnumerable<(string FileName, string Tag1, string Tag2, string Tag3)> ThreeTags() =>
         Directory
@@ -260,7 +263,8 @@ public class TopLevelSmoke
                 TagsShort.SelectMany(t1 =>
                     TagsShort.SelectMany(t2 => TagsShort.Select(t3 => (Path.GetFileName(path), t1, t2, t3)))
                 )
-            );
+            )
+            .Distinct();
 
     public class SelectorTestCase
     {
@@ -376,7 +380,17 @@ public class TopLevelSmoke
     private static bool HasBadChar(ReadOnlySpan<char> value) => value.ContainsAny(badName);
 #endif
 
-    public static IEnumerable<SelectorTestCase> Core()
+    private static readonly Lazy<SelectorTestCase[]> CoreCases = new(() =>
+        DistinctSelectors(BuildCore()).ToArray()
+    );
+
+    private static readonly Lazy<SelectorTestCase[]> AllComplexCases = new(() =>
+        DistinctSelectors(CustomSelectors().Concat(CustomSelectorsZip2()).Concat(CustomSelectorsZip3())).ToArray()
+    );
+
+    public static IEnumerable<SelectorTestCase> Core() => CoreCases.Value;
+
+    private static IEnumerable<SelectorTestCase> BuildCore()
     {
         return Directory
             .EnumerateFiles(BaseDir)
@@ -404,14 +418,14 @@ public class TopLevelSmoke
 
     public static IEnumerable<SelectorTestCase> CustomSelectorsZip2()
     {
-        var single = Core().ToArray();
+        var single = CoreCases.Value;
 
         return single.Zip(single.Skip(1)).Select(it => it.First.Combine(it.Second)).Where(it => it != null)!;
     }
 
     public static IEnumerable<SelectorTestCase> CustomSelectorsZip3()
     {
-        var single = Core().ToArray();
+        var single = CoreCases.Value;
 
         return single
             .Zip(single.Skip(1), single.Skip(2))
@@ -419,8 +433,15 @@ public class TopLevelSmoke
             .Where(it => it != null)!;
     }
 
-    public static IEnumerable<SelectorTestCase> AllComplexSelectors() =>
-        CustomSelectors().Concat(CustomSelectorsZip2()).Concat(CustomSelectorsZip3());
+    public static IEnumerable<SelectorTestCase> AllComplexSelectors() => AllComplexCases.Value;
+
+    private static IEnumerable<SelectorTestCase> DistinctSelectors(IEnumerable<SelectorTestCase> selectors)
+    {
+        var seen = new HashSet<(string FileName, string CssSelector)>();
+        foreach (var selector in selectors)
+            if (seen.Add((selector.FileName, selector.CssSelector)))
+                yield return selector;
+    }
 
     public static IEnumerable<(string FileName, string ClassName)> Classes() =>
         Directory

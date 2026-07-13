@@ -196,6 +196,22 @@ public sealed class CompactParserTests
     }
 
     [Test]
+    public async Task FrozenDocumentOwnsValuesAfterTokenizerBuffersAreReused()
+    {
+        var expectedClass = $"stable-{new string('a', 512)}";
+        using var first = CompactParser.Parse($"<main class='{expectedClass}'>stable text</main>");
+
+        for (var i = 0; i < 32; i++)
+        {
+            using var other = CompactParser.Parse($"<main class='replacement-{i}-{new string('z', 512)}'>other</main>");
+        }
+
+        var main = first.Elements("main").First();
+        await Assert.That(main.Attr("class").ToString()).IsEqualTo(expectedClass);
+        await Assert.That(main.Text()).IsEqualTo("stable text");
+    }
+
+    [Test]
     public async Task KnownAndCustomNamesShareStableDocumentIds()
     {
         using var document = CompactParser.Parse("<main><x-widget data-custom='x'></x-widget></main>");
