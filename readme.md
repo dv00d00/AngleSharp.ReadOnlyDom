@@ -6,6 +6,15 @@ Contains several dom filters as well as a set of http client extensions.
 
 Heavily used in production. 
 
+## Samples
+
+The runnable [samples project](samples/AngleSharp.ReadOnlyDom.Samples/README.md) compares the read-only DOM, compact DOM,
+specialized construction-time extraction, and EOF aggregate JSON/text/Markdown APIs on one fixture:
+
+```powershell
+dotnet run --project samples/AngleSharp.ReadOnlyDom.Samples -c Release
+```
+
 ```
 
 BenchmarkDotNet v0.13.7, Windows 11 (10.0.22631.4890)
