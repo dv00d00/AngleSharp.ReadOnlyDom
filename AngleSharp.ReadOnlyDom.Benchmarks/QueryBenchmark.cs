@@ -9,7 +9,6 @@ using BenchmarkDotNet.Attributes;
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
 [MemoryDiagnoser]
-[GcServer(true)]
 public class QueryBenchmark
 {
     private static readonly HtmlParserOptions Options = new()

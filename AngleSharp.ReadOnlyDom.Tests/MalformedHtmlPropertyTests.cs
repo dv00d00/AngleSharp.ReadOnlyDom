@@ -131,7 +131,8 @@ public class MalformedHtmlPropertyTests
     private static string Normalize(CompactDocument document)
     {
         var result = new StringBuilder();
-        AppendCompactChildren(document, document.GetNode(0).FirstChild, result);
+        var root = document.GetNode(0);
+        AppendCompactChildren(document, root.FirstChild, root.SubtreeEndExclusive, result);
         return result.ToString();
     }
 
@@ -163,10 +164,15 @@ public class MalformedHtmlPropertyTests
         AppendText(text, result);
     }
 
-    private static void AppendCompactChildren(CompactDocument document, int child, StringBuilder result)
+    private static void AppendCompactChildren(
+        CompactDocument document,
+        int child,
+        int endExclusive,
+        StringBuilder result
+    )
     {
         var text = new StringBuilder();
-        while (child >= 0)
+        while (child >= 0 && child < endExclusive)
         {
             var node = document.GetNode(child);
             if (node.Kind == CompactNodeKind.Text && node.PayloadIndex >= 0)
@@ -197,10 +203,10 @@ public class MalformedHtmlPropertyTests
                         result.Append('|').Append(attribute.Name).Append('=').Append(attribute.Value);
                 }
                 result.Append("]{");
-                AppendCompactChildren(document, node.FirstChild, result);
+                AppendCompactChildren(document, node.FirstChild, node.SubtreeEndExclusive, result);
                 result.Append('}');
             }
-            child = node.NextSibling;
+            child = node.SubtreeEndExclusive;
         }
         AppendText(text, result);
     }
