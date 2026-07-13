@@ -553,7 +553,7 @@ internal static class QueryWorkloadRunner
         public CompactSession(Workload workload)
         {
             _workload = workload;
-            _document = CompactParser.Parse(workload.Html);
+            _document = CompactParser.CreateParser().ParseCompactDocument(workload.Html);
         }
 
         public QueryResult Execute() => WorkloadQueries.Compact(_workload, _document);

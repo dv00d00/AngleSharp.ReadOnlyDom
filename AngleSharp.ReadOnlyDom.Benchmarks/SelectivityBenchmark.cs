@@ -22,7 +22,7 @@ public class SelectivityBenchmark
         Options,
         ReadOnlyParser.CreateContext(ReadOnlyMetadataProfile.Minimal)
     );
-    private readonly CompactParserSession _arenaParser = new(parserOptions: Options);
+    private readonly HtmlParser _arenaParser = CompactParser.CreateParser(parserOptions: Options);
 
     private IReadOnlyDocument _readOnly = null!;
     private CompactDocument _arena = null!;
@@ -36,7 +36,7 @@ public class SelectivityBenchmark
     {
         var html = Bake(Noise, out _forms);
         _readOnly = _readOnlyParser.ParseReadOnlyDocument(html);
-        _arena = _arenaParser.Parse(html);
+        _arena = _arenaParser.ParseCompactDocument(html);
 
         var readOnly = ReadOnlyFind();
         var scalar = ArenaScalarFind();
