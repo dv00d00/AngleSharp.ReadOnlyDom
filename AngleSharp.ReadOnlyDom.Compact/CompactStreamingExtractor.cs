@@ -109,46 +109,26 @@ public sealed class CompactStreamingExtractionPlan
         // predicate in this concrete view. Attributes copied by obsolete isindex handling do not
         // affect topology or the projected text, so they can remain filtered.
         var attribute = name.Span;
-        if (
-            attribute.Equals("id", StringComparison.OrdinalIgnoreCase)
-            || attribute.Equals("type", StringComparison.OrdinalIgnoreCase)
-            || attribute.Equals("action", StringComparison.OrdinalIgnoreCase)
-            || attribute.Equals("prompt", StringComparison.OrdinalIgnoreCase)
-            || attribute.Equals("encoding", StringComparison.OrdinalIgnoreCase)
-        )
-        {
+        if (attribute.Equals("id", StringComparison.OrdinalIgnoreCase))
             return true;
-        }
-
-        var tag = token.Name.Memory.Span;
-        // The adoption agency and reconstruction algorithms compare the complete attribute sets
-        // of active formatting elements. Dropping any attribute on these tags can change topology.
-        return tag.Equals("a", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("b", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("big", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("code", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("em", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("font", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("i", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("nobr", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("s", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("small", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("strike", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("strong", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("tt", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("u", StringComparison.OrdinalIgnoreCase);
+        return CompactConstructionAttributePolicy.IsRequiredByTreeBuilder(ref token, attribute);
     }
 
 }
 
 internal readonly record struct CompactStreamingExtractionDefinition(string Tag, string Id)
+    : ICompactConstructionViewDefinition
 {
-    public CompactStreamingExtractionState CreateState(string source) => new(source, Tag, Id);
+    public ICompactConstructionViewState CreateState(TextSource source) =>
+        new CompactStreamingExtractionState(SourceIdentity(source), Tag, Id);
+
+    private static string? SourceIdentity(TextSource source) =>
+        source.GetUnderlyingTextSource() is StringTextSource text ? text.Text : null;
 }
 
-internal sealed class CompactStreamingExtractionState
+internal sealed class CompactStreamingExtractionState : ICompactConstructionViewState
 {
-    private readonly string _source;
+    private readonly string? _source;
     private readonly string _tag;
     private readonly string _id;
     private readonly List<int> _candidates = [];
@@ -159,7 +139,7 @@ internal sealed class CompactStreamingExtractionState
     private int _textValuesRetained;
     private int _valuesDecoded;
 
-    public CompactStreamingExtractionState(string source, string tag, string id)
+    public CompactStreamingExtractionState(string? source, string tag, string id)
     {
         _source = source;
         _tag = tag;

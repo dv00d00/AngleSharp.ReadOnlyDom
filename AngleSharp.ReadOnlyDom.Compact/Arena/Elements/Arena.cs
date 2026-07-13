@@ -13,7 +13,7 @@ internal sealed class Arena : IDisposable
     private readonly MutableNodeColumns _columns;
     private readonly NameTable _names = new();
     private readonly CompactParserHints _hints;
-    private readonly CompactStreamingExtractionState? _streamingExtraction;
+    private readonly ICompactConstructionViewState? _constructionView;
     private PooledValueBuffer<MutableNodePayload>? _payloads;
     private PooledValueBuffer<MutableAttribute>? _attributes;
     private PooledReferenceBuffer<ArenaAttribute>? _attributeWrappers;
@@ -24,11 +24,11 @@ internal sealed class Arena : IDisposable
     public Arena(
         CompactParserHints hints,
         bool trackSourceReferences,
-        CompactStreamingExtractionState? streamingExtraction = null
+        ICompactConstructionViewState? constructionView = null
     )
     {
         _hints = hints;
-        _streamingExtraction = streamingExtraction;
+        _constructionView = constructionView;
         _nodes = new PooledReferenceBuffer<ArenaNode>(
             ValidateCapacity(hints.InitialNodeCapacity, nameof(CompactParserHints.InitialNodeCapacity))
         );
@@ -249,12 +249,12 @@ internal sealed class Arena : IDisposable
     public void AddText(int parent, StringOrMemory text, bool emitWhiteSpaceOnly, int? index = null)
     {
         if (
-            _streamingExtraction is null
+            _constructionView is null
             && !emitWhiteSpaceOnly
             && text.Memory.Span.Trim(WhiteSpace).Length == 0
         )
             return;
-        var retained = _streamingExtraction?.SelectTextValue(text) ?? text;
+        var retained = _constructionView?.SelectTextValue(text) ?? text;
         AddChild(parent, AddLeaf("#text", retained, CompactNodeKind.Text), index);
     }
 
@@ -465,7 +465,7 @@ internal sealed class Arena : IDisposable
     private int AddState(StringOrMemory name, NodeFlags flags, CompactNodeKind kind)
     {
         _unattachedNodeCount++;
-        _streamingExtraction?.NodeMaterialized();
+        _constructionView?.NodeMaterialized();
         return _columns.Add(_names.GetId(name), flags, kind);
     }
 
@@ -678,16 +678,20 @@ internal sealed class Arena : IDisposable
             _attributes[payload.LastAttribute].Next = attributeHandle;
         payload.LastAttribute = attributeHandle;
         payload.AttributeCount++;
-        _streamingExtraction?.AttributeRetained(value);
+        _constructionView?.AttributeRetained(value);
     }
 
-    public void CompleteAttributes(int handle) => _streamingExtraction?.CompleteAttributes(this, handle);
+    public void CompleteAttributes(int handle) => _constructionView?.CompleteAttributes(this, handle);
 
     public CompactStreamingExtractionResult CreateStreamingExtractionResult(int root, int inputBytesConsumed) =>
-        _streamingExtraction?.CreateResult(this, root, inputBytesConsumed)
+        (_constructionView as CompactStreamingExtractionState)?.CreateResult(this, root, inputBytesConsumed)
         ?? throw new InvalidOperationException("The arena was not configured for streaming extraction.");
 
-    public void SetTokensProcessed(int count) => _streamingExtraction?.SetTokensProcessed(count);
+    public CompactAggregateResult CreateAggregateResult(int root, int inputBytesConsumed) =>
+        (_constructionView as CompactAggregateExecutionState)?.CreateResult(this, root, inputBytesConsumed)
+        ?? throw new InvalidOperationException("The arena was not configured for aggregate extraction.");
+
+    public void SetTokensProcessed(int count) => _constructionView?.SetTokensProcessed(count);
 
     public void CopyAttributes(int source, int destination)
     {
