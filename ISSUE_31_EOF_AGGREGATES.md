@@ -81,19 +81,19 @@ ShortRun, .NET 10, concurrent Server GC, using the issue #17 purpose-built fixtu
 
 | Implementation | Mean | Allocated |
 | --- | ---: | ---: |
-| Read-only DOM plus traversal | 509.35 us | 158.88 KB |
-| Compact DOM plus extraction plan | 596.65 us | 68.40 KB |
-| Specialized query-directed construction | 475.91 us | 36.20 KB |
-| EOF aggregate construction | 483.40 us | 36.33 KB |
-| Naive token-close ceiling | 18.04 us | 23.99 KB |
+| Read-only DOM plus traversal | 498.56 us | 158.88 KB |
+| Compact DOM plus extraction plan | 599.71 us | 68.40 KB |
+| Specialized query-directed construction | 479.33 us | 36.20 KB |
+| EOF aggregate construction | 481.67 us | 36.33 KB |
+| Naive token-close ceiling | 17.86 us | 23.99 KB |
 
-The generalized EOF aggregate is 19.0% faster and allocates 46.9% less than compact materialization. It adds only 0.13 KB
-allocation and 1.6% mean time versus the specialized issue #17 view on this fixture. ShortRun timing intervals remain
+The generalized EOF aggregate is 19.7% faster and allocates 46.9% less than compact materialization. It adds only 0.13 KB
+allocation and 0.5% mean time versus the specialized issue #17 view on this fixture. ShortRun timing intervals remain
 wide; allocation is the stronger result.
 
 Authoritative local report:
 
-`artifacts/benchmarks/20260713-210714-d2f6740-streaming/streaming/results/AngleSharp.ReadOnlyDom.Benchmarks.CompactStreamingExtractionBenchmark-report-github.md`
+`artifacts/benchmarks/20260713-211221-ab0229e-aggregate/streaming/results/AngleSharp.ReadOnlyDom.Benchmarks.CompactStreamingExtractionBenchmark-report-github.md`
 
 ## Streaming-input audit
 
