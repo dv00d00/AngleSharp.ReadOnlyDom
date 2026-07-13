@@ -7,7 +7,7 @@ using AngleSharp.ReadOnlyDom.Html;
 using FsCheck;
 using FsCheck.Fluent;
 #if NET10_0
-using AngleSharp.ReadOnlyDom.CompactPrototype;
+using AngleSharp.ReadOnlyDom.Compact;
 #endif
 
 

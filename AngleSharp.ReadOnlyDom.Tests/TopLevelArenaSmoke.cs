@@ -1,7 +1,7 @@
 #if NET10_0
 using System.Collections.Concurrent;
 using AngleSharp.Html.Dom;
-using AngleSharp.ReadOnlyDom.CompactPrototype;
+using AngleSharp.ReadOnlyDom.Compact;
 
 namespace AngleSharp.Readonly.Tests;
 

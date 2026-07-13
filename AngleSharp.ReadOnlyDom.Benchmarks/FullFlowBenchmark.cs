@@ -1,7 +1,7 @@
 #if NET10_0
 using System.Text;
 using AngleSharp.Html.Parser;
-using AngleSharp.ReadOnlyDom.CompactPrototype;
+using AngleSharp.ReadOnlyDom.Compact;
 using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
