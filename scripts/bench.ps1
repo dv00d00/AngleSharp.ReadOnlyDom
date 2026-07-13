@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("micro", "small", "full", "retained", "compact", "query", "plan", "all")]
+    [ValidateSet("micro", "small", "full", "retained", "compact", "query", "plan", "streaming", "all")]
     [string] $Tier = "all"
 )
 
@@ -49,6 +49,9 @@ if ($Tier -in @("compact", "all")) {
 }
 if ($Tier -in @("plan", "all")) {
     Invoke-Benchmark "*CompactExtractionPlanBenchmark*" "plan"
+}
+if ($Tier -in @("streaming", "all")) {
+    Invoke-Benchmark "*CompactStreamingExtractionBenchmark*" "streaming"
 }
 if ($Tier -in @("small", "all")) {
     Invoke-Benchmark "*CorpusBenchmark*" "corpus-small" "small"

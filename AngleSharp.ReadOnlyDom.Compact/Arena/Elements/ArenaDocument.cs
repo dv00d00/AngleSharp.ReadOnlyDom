@@ -56,6 +56,11 @@ internal sealed class ArenaDocument : ArenaElement, IConstructableDocument, IDis
         return result;
     }
 
+    public CompactStreamingExtractionResult CreateStreamingExtractionResult(int inputBytesConsumed) =>
+        Arena.CreateStreamingExtractionResult(NodeHandle, inputBytesConsumed);
+
+    public void SetTokensProcessed(int count) => Arena.SetTokensProcessed(count);
+
     public void Dispose()
     {
         try

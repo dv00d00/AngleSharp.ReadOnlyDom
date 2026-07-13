@@ -153,6 +153,57 @@ public sealed class CompactParserTests
     }
 
     [Test]
+    [Arguments("<div id=content> one <b>two</b> &amp; three</div>")]
+    [Arguments("<div id=content><b><i>one</b> two</i><p>three")]
+    [Arguments("<table><div id=content>before<span>inside</span></div><tr><td>cell</table>")]
+    [Arguments("<div id=content><table>before<tr><td>cell</td></tr>after</table>end")]
+    [Arguments("<template><div id=content>wrong</div></template><div id=content>right &amp; final</div>")]
+    [Arguments("<svg><foreignObject><div id=content>svg <b>html</b></div></foreignObject></svg>")]
+    [Arguments("<math><annotation-xml encoding='text/html'><div id=content>math</div></annotation-xml></math>")]
+    [Arguments("<b class=before>before<div id=content>inside</b> after</div>")]
+    public async Task StreamingExtractionMatchesConstructedDom(string html)
+    {
+        using var expectedDocument = new HtmlParser().ParseDocument(html);
+        var expected = expectedDocument.QuerySelector("div#content");
+
+        var actual = CompactStreamingExtractor.ExtractFirstNormalizedText(html);
+
+        await Assert.That(actual.Found).IsEqualTo(expected is not null);
+        await Assert.That(actual.Value.ToString()).IsEqualTo(NormalizeWhitespace(expected?.TextContent ?? string.Empty));
+        if (actual.Found)
+            await Assert.That(actual.Value.Ownership).IsEqualTo(CompactValueOwnership.Owned);
+        await Assert.That(actual.Counters.TokensProcessed).IsGreaterThan(0);
+        await Assert.That(actual.Counters.NodesMaterialized).IsGreaterThan(0);
+        await Assert.That(actual.Counters.AttributesInspected).IsGreaterThan(0);
+        await Assert.That(actual.Counters.AttributesRetained).IsGreaterThan(0);
+        await Assert.That(actual.Counters.TextValuesRetained).IsGreaterThan(0);
+        await Assert.That(actual.Counters.InputBytesConsumed).IsEqualTo(Encoding.UTF8.GetByteCount(html));
+        await Assert.That(actual.Counters.EarlyTerminated).IsFalse();
+    }
+
+    [Test]
+    public async Task StreamingExtractionFiltersUnneededAttributesAndReportsDecodedValues()
+    {
+        const string Html = "<main data-a=1 data-b=2><div id=content data-c=3>one &amp; two</div></main>";
+
+        var result = CompactStreamingExtractor.ExtractFirstNormalizedText(Html);
+
+        await Assert.That(result.Value.ToString()).IsEqualTo("one & two");
+        await Assert.That(result.Counters.AttributesRetained).IsEqualTo(1);
+        await Assert.That(result.Counters.ValuesDecoded).IsGreaterThan(0);
+    }
+
+    [Test]
+    public async Task StreamingExtractionReportsMissingTarget()
+    {
+        var result = CompactStreamingExtractor.ExtractFirstNormalizedText("<main><p>none</p></main>");
+
+        await Assert.That(result.Found).IsFalse();
+        await Assert.That(result.Value.Exists).IsFalse();
+        await Assert.That(result.Value.Ownership).IsEqualTo(CompactValueOwnership.None);
+    }
+
+    [Test]
     public async Task AppendOnlyDocumentsFreezeColumnsByDefault()
     {
         using var document = CompactParser.CreateParser().ParseCompactDocument("<main><p>x</p></main>");
