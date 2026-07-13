@@ -98,50 +98,44 @@ public class FullFlowBenchmark
         return events;
     }
 
+    // Familiar surface: preorder cursor scan + predicate.
     [Benchmark]
     public List<Event> ArenaScalar()
     {
         using var document = _arenaParser.Parse(_html);
-        var trId = document.FindNameId("tr");
+        var trId = document.Name("tr");
+        var builder = new StringBuilder();
         var events = new List<Event>();
-        if (trId != ushort.MaxValue)
+        foreach (var node in document.Descendants())
         {
-            var builder = new StringBuilder();
-            for (var handle = 0; handle < document.NodeCount; handle++)
-            {
-                var node = document.GetNode(handle);
-                if (node.Kind == CompactNodeKind.Element && node.NameId == trId)
-                    events.Add(ReadRow(document, handle, builder));
-            }
+            if (node.Is(trId))
+                events.Add(ReadRow(node, builder));
         }
         return events;
     }
 
+    // Fast surface: tag pushed into the SIMD name-id scan, then cursor navigation for cells.
     [Benchmark]
     public List<Event> ArenaSimd()
     {
         using var document = _arenaParser.Parse(_html);
-        var trId = document.FindNameId("tr");
+        var builder = new StringBuilder();
         var events = new List<Event>();
-        if (trId != ushort.MaxValue)
-        {
-            var builder = new StringBuilder();
-            for (var handle = document.IndexOfName(trId); handle >= 0; handle = document.IndexOfName(trId, handle + 1))
-                events.Add(ReadRow(document, handle, builder));
-        }
+        foreach (var row in document.Elements("tr"))
+            events.Add(ReadRow(row, builder));
         return events;
     }
 
-    private static Event ReadRow(CompactDocument document, int row, StringBuilder builder)
+    private static Event ReadRow(Node row, StringBuilder builder)
     {
         var @event = new Event();
         var column = 0;
-        for (var cell = document.GetNode(row).FirstChild; cell >= 0; cell = document.GetNode(cell).NextSibling)
+        foreach (var cell in row.Children())
         {
-            if (document.GetNode(cell).Kind != CompactNodeKind.Element)
+            if (!cell.IsElement)
                 continue;
             builder.Clear();
-            AppendText(document, cell, builder);
+            cell.AppendText(builder);
             Assign(@event, column++, builder.ToString());
         }
         return @event;
@@ -161,18 +155,6 @@ public class FullFlowBenchmark
                 @event.Date = value;
                 break;
         }
-    }
-
-    private static void AppendText(CompactDocument document, int handle, StringBuilder builder)
-    {
-        var node = document.GetNode(handle);
-        if (node.Kind == CompactNodeKind.Text && node.PayloadIndex >= 0)
-        {
-            var payload = document.GetPayload(node.PayloadIndex);
-            builder.Append(document.GetValue(payload.ValueStart, payload.ValueLength));
-        }
-        for (var child = node.FirstChild; child >= 0; child = document.GetNode(child).NextSibling)
-            AppendText(document, child, builder);
     }
 
     private static string Bake(int rows)

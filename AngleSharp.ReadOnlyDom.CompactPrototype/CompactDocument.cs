@@ -103,6 +103,11 @@ public sealed class CompactDocument : IDisposable
         );
     }
 
+    // Single-column reads for hot predicates, so Is/Kind/NameId don't reconstruct a whole CompactNode.
+    internal CompactNodeKind KindAt(int handle) => _arena is null ? _nodes![handle].Kind : _arena.FrozenKind(handle);
+
+    internal ushort NameIdAt(int handle) => _arena is null ? _nodes![handle].NameId : _arena.FrozenNameId(handle);
+
     public CompactNodePayload GetPayload(int index)
     {
         if (_arena is null)
@@ -207,12 +212,34 @@ public sealed class CompactDocument : IDisposable
         return count;
     }
 
-    public ushort FindNameId(string name)
+    /// <summary>
+    /// Resolves a name to its id only if the name actually occurs in this document, else
+    /// <see cref="ushort.MaxValue"/> — i.e. an existence check. Presence is verified by scanning, so this
+    /// is O(nodes); do NOT call it per node. For per-node predicates pre-resolve once with
+    /// <see cref="CompactQuery.Name"/> / <see cref="ResolveNameId(string)"/> and compare ids.
+    /// </summary>
+    public ushort FindNameId(string name) => FindNameId(name.AsSpan());
+
+    public ushort FindNameId(ReadOnlySpan<char> name)
     {
-        if (GeneratedTagMetadata.TryGetKnownNameId(name.AsSpan(), out var knownId))
-            return ContainsNameId(knownId) ? knownId : ushort.MaxValue;
+        var id = ResolveNameId(name);
+        return id != ushort.MaxValue && ContainsNameId(id) ? id : ushort.MaxValue;
+    }
+
+    /// <summary>
+    /// Resolves a name to its id without a presence scan — O(1) for known tags/attributes, O(distinct
+    /// custom names) otherwise. A known name returns its stable id even when absent from the document
+    /// (the query layer surfaces "no matches" by scanning), which keeps per-node predicates cheap. This
+    /// is the resolver the query surfaces use; <see cref="FindNameId(string)"/> adds the existence check.
+    /// </summary>
+    public ushort ResolveNameId(string name) => ResolveNameId(name.AsSpan());
+
+    public ushort ResolveNameId(ReadOnlySpan<char> name)
+    {
+        if (GeneratedTagMetadata.TryGetKnownNameId(name, out var knownId))
+            return knownId;
         for (ushort i = 0; i < _nameCount; i++)
-            if (_names[i].Equals(name, StringComparison.Ordinal))
+            if (name.SequenceEqual(_names[i]))
                 return checked((ushort)(GeneratedTagMetadata.KnownNameCount + i));
         return ushort.MaxValue;
     }

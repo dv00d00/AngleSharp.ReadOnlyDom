@@ -14,8 +14,52 @@ namespace AngleSharp.ReadOnlyDom.CompactPrototype;
 /// </summary>
 public static class CompactQuery
 {
+    /// <summary>The document root as a cursor.</summary>
+    public static Node Root(this CompactDocument document) => new(document, 0);
+
+    /// <summary>Pre-resolves a tag/attribute name to its id for id-based predicates in hot loops.</summary>
+    public static ushort Name(this CompactDocument document, string name) => document.ResolveNameId(name);
+
+    /// <summary>Span overload — resolves without allocating a name string.</summary>
+    public static ushort Name(this CompactDocument document, ReadOnlySpan<char> name) => document.ResolveNameId(name);
+
+    /// <summary>
+    /// Familiar surface: every node in document (preorder) as a cursor. Handles are stored in preorder,
+    /// so this is a flat scan — cheap, but scalar (touches every node). Use for arbitrary predicates:
+    /// <c>doc.Descendants().Where(n =&gt; n.Is("div") &amp;&amp; n.HasClass("error"))</c>.
+    /// </summary>
+    public static DescendantScan Descendants(this CompactDocument document) => new(document);
+
+    /// <summary>Fast surface: tag pushed into a vectorized name-id scan. Yields <see cref="Node"/> cursors.</summary>
     public static ElementQuery Elements(this CompactDocument document, string tag) =>
-        new(document, document.FindNameId(tag), hasClass: false, default, null, hasAttr: false, default, null);
+        new(document, document.ResolveNameId(tag), hasClass: false, default, null, hasAttr: false, default, null);
+
+    /// <summary>Span overload — resolves the tag without allocating a name string.</summary>
+    public static ElementQuery Elements(this CompactDocument document, ReadOnlySpan<char> tag) =>
+        new(document, document.ResolveNameId(tag), hasClass: false, default, null, hasAttr: false, default, null);
+
+    /// <summary>Fast surface with a pre-resolved tag id (see <see cref="Name"/>).</summary>
+    public static ElementQuery Elements(this CompactDocument document, ushort tagId) =>
+        new(document, tagId, hasClass: false, default, null, hasAttr: false, default, null);
+
+    /// <summary>Allocation-free preorder scan over all nodes below the document root.</summary>
+    public struct DescendantScan
+    {
+        private readonly CompactDocument _document;
+        private int _handle;
+
+        internal DescendantScan(CompactDocument document)
+        {
+            _document = document;
+            _handle = 0; // handle 0 is #document; MoveNext advances to the first real node
+        }
+
+        public readonly Node Current => new(_document, _handle);
+
+        public bool MoveNext() => ++_handle < _document.NodeCount;
+
+        public readonly DescendantScan GetEnumerator() => this;
+    }
 
     public readonly struct ElementQuery
     {
@@ -51,11 +95,11 @@ public static class CompactQuery
 
         /// <summary>Adds a <c>class</c>-token filter (whitespace-separated match), applied to candidates.</summary>
         public ElementQuery WithClass(string token) =>
-            new(_document, _tagId, true, _document.FindNameId("class"), token, _hasAttr, _attrId, _attrValue);
+            new(_document, _tagId, true, _document.ResolveNameId("class"), token, _hasAttr, _attrId, _attrValue);
 
         /// <summary>Adds an attribute filter: presence when <paramref name="value"/> is null, else equality.</summary>
         public ElementQuery WithAttribute(string name, string? value = null) =>
-            new(_document, _tagId, _hasClass, _classId, _classToken, true, _document.FindNameId(name), value);
+            new(_document, _tagId, _hasClass, _classId, _classToken, true, _document.ResolveNameId(name), value);
 
         public Enumerator GetEnumerator() => new(this);
 
@@ -68,10 +112,10 @@ public static class CompactQuery
             return count;
         }
 
-        public int First()
+        public Node First()
         {
             var enumerator = GetEnumerator();
-            return enumerator.MoveNext() ? enumerator.Current : -1;
+            return enumerator.MoveNext() ? enumerator.Current : default;
         }
 
         private bool Matches(int handle)
@@ -126,7 +170,7 @@ public static class CompactQuery
                 _current = -1;
             }
 
-            public int Current => _current;
+            public Node Current => new(_query._document, _current);
 
             public bool MoveNext()
             {

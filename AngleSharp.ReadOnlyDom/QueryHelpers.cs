@@ -2,6 +2,7 @@
 using System.Text;
 using AngleSharp.Common;
 using AngleSharp.ReadOnlyDom.Html;
+using AngleSharp.ReadOnlyDom.Html.Model;
 using AngleSharp.Text;
 using Microsoft.Extensions.ObjectPool;
 
@@ -163,6 +164,14 @@ public static class QueryHelpers
     {
         return node.Tag(tag) && node.Class(className);
     }
+
+    /// <summary>
+    /// Counts descendant elements matching <paramref name="tag"/> + <paramref name="className"/> via a
+    /// concrete-typed, element-only recursive walk — an allocation-free fast path that avoids the
+    /// interface-dispatched <see cref="AllDescendants"/> traversal. Falls back to 0 for foreign node types.
+    /// </summary>
+    public static int CountTagClass(this IReadOnlyNode node, StringOrMemory tag, string className) =>
+        node is ReadOnlyNode concrete ? concrete.CountTagClassElements(tag, className) : 0;
 
     public static bool TagClasses(
         this IReadOnlyNode node,

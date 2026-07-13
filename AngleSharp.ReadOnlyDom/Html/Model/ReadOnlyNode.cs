@@ -150,6 +150,35 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IConst
         }
     }
 
+    // Additive fast path for QueryHelpers.CountTagClass: a concrete-typed, element-only recursive walk.
+    // Avoids AllDescendants' interface-dispatched, pooled-stack traversal — child access is devirtualized
+    // and the class check runs only on tag-matching elements.
+    internal int CountTagClassElements(StringOrMemory tag, string className)
+    {
+        var count = 0;
+        CountTagClassInto(tag, className, ref count);
+        return count;
+    }
+
+    private void CountTagClassInto(StringOrMemory tag, string className, ref int count)
+    {
+        if (this is ReadOnlyElement element && element.LocalName == tag && QueryHelpers.Class(element, className))
+            count++;
+
+        switch (_childNodes)
+        {
+            case null:
+                return;
+            case ReadOnlyNodeList list:
+                for (var i = 0; i < list.Length; i++)
+                    ((ReadOnlyNode)list[i]).CountTagClassInto(tag, className, ref count);
+                break;
+            case ReadOnlyNode single:
+                single.CountTagClassInto(tag, className, ref count);
+                break;
+        }
+    }
+
     int IConstructableNodeList.Length => 1;
     int IReadOnlyNodeList.Length => 1;
 
