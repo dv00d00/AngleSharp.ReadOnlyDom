@@ -1,4 +1,4 @@
-# Next session handoff: issue #15 extraction plan
+# Issue #15 extraction plan handoff
 
 ## Resume here
 
@@ -8,8 +8,11 @@ Branch: `codex/issue-15-extraction-plan`
 
 Base commit: `6463ab8` (`Merge pull request #28 ... issue-14-subtree-boundaries`)
 
-The working tree intentionally contains uncommitted issue #15 work. Do not reset, clean, switch away, or overwrite it.
-Start with:
+Implementation commit: `626913c` (`Add explainable compact extraction plans`)
+
+Delivery PR: [#29](https://github.com/dv00d00/AngleSharp.ReadOnlyDom/pull/29)
+
+If revisiting this implementation, start with:
 
 ```powershell
 cd C:\Users\Dmitry\RiderProjects\AngleSharp.ReadOnlyDom
@@ -119,9 +122,9 @@ one to cite.
 
 Review these after final implementation changes and keep the numbers synchronized with the authoritative report.
 
-## Working-tree inventory
+## Change inventory
 
-Modified tracked files:
+Modified files:
 
 - `AngleSharp.ReadOnlyDom.Benchmarks/Program.cs`
 - `AngleSharp.ReadOnlyDom.Compact/CompactDocument.cs`
@@ -130,7 +133,7 @@ Modified tracked files:
 - `QUERY_DIRECTED_ENGINE_DIRECTION.md`
 - `scripts/bench.ps1`
 
-New untracked files:
+New files:
 
 - `AngleSharp.ReadOnlyDom.Benchmarks/CompactExtractionPlanBenchmark.cs`
 - `AngleSharp.ReadOnlyDom.Compact/CompactExtractionPlan.cs`
@@ -139,10 +142,10 @@ New untracked files:
 
 Benchmark artifacts are ignored and should not be committed.
 
-## Delivery continuation
+## Delivery status
 
-The implementation, review, formatting, build, and test gates are complete. The remaining delivery steps are to commit
-the coherent issue #15 change, push the branch, open a PR with `Closes #15`, merge it, and verify issue #15 is closed.
+The implementation, review, formatting, build, and test gates completed before PR #29 was opened. The PR includes
+`Closes #15`; merging it closes the issue.
 
 Rerun `./scripts/bench.ps1 plan` only if execution code or benchmark shape changes. Otherwise preserve the completed
 `191809` result; repeated ShortRun timing is noisy.
