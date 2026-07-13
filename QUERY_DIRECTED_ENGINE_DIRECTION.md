@@ -72,6 +72,11 @@ Server-GC comparison against read-only traversal and hand-written compact scans 
 [ISSUE_15_EXTRACTION_PLAN.md](ISSUE_15_EXTRACTION_PLAN.md). It remains a compact execution experiment, not the future
 query language or the tree-builder-integrated engine.
 
+The first tree-builder-integrated concrete view is recorded in
+[ISSUE_17_STREAMING_EXTRACTION.md](ISSUE_17_STREAMING_EXTRACTION.md). It preserves AngleSharp tree construction, retains
+no escaping DOM, and beat the compact plan by 47.1% allocation and 19.8% mean time on its purpose-built fixture. This is
+evidence for a small construction-time view kernel, not evidence for pushing arbitrary result shapes into the tokenizer.
+
 ## Scope discipline
 
 Start with tag, id, class token, attribute equality, descendant/direct-child paths, first/all cardinality, attribute projection, and normalized subtree text. Use an inspectable interpreted plan. Do not begin with a full CSS language, generic optimizer, generated IL, SIMD selectors, bitmap rank/select storage, or a universal column framework.
