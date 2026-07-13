@@ -1,3 +1,6 @@
+using System.Runtime;
+using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks
@@ -6,6 +9,9 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
     {
         static int Main(string[] args)
         {
+            if (!GCSettings.IsServerGC)
+                throw new InvalidOperationException("Benchmarks must run with Server GC enabled.");
+
             if (args.Length > 0 && args[0].Equals("--retained", StringComparison.OrdinalIgnoreCase))
             {
                 return RetainedMemoryRunner.Run(args.Skip(1).ToArray());
@@ -28,7 +34,8 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
             }
 #endif
 
-            BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
+            var config = ManualConfig.Create(DefaultConfig.Instance).AddJob(Job.Default.WithGcServer(true));
+            BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
             return 0;
         }
     }

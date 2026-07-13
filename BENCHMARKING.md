@@ -3,6 +3,9 @@
 .NET 10 is the only performance runtime. Tests run on .NET 10 and .NET Framework 4.7.2; the library still builds for
 .NET 8 and netstandard2.0, but those targets do not have dedicated benchmark or test executions.
 
+All benchmark entry points require Server GC. The benchmark project enables it in its runtime configuration, the manual
+runners fail immediately if it is unavailable, and the BenchmarkDotNet job explicitly requests it for generated hosts.
+
 Run a tier from the repository root:
 
 ```powershell
