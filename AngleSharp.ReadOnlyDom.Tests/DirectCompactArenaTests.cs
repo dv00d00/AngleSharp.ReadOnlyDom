@@ -81,6 +81,23 @@ public sealed class CompactParserTests
     }
 
     [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task DescendantTextExcludesTemplateContentsLikeAngleSharp(CompactDocumentLayout layout)
+    {
+        const string html =
+            "<div id=content><b>one<i> &amp; two</b> three</i><template><p>template text</p></template></div>";
+        using var expected = new HtmlParser().ParseDocument(html);
+        using var actual = CompactParser.Parse(html, layout: layout);
+        var actualContent = actual.Elements("div").WithAttribute("id", "content").First();
+        var actualTemplate = actual.Elements("template").First();
+
+        await Assert.That(actualContent.Text()).IsEqualTo(expected.QuerySelector("#content")!.TextContent);
+        await Assert.That(actualTemplate.Text()).IsEqualTo(expected.QuerySelector("template")!.TextContent);
+        await Assert.That(actualTemplate.TextLength()).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task FactoryPathDocumentsForeignElementBoundary()
     {
         const string html = "<svg><foreignObject><div>x</div></foreignObject></svg>";
