@@ -380,6 +380,7 @@ internal sealed class Arena : IDisposable
         var attributeCount = _attributes?.Count ?? 0;
         var nameArray = CopyCustomNames(_names);
         var templateBoundaries = CreateTemplateBoundaries(_columns.Count, true, null, null);
+        var ownedText = OwnTextValues();
         _columns.ReleaseConstructionColumns();
         _nodes.Dispose();
         _attributeWrappers?.Dispose();
@@ -393,7 +394,8 @@ internal sealed class Arena : IDisposable
             _names.CustomCount,
             _textLength,
             options,
-            templateBoundaries
+            templateBoundaries,
+            ownedText
         );
     }
 
@@ -492,6 +494,26 @@ internal sealed class Arena : IDisposable
             if (parent == ancestor)
                 return true;
         return false;
+    }
+
+    private char[] OwnTextValues()
+    {
+        var text = Allocate<char>(_textLength);
+        var position = 0;
+        for (var payload = 0; payload < (_payloads?.Count ?? 0); payload++)
+            OwnTextValue(ref _payloads![payload].Value, text, ref position);
+        for (var attribute = 0; attribute < (_attributes?.Count ?? 0); attribute++)
+            OwnTextValue(ref _attributes![attribute].Value, text, ref position);
+        return text;
+    }
+
+    private static void OwnTextValue(ref StringOrMemory value, char[] destination, ref int position)
+    {
+        if (value.Length == 0)
+            return;
+        value.Memory.Span.CopyTo(destination.AsSpan(position));
+        value = new StringOrMemory(destination.AsMemory(position, value.Length));
+        position += value.Length;
     }
 
     private static (int Start, int Length) CopyText(StringOrMemory value, PooledValueBuffer<char> destination)
