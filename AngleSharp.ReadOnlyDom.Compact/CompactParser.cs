@@ -7,93 +7,131 @@ namespace AngleSharp.ReadOnlyDom.Compact;
 
 public static class CompactParser
 {
-    public static CompactDocument Parse(
-        string html,
+    private static readonly Func<IBrowsingContext, ArenaConstructionFactory> Service =
+        _ =>
+            new ArenaConstructionFactory(
+                new CompactParserHints(),
+                trackSourceReferences: false,
+                CompactMetadataOptions.None,
+                CompactDocumentLayout.FrozenColumns
+            );
+
+    public static readonly IConfiguration DefaultConfig = Configuration.Default.With(Service);
+    public static readonly IBrowsingContext DefaultContext = BrowsingContext.New(DefaultConfig);
+    private static readonly IBrowsingContext FrozenParentContext = CreateContextCore(
+        CompactMetadataOptions.ParentLinks,
+        CompactDocumentLayout.FrozenColumns
+    );
+    private static readonly IBrowsingContext FrozenSourceContext = CreateContextCore(
+        CompactMetadataOptions.SourceLocations,
+        CompactDocumentLayout.FrozenColumns
+    );
+    private static readonly IBrowsingContext FrozenParentSourceContext = CreateContextCore(
+        CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations,
+        CompactDocumentLayout.FrozenColumns
+    );
+    private static readonly IBrowsingContext PackedContext = CreateContextCore(
+        CompactMetadataOptions.None,
+        CompactDocumentLayout.Packed
+    );
+    private static readonly IBrowsingContext PackedParentContext = CreateContextCore(
+        CompactMetadataOptions.ParentLinks,
+        CompactDocumentLayout.Packed
+    );
+    private static readonly IBrowsingContext PackedSourceContext = CreateContextCore(
+        CompactMetadataOptions.SourceLocations,
+        CompactDocumentLayout.Packed
+    );
+    private static readonly IBrowsingContext PackedParentSourceContext = CreateContextCore(
+        CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations,
+        CompactDocumentLayout.Packed
+    );
+
+    public static IBrowsingContext CreateContext(
         CompactMetadataOptions options = CompactMetadataOptions.None,
         CompactParserHints? hints = null,
-        CompactAttributeFilter? attributeFilter = null,
-        HtmlParserOptions? parserOptions = null,
-        TokenizerMiddleware? middleware = null,
         CompactDocumentLayout layout = CompactDocumentLayout.FrozenColumns
-    ) =>
-        Parse(
-            new TextSource(new StringTextSource(html)),
-            options,
-            hints,
-            attributeFilter,
-            parserOptions,
-            middleware,
-            layout
-        );
-
-    public static CompactDocument Parse(
-        ReadOnlyMemory<char> html,
-        CompactMetadataOptions options = CompactMetadataOptions.None,
-        CompactParserHints? hints = null,
-        CompactAttributeFilter? attributeFilter = null,
-        HtmlParserOptions? parserOptions = null,
-        TokenizerMiddleware? middleware = null,
-        CompactDocumentLayout layout = CompactDocumentLayout.FrozenColumns
-    ) =>
-        Parse(
-            new TextSource(new ReadOnlyMemoryTextSource(html)),
-            options,
-            hints,
-            attributeFilter,
-            parserOptions,
-            middleware,
-            layout
-        );
-
-    public static CompactDocument Parse(
-        char[] html,
-        int length,
-        CompactMetadataOptions options = CompactMetadataOptions.None,
-        CompactParserHints? hints = null,
-        CompactAttributeFilter? attributeFilter = null,
-        HtmlParserOptions? parserOptions = null,
-        TokenizerMiddleware? middleware = null,
-        CompactDocumentLayout layout = CompactDocumentLayout.FrozenColumns
-    ) =>
-        Parse(
-            new TextSource(new CharArrayTextSource(html, length)),
-            options,
-            hints,
-            attributeFilter,
-            parserOptions,
-            middleware,
-            layout
-        );
-
-    private static CompactDocument Parse(
-        TextSource source,
-        CompactMetadataOptions options,
-        CompactParserHints? hints,
-        CompactAttributeFilter? attributeFilter,
-        HtmlParserOptions? parserOptions,
-        TokenizerMiddleware? middleware,
-        CompactDocumentLayout layout
     )
     {
-        hints ??= new CompactParserHints();
-        var effectiveParserOptions = parserOptions ?? CreateParserOptions(options);
-        ApplyAttributeFilter(ref effectiveParserOptions, attributeFilter);
-        var configuration = Configuration.Default.With(_ => new ArenaConstructionFactory(
-            hints,
-            effectiveParserOptions.IsKeepingSourceReferences
-        ));
-        var context = BrowsingContext.New(configuration);
-        var parser = new HtmlParser(effectiveParserOptions, context);
-        var document = parser.ParseDocument<ArenaDocument, ArenaElement>(source, middleware);
-        try
+        if (hints is not null)
+            return CreateContextCore(options, layout, hints);
+
+        return (options, layout) switch
         {
-            return document.CreateCompactDocument(options, layout);
-        }
-        finally
-        {
-            document.Dispose();
-        }
+            (CompactMetadataOptions.None, CompactDocumentLayout.FrozenColumns) => DefaultContext,
+            (CompactMetadataOptions.ParentLinks, CompactDocumentLayout.FrozenColumns) => FrozenParentContext,
+            (CompactMetadataOptions.SourceLocations, CompactDocumentLayout.FrozenColumns) => FrozenSourceContext,
+            (
+                CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations,
+                CompactDocumentLayout.FrozenColumns
+            ) => FrozenParentSourceContext,
+            (CompactMetadataOptions.None, CompactDocumentLayout.Packed) => PackedContext,
+            (CompactMetadataOptions.ParentLinks, CompactDocumentLayout.Packed) => PackedParentContext,
+            (CompactMetadataOptions.SourceLocations, CompactDocumentLayout.Packed) => PackedSourceContext,
+            (
+                CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations,
+                CompactDocumentLayout.Packed
+            ) => PackedParentSourceContext,
+            _ => throw new ArgumentOutOfRangeException(nameof(options)),
+        };
     }
+
+    private static IBrowsingContext CreateContextCore(
+        CompactMetadataOptions options,
+        CompactDocumentLayout layout,
+        CompactParserHints? hints = null
+    )
+    {
+        var effectiveHints = hints ?? new CompactParserHints();
+        var trackSourceReferences = options.HasFlag(CompactMetadataOptions.SourceLocations);
+        var configuration = Configuration.Default.With(_ => new ArenaConstructionFactory(
+            effectiveHints,
+            trackSourceReferences,
+            options,
+            layout
+        ));
+        return BrowsingContext.New(configuration);
+    }
+
+    public static HtmlParser CreateParser(
+        CompactMetadataOptions options = CompactMetadataOptions.None,
+        CompactParserHints? hints = null,
+        CompactAttributeFilter? attributeFilter = null,
+        HtmlParserOptions? parserOptions = null,
+        CompactDocumentLayout layout = CompactDocumentLayout.FrozenColumns
+    )
+    {
+        var effectiveParserOptions = parserOptions ?? CreateParserOptions(options);
+        if (options.HasFlag(CompactMetadataOptions.SourceLocations))
+            effectiveParserOptions.IsKeepingSourceReferences = true;
+        ApplyAttributeFilter(ref effectiveParserOptions, attributeFilter);
+        return new HtmlParser(effectiveParserOptions, CreateContext(options, hints, layout));
+    }
+
+    public static CompactDocument ParseCompactDocument(
+        this IHtmlParser parser,
+        TextSource source,
+        TokenizerMiddleware? middleware = null
+    ) => Parse(parser, source, middleware);
+
+    public static CompactDocument ParseCompactDocument(
+        this IHtmlParser parser,
+        string source,
+        TokenizerMiddleware? middleware = null
+    ) => Parse(parser, new TextSource(new StringTextSource(source)), middleware);
+
+    public static CompactDocument ParseCompactDocument(
+        this IHtmlParser parser,
+        ReadOnlyMemory<char> source,
+        TokenizerMiddleware? middleware = null
+    ) => Parse(parser, new TextSource(new ReadOnlyMemoryTextSource(source)), middleware);
+
+    public static CompactDocument ParseCompactDocument(
+        this IHtmlParser parser,
+        char[] source,
+        int length,
+        TokenizerMiddleware? middleware = null
+    ) => Parse(parser, new TextSource(new CharArrayTextSource(source, length)), middleware);
 
     internal static HtmlParserOptions CreateParserOptions(CompactMetadataOptions options) =>
         new()
@@ -111,5 +149,22 @@ public static class CompactParser
         if (attributeFilter is not null)
             parserOptions.ShouldEmitAttribute = (ref StructHtmlToken token, ReadOnlyMemory<char> name) =>
                 attributeFilter(ref token, name);
+    }
+
+    private static CompactDocument Parse(
+        IHtmlParser parser,
+        TextSource source,
+        TokenizerMiddleware? middleware
+    )
+    {
+        var document = parser.ParseDocument<ArenaDocument, ArenaElement>(source, middleware);
+        try
+        {
+            return document.CreateCompactDocument();
+        }
+        finally
+        {
+            document.Dispose();
+        }
     }
 }

@@ -29,9 +29,19 @@ internal sealed class Arena : IDisposable
         _columns = new MutableNodeColumns(hints.InitialNodeCapacity, trackSourceReferences);
     }
 
-    public ArenaDocument CreateDocument(TextSource source)
+    public ArenaDocument CreateDocument(
+        TextSource source,
+        CompactMetadataOptions options,
+        CompactDocumentLayout layout
+    )
     {
-        var document = new ArenaDocument(this, AddState("#document", NodeFlags.None, CompactNodeKind.Document), source);
+        var document = new ArenaDocument(
+            this,
+            AddState("#document", NodeFlags.None, CompactNodeKind.Document),
+            source,
+            options,
+            layout
+        );
         _unattachedNodeCount--;
         _nodes.Add(document);
         return document;

@@ -89,7 +89,7 @@ public class MalformedHtmlPropertyTests
             source =>
             {
                 using var mutable = new HtmlParser().ParseDocument(source);
-                using var compact = CompactParser.Parse(source);
+                using var compact = CompactParser.CreateParser().ParseCompactDocument(source);
 
                 var expected = NormalizeForCompact(mutable);
                 var actual = Normalize(compact);

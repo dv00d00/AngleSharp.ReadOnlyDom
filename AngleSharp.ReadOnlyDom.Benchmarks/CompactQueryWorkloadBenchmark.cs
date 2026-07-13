@@ -15,11 +15,11 @@ public class CompactQueryWorkloadBenchmark
 {
     private const string TargetId = "selected-region";
     private readonly HtmlParser _readOnlyParser;
-    private readonly CompactParserSession _frozenParser;
-    private readonly CompactParserSession _packedParser;
+    private readonly HtmlParser _frozenParser;
+    private readonly HtmlParser _packedParser;
     private readonly HtmlParser _readOnlyTextParser;
-    private readonly CompactParserSession _frozenTextParser;
-    private readonly CompactParserSession _packedTextParser;
+    private readonly HtmlParser _frozenTextParser;
+    private readonly HtmlParser _packedTextParser;
     private readonly string _targetPage = CreateTargetPage();
     private readonly string _textPage = CreateTextPage();
 
@@ -27,8 +27,8 @@ public class CompactQueryWorkloadBenchmark
     {
         var selectedOptions = CreateSelectedOptions();
         _readOnlyParser = new HtmlParser(selectedOptions, ReadOnlyParser.DefaultContext);
-        _frozenParser = new CompactParserSession(CompactMetadataOptions.ParentLinks, parserOptions: selectedOptions);
-        _packedParser = new CompactParserSession(
+        _frozenParser = CompactParser.CreateParser(CompactMetadataOptions.ParentLinks, parserOptions: selectedOptions);
+        _packedParser = CompactParser.CreateParser(
             CompactMetadataOptions.ParentLinks,
             parserOptions: selectedOptions,
             layout: CompactDocumentLayout.Packed
@@ -36,8 +36,8 @@ public class CompactQueryWorkloadBenchmark
 
         var textOptions = CreateTextOptions();
         _readOnlyTextParser = new HtmlParser(textOptions, ReadOnlyParser.DefaultContext);
-        _frozenTextParser = new CompactParserSession(CompactMetadataOptions.ParentLinks, parserOptions: textOptions);
-        _packedTextParser = new CompactParserSession(
+        _frozenTextParser = CompactParser.CreateParser(CompactMetadataOptions.ParentLinks, parserOptions: textOptions);
+        _packedTextParser = CompactParser.CreateParser(
             CompactMetadataOptions.ParentLinks,
             parserOptions: textOptions,
             layout: CompactDocumentLayout.Packed
@@ -69,7 +69,7 @@ public class CompactQueryWorkloadBenchmark
     public int FrozenSelectedSubtreeQuery()
     {
         var filter = new OnlyElementWithIdAndDescendants("section", TargetId);
-        using var document = _frozenParser.Parse(_targetPage.AsMemory(), filter.Loop);
+        using var document = _frozenParser.ParseCompactDocument(_targetPage.AsMemory(), filter.Loop);
         return CompactChecksum(document);
     }
 
@@ -77,7 +77,7 @@ public class CompactQueryWorkloadBenchmark
     public int PackedSelectedSubtreeQuery()
     {
         var filter = new OnlyElementWithIdAndDescendants("section", TargetId);
-        using var document = _packedParser.Parse(_targetPage.AsMemory(), filter.Loop);
+        using var document = _packedParser.ParseCompactDocument(_targetPage.AsMemory(), filter.Loop);
         return CompactChecksum(document);
     }
 
@@ -93,7 +93,7 @@ public class CompactQueryWorkloadBenchmark
     public int FrozenAttributeFreeTextQuery()
     {
         var filter = new FirstTagAndAllChildren("body");
-        using var document = _frozenTextParser.Parse(_textPage.AsMemory(), filter.Loop);
+        using var document = _frozenTextParser.ParseCompactDocument(_textPage.AsMemory(), filter.Loop);
         return CompactChecksum(document);
     }
 
@@ -101,7 +101,7 @@ public class CompactQueryWorkloadBenchmark
     public int PackedAttributeFreeTextQuery()
     {
         var filter = new FirstTagAndAllChildren("body");
-        using var document = _packedTextParser.Parse(_textPage.AsMemory(), filter.Loop);
+        using var document = _packedTextParser.ParseCompactDocument(_textPage.AsMemory(), filter.Loop);
         return CompactChecksum(document);
     }
 

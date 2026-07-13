@@ -22,7 +22,7 @@ public class FullFlowBenchmark
         Options,
         ReadOnlyParser.CreateContext(ReadOnlyMetadataProfile.Minimal)
     );
-    private readonly CompactParserSession _arenaParser = new(parserOptions: Options);
+    private readonly HtmlParser _arenaParser = CompactParser.CreateParser(parserOptions: Options);
 
     private string _html = null!;
 
@@ -90,7 +90,7 @@ public class FullFlowBenchmark
     [Benchmark]
     public List<Event> ArenaScalar()
     {
-        using var document = _arenaParser.Parse(_html);
+        using var document = _arenaParser.ParseCompactDocument(_html);
         var trId = document.Name("tr");
         var builder = new StringBuilder();
         var events = new List<Event>();
@@ -105,7 +105,7 @@ public class FullFlowBenchmark
     [Benchmark]
     public List<Event> ArenaSimd()
     {
-        using var document = _arenaParser.Parse(_html);
+        using var document = _arenaParser.ParseCompactDocument(_html);
         var builder = new StringBuilder();
         var events = new List<Event>();
         foreach (var row in document.Elements("tr"))

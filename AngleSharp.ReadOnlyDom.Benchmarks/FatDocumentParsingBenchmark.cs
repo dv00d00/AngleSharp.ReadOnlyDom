@@ -32,8 +32,8 @@ public class FatDocumentParsingBenchmark
         SourceTrackingOptions,
         ReadOnlyParser.CreateContext(ReadOnlyMetadataProfile.SourceMapped)
     );
-    private readonly CompactParserSession _frozenParser = new(parserOptions: NonTrackingOptions);
-    private readonly CompactParserSession _frozenSourceParser = new(
+    private readonly HtmlParser _frozenParser = CompactParser.CreateParser(parserOptions: NonTrackingOptions);
+    private readonly HtmlParser _frozenSourceParser = CompactParser.CreateParser(
         options: CompactMetadataOptions.SourceLocations,
         parserOptions: SourceTrackingOptions
     );
@@ -50,8 +50,8 @@ public class FatDocumentParsingBenchmark
 
         using var readOnly = _readOnlyParser.ParseReadOnlyDocument(_html);
         using var readOnlySource = _readOnlySourceParser.ParseReadOnlyDocument(_html);
-        using var frozen = _frozenParser.Parse(_html);
-        using var frozenSource = _frozenSourceParser.Parse(_html);
+        using var frozen = _frozenParser.ParseCompactDocument(_html);
+        using var frozenSource = _frozenSourceParser.ParseCompactDocument(_html);
 
         if (frozen.Layout != CompactDocumentLayout.FrozenColumns || frozenSource.Layout != CompactDocumentLayout.FrozenColumns)
             throw new InvalidOperationException($"{Document} requires packed fallback and is not a frozen-view case.");
@@ -88,7 +88,7 @@ public class FatDocumentParsingBenchmark
     [Benchmark]
     public int FrozenArena()
     {
-        using var document = _frozenParser.Parse(_html);
+        using var document = _frozenParser.ParseCompactDocument(_html);
         return document.NodeCount;
     }
 
@@ -102,7 +102,7 @@ public class FatDocumentParsingBenchmark
     [Benchmark]
     public int FrozenArenaSourceLocations()
     {
-        using var document = _frozenSourceParser.Parse(_html);
+        using var document = _frozenSourceParser.ParseCompactDocument(_html);
         return document.NodeCount;
     }
 
