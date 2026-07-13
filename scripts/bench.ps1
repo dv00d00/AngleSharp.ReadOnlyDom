@@ -18,6 +18,7 @@ $metadata = @(
     "- Timestamp: ``$(Get-Date -Format o)``"
     "- Tier: ``$Tier``"
     "- Runtime: ``$(dotnet --version)``"
+    "- GC: Server GC (enforced by the benchmark executable and BenchmarkDotNet job)"
     "- Job: BenchmarkDotNet ShortRun, in-process emit"
     "- Corpus: checked-in snapshots under AngleSharp.ReadOnlyDom.Tests/temp"
     "- Note: ShortRun time results have wide confidence intervals; allocation results are the primary micro gate."
