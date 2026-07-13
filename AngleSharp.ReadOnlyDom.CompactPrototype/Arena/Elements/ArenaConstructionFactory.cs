@@ -42,19 +42,37 @@ internal sealed class ArenaConstructionFactory : IDomConstructionElementFactory<
         StringOrMemory systemIdentifier
     ) => document.Arena.CreateLeaf(name, default, CompactNodeKind.Other);
 
-    public IConstructableMathElement CreateMath(ArenaDocument document, StringOrMemory name = default) =>
-        (IConstructableMathElement)
-            document.Arena.CreateElement(
-                name,
-                default,
-                NamespaceNames.MathMlUri,
-                NodeFlags.MathMember,
-                ElementMarker.Math
-            );
+    public IConstructableMathElement CreateMath(ArenaDocument document, StringOrMemory name = default)
+    {
+        var flags = NodeFlags.MathMember;
+        if (
+            name.Equals(TagNames.Mn)
+            || name.Equals(TagNames.Mo)
+            || name.Equals(TagNames.Mi)
+            || name.Equals(TagNames.Ms)
+            || name.Equals(TagNames.Mtext)
+        )
+        {
+            flags |= NodeFlags.MathTip | NodeFlags.Special | NodeFlags.Scoped;
+        }
+        else if (name.Equals(TagNames.AnnotationXml))
+        {
+            flags |= NodeFlags.Special | NodeFlags.Scoped;
+        }
 
-    public IConstructableSvgElement CreateSvg(ArenaDocument document, StringOrMemory name = default) =>
-        (IConstructableSvgElement)
-            document.Arena.CreateElement(name, default, NamespaceNames.SvgUri, NodeFlags.SvgMember, ElementMarker.Svg);
+        return (IConstructableMathElement)
+            document.Arena.CreateElement(name, default, NamespaceNames.MathMlUri, flags, ElementMarker.Math);
+    }
+
+    public IConstructableSvgElement CreateSvg(ArenaDocument document, StringOrMemory name = default)
+    {
+        var flags = NodeFlags.SvgMember;
+        if (name.Equals(TagNames.Desc) || name.Equals(TagNames.ForeignObject) || name.Equals(TagNames.Title))
+            flags |= NodeFlags.HtmlTip | NodeFlags.Special | NodeFlags.Scoped;
+
+        return (IConstructableSvgElement)
+            document.Arena.CreateElement(name, default, NamespaceNames.SvgUri, flags, ElementMarker.Svg);
+    }
 
     public IConstructableMetaElement CreateMeta(ArenaDocument document) =>
         (IConstructableMetaElement)CreateKnown(document, TagNames.Meta, ElementMarker.Meta);
