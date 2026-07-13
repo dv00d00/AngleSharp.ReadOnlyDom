@@ -71,7 +71,7 @@ public readonly struct CompactAttribute
     public int ValueLength { get; }
 }
 
-public readonly record struct CompactSourceLocation(int Index, ushort Line, ushort Column);
+public readonly record struct CompactSourceLocation(int Index, int Line, int Column);
 
 [Flags]
 public enum CompactMetadataOptions

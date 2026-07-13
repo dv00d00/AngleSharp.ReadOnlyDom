@@ -1,6 +1,7 @@
 #if NET10_0
-using AngleSharp.Dom;
-using AngleSharp.Html.Dom;
+// og AngleSharp parser commented out for now (these usings only served it).
+// using AngleSharp.Dom;
+// using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.CompactPrototype;
 using AngleSharp.ReadOnlyDom.Html;
@@ -9,11 +10,42 @@ using BenchmarkDotNet.Attributes;
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
 [MemoryDiagnoser]
+[GcServer(true)]
 public class FatDocumentParsingBenchmark
 {
-    private readonly HtmlParser _angleSharpParser = new();
-    private readonly HtmlParser _readOnlyParser = new(default, ReadOnlyParser.DefaultContext);
-    private readonly CompactParserSession _frozenParser = new(parserOptions: new HtmlParserOptions());
+    // Explicit parser configuration per tier so the comparison is not at the mercy of defaults.
+    // Both tiers skip comments/PIs (matching the read-only Minimal/SourceMapped profiles); the only
+    // difference between tiers is whether source references are kept.
+    private static readonly HtmlParserOptions NonTrackingOptions = new()
+    {
+        SkipComments = true,
+        SkipProcessingInstructions = true,
+        IsKeepingSourceReferences = false,
+    };
+
+    private static readonly HtmlParserOptions SourceTrackingOptions = new()
+    {
+        SkipComments = true,
+        SkipProcessingInstructions = true,
+        IsKeepingSourceReferences = true,
+    };
+
+    // og AngleSharp parser commented out for now.
+    // private readonly HtmlParser _angleSharpParser = new();
+
+    private readonly HtmlParser _readOnlyParser = new(
+        NonTrackingOptions,
+        ReadOnlyParser.CreateContext(ReadOnlyMetadataProfile.Minimal)
+    );
+    private readonly HtmlParser _readOnlySourceParser = new(
+        SourceTrackingOptions,
+        ReadOnlyParser.CreateContext(ReadOnlyMetadataProfile.SourceMapped)
+    );
+    private readonly CompactParserSession _frozenParser = new(parserOptions: NonTrackingOptions);
+    private readonly CompactParserSession _frozenSourceParser = new(
+        options: CompactMetadataOptions.SourceLocations,
+        parserOptions: SourceTrackingOptions
+    );
     private string _html = null!;
 
     [Params("LargeA", "LargeB", "LargeC")]
@@ -25,34 +57,46 @@ public class FatDocumentParsingBenchmark
         var corpus = BenchmarkCorpus.LoadLargestAnonymized(3);
         _html = corpus.Single(document => document.Name == Document).Html;
 
-        using var angleSharp = _angleSharpParser.ParseDocument(_html);
+        // using var angleSharp = _angleSharpParser.ParseDocument(_html);
         using var readOnly = _readOnlyParser.ParseReadOnlyDocument(_html);
-        using var frozen = _frozenParser.Parse(_html.AsMemory());
+        using var readOnlySource = _readOnlySourceParser.ParseReadOnlyDocument(_html);
+        using var frozen = _frozenParser.Parse(_html);
+        using var frozenSource = _frozenSourceParser.Parse(_html);
 
-        if (frozen.Layout != CompactDocumentLayout.FrozenColumns)
+        if (frozen.Layout != CompactDocumentLayout.FrozenColumns || frozenSource.Layout != CompactDocumentLayout.FrozenColumns)
             throw new InvalidOperationException($"{Document} requires packed fallback and is not a frozen-view case.");
 
-        var standardElements = CountElements(angleSharp);
-        var readOnlyElements = CountElements(readOnly);
-        var frozenElements = CountElements(frozen);
+        if (!frozenSource.HasSourceLocations)
+            throw new InvalidOperationException("Source-tracking arena did not retain source locations.");
 
-        if (standardElements != readOnlyElements || standardElements != frozenElements)
+        var readOnlyElements = CountElements(readOnly);
+        var readOnlySourceElements = CountElements(readOnlySource);
+        var frozenElements = CountElements(frozen);
+        var frozenSourceElements = CountElements(frozenSource);
+
+        if (
+            readOnlyElements != readOnlySourceElements
+            || readOnlyElements != frozenElements
+            || readOnlyElements != frozenSourceElements
+        )
         {
             throw new InvalidOperationException(
-                $"{Document} element counts disagree: AngleSharp={standardElements}, "
-                    + $"read-only={readOnlyElements}, frozen={frozenElements}."
+                $"{Document} element counts disagree: read-only={readOnlyElements}, "
+                    + $"read-only-source={readOnlySourceElements}, frozen={frozenElements}, "
+                    + $"frozen-source={frozenSourceElements}."
             );
         }
     }
 
-    [Benchmark(Baseline = true)]
-    public int AngleSharpDefault()
-    {
-        using var document = _angleSharpParser.ParseDocument(_html);
-        return document.ChildNodes.Length;
-    }
+    // og AngleSharp parser commented out for now.
+    // [Benchmark(Baseline = true)]
+    // public int AngleSharpDefault()
+    // {
+    //     using var document = _angleSharpParser.ParseDocument(_html);
+    //     return document.ChildNodes.Length;
+    // }
 
-    [Benchmark]
+    [Benchmark(Baseline = true)]
     public int ReadOnlyDom()
     {
         using var document = _readOnlyParser.ParseReadOnlyDocument(_html);
@@ -62,18 +106,33 @@ public class FatDocumentParsingBenchmark
     [Benchmark]
     public int FrozenArena()
     {
-        using var document = _frozenParser.Parse(_html.AsMemory());
+        using var document = _frozenParser.Parse(_html);
         return document.NodeCount;
     }
 
-    private static int CountElements(INode node)
+    [Benchmark]
+    public int ReadOnlyDomSourceMapped()
     {
-        var count = node is IElement ? 1 : 0;
-        var children = node is IHtmlTemplateElement template ? template.Content.ChildNodes : node.ChildNodes;
-        foreach (var child in children)
-            count += CountElements(child);
-        return count;
+        using var document = _readOnlySourceParser.ParseReadOnlyDocument(_html);
+        return document.ChildNodes.Length;
     }
+
+    [Benchmark]
+    public int FrozenArenaSourceLocations()
+    {
+        using var document = _frozenSourceParser.Parse(_html);
+        return document.NodeCount;
+    }
+
+    // og AngleSharp parser commented out for now.
+    // private static int CountElements(INode node)
+    // {
+    //     var count = node is IElement ? 1 : 0;
+    //     var children = node is IHtmlTemplateElement template ? template.Content.ChildNodes : node.ChildNodes;
+    //     foreach (var child in children)
+    //         count += CountElements(child);
+    //     return count;
+    // }
 
     private static int CountElements(IReadOnlyNode node)
     {

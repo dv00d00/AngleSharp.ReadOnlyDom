@@ -11,6 +11,7 @@ internal sealed class Arena : IDisposable
     private static ReadOnlySpan<char> WhiteSpace => " \t\r\n";
     private readonly PooledReferenceBuffer<ArenaNode> _nodes;
     private readonly MutableNodeColumns _columns;
+    private readonly NameTable _names = new();
     private readonly CompactParserHints _hints;
     private PooledValueBuffer<MutableNodePayload>? _payloads;
     private PooledValueBuffer<MutableAttribute>? _attributes;
@@ -70,20 +71,39 @@ internal sealed class Arena : IDisposable
         return node;
     }
 
-    public ArenaNode Node(int handle) => _nodes[handle];
+    // Adds a leaf node (text/comment/PI) without allocating a wrapper. The tree builder never retains
+    // these; a wrapper is materialized lazily by Node(handle) only if something navigates to it.
+    private int AddLeaf(StringOrMemory name, StringOrMemory value, CompactNodeKind kind)
+    {
+        var handle = AddState(name, NodeFlags.None, kind);
+        SetValue(handle, value);
+        _nodes.AddEmpty();
+        return handle;
+    }
 
-    public StringOrMemory Name(int handle) => _columns.Names[handle];
+    public ArenaNode Node(int handle)
+    {
+        var node = _nodes[handle];
+        if (node is null)
+        {
+            node = new ArenaNode(this, handle);
+            _nodes[handle] = node;
+        }
+        return node;
+    }
+
+    public StringOrMemory Name(int handle) => _names.GetName(_columns.NameIds[handle]);
 
     public StringOrMemory LocalName(int handle)
     {
-        var name = _columns.Names[handle];
+        var name = Name(handle);
         var separator = name.Memory.Span.IndexOf(':');
         return separator < 0 ? name : (StringOrMemory)name.Memory.Slice(separator + 1);
     }
 
     public StringOrMemory Prefix(int handle)
     {
-        var name = _columns.Names[handle];
+        var name = Name(handle);
         var separator = name.Memory.Span.IndexOf(':');
         return separator < 0 ? default : (StringOrMemory)name.Memory.Slice(0, separator);
     }
@@ -125,10 +145,12 @@ internal sealed class Arena : IDisposable
 
     public ArenaAttribute? GetAttribute(int handle, StringOrMemory name)
     {
+        if (!_names.TryGetId(name, out var nameId))
+            return null;
         var attribute = FirstAttribute(handle);
         while (attribute >= 0)
         {
-            if (_attributes![attribute].Name == name)
+            if (_attributes![attribute].NameId == nameId)
                 return _attributeWrappers![attribute];
             attribute = _attributes[attribute].Next;
         }
@@ -138,10 +160,10 @@ internal sealed class Arena : IDisposable
     public IEnumerable<ArenaAttribute> Attributes(int handle)
     {
         for (var attribute = FirstAttribute(handle); attribute >= 0; attribute = _attributes![attribute].Next)
-            yield return _attributeWrappers![attribute];
+            yield return _attributeWrappers![attribute]!;
     }
 
-    public StringOrMemory AttributeName(int handle) => _attributes![handle].Name;
+    public StringOrMemory AttributeName(int handle) => _names.GetName(_attributes![handle].NameId);
 
     public StringOrMemory AttributeValue(int handle) => _attributes![handle].Value;
 
@@ -162,7 +184,7 @@ internal sealed class Arena : IDisposable
             while (
                 candidate >= 0
                 && (
-                    attributes[candidate].Name != attributes[attribute].Name
+                    attributes[candidate].NameId != attributes[attribute].NameId
                     || attributes[candidate].Value != attributes[attribute].Value
                 )
             )
@@ -210,8 +232,7 @@ internal sealed class Arena : IDisposable
     {
         if (!emitWhiteSpaceOnly && text.Memory.Span.Trim(WhiteSpace).Length == 0)
             return;
-        var node = CreateLeaf("#text", text, CompactNodeKind.Text);
-        AddChild(parent, node.NodeHandle, index);
+        AddChild(parent, AddLeaf("#text", text, CompactNodeKind.Text), index);
     }
 
     public void AddComment(int parent, ref StructHtmlToken token)
@@ -224,11 +245,11 @@ internal sealed class Arena : IDisposable
             var separator = data.Span.IndexOf(' ');
             var target = separator <= 0 ? token.Data : (StringOrMemory)data.Slice(0, separator);
             var value = separator <= 0 ? StringOrMemory.Empty : (StringOrMemory)data.Slice(separator);
-            AddChild(parent, CreateLeaf(target, value, CompactNodeKind.ProcessingInstruction).NodeHandle);
+            AddChild(parent, AddLeaf(target, value, CompactNodeKind.ProcessingInstruction));
         }
         else
         {
-            AddChild(parent, CreateLeaf("#comment", token.Data, CompactNodeKind.Comment).NodeHandle);
+            AddChild(parent, AddLeaf("#comment", token.Data, CompactNodeKind.Comment));
         }
     }
 
@@ -259,7 +280,6 @@ internal sealed class Arena : IDisposable
         var sources = options.HasFlag(CompactMetadataOptions.SourceLocations)
             ? Allocate<CompactSourceLocation>(orderCount)
             : null;
-        var names = new NameTable();
         var attributeIndex = 0;
         var payloadIndex = 0;
 
@@ -283,11 +303,11 @@ internal sealed class Arena : IDisposable
             if (stateAttributeCount != 0 || stateValue.Length != 0)
             {
                 var firstAttribute = attributeIndex;
-                foreach (var attribute in Attributes(oldHandle))
+                for (var a = FirstAttribute(oldHandle); a >= 0; a = _attributes![a].Next)
                 {
-                    var value = CopyText(attribute.Value, textBuilder);
+                    var value = CopyText(_attributes![a].Value, textBuilder);
                     attributes[attributeIndex++] = new CompactAttribute(
-                        names.GetId(attribute.Name),
+                        _attributes[a].NameId,
                         value.Start,
                         value.Length
                     );
@@ -306,7 +326,7 @@ internal sealed class Arena : IDisposable
                 firstChild,
                 nextSibling,
                 nodePayload,
-                names.GetId(_columns.Names[oldHandle]),
+                _columns.NameIds[oldHandle],
                 _columns.Kinds[oldHandle],
                 (byte)_columns.Flags[oldHandle]
             );
@@ -322,7 +342,7 @@ internal sealed class Arena : IDisposable
                 sources[handle] = GetSource(_columns.SourceReferences?[oldHandle]);
         }
 
-        var nameArray = CopyCustomNames(names);
+        var nameArray = CopyCustomNames(_names);
         var (text, textLength) = textBuilder.Detach();
         var result = new CompactDocument(
             nodes,
@@ -335,7 +355,7 @@ internal sealed class Arena : IDisposable
             orderCount,
             payloadIndex,
             attributeIndex,
-            names.CustomCount,
+            _names.CustomCount,
             textLength
         );
         if (order is not null)
@@ -352,44 +372,34 @@ internal sealed class Arena : IDisposable
         if (!CanFreeze(root))
             throw new InvalidOperationException("This arena requires packed finalization.");
 
-        var nodeNameIds = Allocate<ushort>(_nodes.Count);
+        // Names were interned during construction into the NameIds column and the MutableAttribute
+        // structs, so freezing no longer re-walks the tree to build id arrays — the frozen document
+        // reads ids straight from the retained columns.
         var attributeCount = _attributes?.Count ?? 0;
-        var attributeNameIds = Allocate<ushort>(attributeCount);
-        string[]? nameArray = null;
-        try
-        {
-            var names = new NameTable();
-            for (var handle = 0; handle < _nodes.Count; handle++)
-                nodeNameIds[handle] = names.GetId(_columns.Names[handle]);
-            for (var attribute = 0; attribute < attributeCount; attribute++)
-                attributeNameIds[attribute] = names.GetId(_attributes![attribute].Name);
-
-            nameArray = CopyCustomNames(names);
-            _nodes.Dispose();
-            _attributeWrappers?.Dispose();
-            return new CompactDocument(
-                this,
-                source,
-                nodeNameIds,
-                attributeNameIds,
-                nameArray,
-                _columns.Count,
-                _payloads?.Count ?? 0,
-                attributeCount,
-                names.CustomCount,
-                _textLength,
-                options
-            );
-        }
-        catch
-        {
-            ArrayPool<ushort>.Shared.Return(nodeNameIds);
-            ArrayPool<ushort>.Shared.Return(attributeNameIds);
-            if (nameArray is { Length: > 0 })
-                ArrayPool<string>.Shared.Return(nameArray, clearArray: true);
-            throw;
-        }
+        var nameArray = CopyCustomNames(_names);
+        _columns.ReleaseConstructionColumns();
+        _nodes.Dispose();
+        _attributeWrappers?.Dispose();
+        return new CompactDocument(
+            this,
+            source,
+            nameArray,
+            _columns.Count,
+            _payloads?.Count ?? 0,
+            attributeCount,
+            _names.CustomCount,
+            _textLength,
+            options
+        );
     }
+
+    internal ushort FrozenNameId(int handle) => _columns.NameIds[handle];
+
+    internal ushort FrozenAttributeNameId(int attribute) => _attributes![attribute].NameId;
+
+    // The interned name-id column is contiguous, which lets callers scan it with SIMD (see
+    // CompactDocument.IndexOfName). An object-graph DOM cannot expose anything equivalent.
+    internal ReadOnlySpan<ushort> NameIdColumn => _columns.NameIds.AsSpan(0, _columns.Count);
 
     internal int FrozenFirstChild(int handle) => FinalFirstChild(handle);
 
@@ -422,7 +432,7 @@ internal sealed class Arena : IDisposable
     private int AddState(StringOrMemory name, NodeFlags flags, CompactNodeKind kind)
     {
         _unattachedNodeCount++;
-        return _columns.Add(name, flags, kind);
+        return _columns.Add(_names.GetId(name), flags, kind);
     }
 
     private void AddPreOrder(int handle, int[] order, ref int count)
@@ -451,11 +461,7 @@ internal sealed class Arena : IDisposable
         if (source is null)
             return new CompactSourceLocation(-1, 0, 0);
         var position = source.Position;
-        return new CompactSourceLocation(
-            position.Index,
-            checked((ushort)position.Line),
-            checked((ushort)position.Column)
-        );
+        return new CompactSourceLocation(position.Index, position.Line, position.Column);
     }
 
     public void Dispose()
@@ -527,7 +533,7 @@ internal sealed class Arena : IDisposable
         );
         var payloadIndex = EnsurePayload(handle);
         ref var payload = ref _payloads![payloadIndex];
-        var attributeHandle = _attributes.Add(new MutableAttribute(name, value));
+        var attributeHandle = _attributes.Add(new MutableAttribute(_names.GetId(name), value));
         _textLength = checked(_textLength + value.Length);
         var wrapper = new ArenaAttribute(this, attributeHandle);
         _attributeWrappers.Add(wrapper);

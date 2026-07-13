@@ -1,5 +1,4 @@
 ﻿using System.Buffers;
-using AngleSharp.Common;
 using AngleSharp.Dom;
 
 namespace AngleSharp.ReadOnlyDom.CompactPrototype.Arena;
@@ -12,7 +11,7 @@ internal sealed class MutableNodeColumns : IDisposable
     {
         if (initialCapacity <= 0)
             throw new ArgumentOutOfRangeException(nameof(initialCapacity));
-        Names = Allocate<StringOrMemory>(initialCapacity);
+        NameIds = Allocate<ushort>(initialCapacity);
         Flags = Allocate<NodeFlags>(initialCapacity);
         Kinds = Allocate<CompactNodeKind>(initialCapacity);
         Parents = Allocate<int>(initialCapacity);
@@ -25,7 +24,7 @@ internal sealed class MutableNodeColumns : IDisposable
         SourceReferences = trackSourceReferences ? Allocate<ISourceReference?>(initialCapacity) : null;
     }
 
-    public StringOrMemory[] Names;
+    public ushort[] NameIds;
     public NodeFlags[] Flags;
     public CompactNodeKind[] Kinds;
     public int[] Parents;
@@ -40,11 +39,11 @@ internal sealed class MutableNodeColumns : IDisposable
 
     public int Count => _count;
 
-    public int Add(StringOrMemory name, NodeFlags flags, CompactNodeKind kind)
+    public int Add(ushort nameId, NodeFlags flags, CompactNodeKind kind)
     {
         EnsureCapacity();
         var handle = _count++;
-        Names[handle] = name;
+        NameIds[handle] = nameId;
         Flags[handle] = flags;
         Kinds[handle] = kind;
         Parents[handle] = -1;
@@ -58,9 +57,20 @@ internal sealed class MutableNodeColumns : IDisposable
         return handle;
     }
 
+    // Returns the columns that are only read during construction so a frozen arena does not retain them.
+    public void ReleaseConstructionColumns()
+    {
+        Return(PreviousSiblings, false);
+        PreviousSiblings = [];
+        Return(LastChildren, false);
+        LastChildren = [];
+        Return(ChildCounts, false);
+        ChildCounts = [];
+    }
+
     public void Dispose()
     {
-        Return(Names, true);
+        Return(NameIds, false);
         Return(Flags, false);
         Return(Kinds, false);
         Return(Parents, false);
@@ -78,10 +88,10 @@ internal sealed class MutableNodeColumns : IDisposable
 
     private void EnsureCapacity()
     {
-        if (_count < Names.Length)
+        if (_count < NameIds.Length)
             return;
-        var size = checked(Names.Length * 2);
-        Grow(ref Names, size, true);
+        var size = checked(NameIds.Length * 2);
+        Grow(ref NameIds, size, false);
         Grow(ref Flags, size, false);
         Grow(ref Kinds, size, false);
         Grow(ref Parents, size, false);
@@ -103,7 +113,7 @@ internal sealed class MutableNodeColumns : IDisposable
     {
         if (TemplateFirstChildren is null)
         {
-            TemplateFirstChildren = Allocate<int>(Names.Length);
+            TemplateFirstChildren = Allocate<int>(NameIds.Length);
             TemplateFirstChildren.AsSpan(0, _count).Fill(-1);
         }
         TemplateFirstChildren[handle] = child;
@@ -119,5 +129,9 @@ internal sealed class MutableNodeColumns : IDisposable
         values = next;
     }
 
-    private static void Return<T>(T[] values, bool clear) => ArrayPool<T>.Shared.Return(values, clearArray: clear);
+    private static void Return<T>(T[] values, bool clear)
+    {
+        if (values.Length != 0)
+            ArrayPool<T>.Shared.Return(values, clearArray: clear);
+    }
 }
