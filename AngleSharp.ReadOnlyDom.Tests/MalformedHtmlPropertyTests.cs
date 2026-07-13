@@ -128,6 +128,35 @@ public class MalformedHtmlPropertyTests
 
         Check.One(Config.QuickThrowOnFailure.WithMaxTest(10_000), property);
     }
+
+    [Test]
+    public void GeneratedMalformedHtmlMatchesAngleSharpForEofAggregateText()
+    {
+        var plan = CompactAggregate
+            .First(CompactAggregateSelector.Tag("article").WithClass("result"))
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Compile();
+        var property = Prop.ForAll(
+            MalformedHtml().ToArbitrary(),
+            fragment =>
+            {
+                var source = $"<main><article class=result>{fragment}</article><aside>tail</aside></main>";
+                using var mutable = new HtmlParser().ParseDocument(source);
+                var expected = mutable.QuerySelector("article.result");
+                var actual = plan.Execute(source);
+                var expectedText = NormalizeWhitespace(expected?.TextContent ?? string.Empty);
+                var actualText = actual.Rows.Count == 0 ? string.Empty : actual.Rows[0]["text"].ToString();
+                if (actual.Rows.Count != (expected is null ? 0 : 1) || actualText != expectedText)
+                {
+                    throw new InvalidOperationException(
+                        $"EOF aggregate mismatch for generated HTML:\n{Escape(source)}\n\nMutable:\n{Escape(expectedText)}\n\nAggregate:\n{Escape(actualText)}"
+                    );
+                }
+            }
+        );
+
+        Check.One(Config.QuickThrowOnFailure.WithMaxTest(10_000), property);
+    }
 #endif
 
     private static Gen<string> MalformedHtml()
