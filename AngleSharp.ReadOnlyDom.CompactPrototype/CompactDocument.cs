@@ -68,7 +68,8 @@ public sealed class CompactDocument : IDisposable
         int nameCount,
         int textLength,
         CompactMetadataOptions metadataOptions,
-        CompactTemplateBoundary[] templateBoundaries
+        CompactTemplateBoundary[] templateBoundaries,
+        char[] text
     )
     {
         _arena = arena;
@@ -81,6 +82,7 @@ public sealed class CompactDocument : IDisposable
         _textLength = textLength;
         _metadataOptions = metadataOptions;
         _templateBoundaries = templateBoundaries;
+        _text = text;
     }
 
     public CompactDocumentLayout Layout =>
@@ -291,7 +293,14 @@ public sealed class CompactDocument : IDisposable
             }
             finally
             {
-                _source!.Dispose();
+                try
+                {
+                    _source!.Dispose();
+                }
+                finally
+                {
+                    ArrayPool<char>.Shared.Return(_text!, clearArray: true);
+                }
             }
             return;
         }

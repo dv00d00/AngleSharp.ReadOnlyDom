@@ -11,24 +11,69 @@ public class TopLevelArenaSmoke
 
     private static readonly ConcurrentDictionary<string, string> FileContents = new();
     private static readonly ConcurrentDictionary<string, IHtmlDocument> ParsedMutableDocs = new();
-    private static readonly ConcurrentDictionary<string, CompactDocument> ParsedArenaDocs = new();
+    private static readonly ConcurrentDictionary<(string FileName, CompactDocumentLayout Layout), CompactDocument> ParsedArenaDocs = new();
+    private static readonly CompactDocumentLayout[] Layouts =
+        [CompactDocumentLayout.Packed, CompactDocumentLayout.FrozenColumns];
 
     private static string GetHtml(string fileName) =>
         FileContents.GetOrAdd(fileName, static fileName => File.ReadAllText(BaseDir + fileName));
 
-    private static (IHtmlDocument Mutable, CompactDocument Arena) GetDocs(string fileName) =>
+    private static (IHtmlDocument Mutable, CompactDocument Arena) GetDocs(
+        string fileName,
+        CompactDocumentLayout layout
+    ) =>
         (
             ParsedMutableDocs.GetOrAdd(fileName, static fileName => TopLevelSmoke.parser.ParseDocument(GetHtml(fileName))),
             ParsedArenaDocs.GetOrAdd(
-                fileName,
-                static fileName =>
+                (fileName, layout),
+                static key =>
                     CompactParser.Parse(
-                        GetHtml(fileName),
+                        GetHtml(key.FileName),
                         CompactMetadataOptions.ParentLinks,
-                        layout: CompactDocumentLayout.Packed
+                        layout: key.Layout
                     )
             )
         );
+
+    public static IEnumerable<(string FileName, string Tag, CompactDocumentLayout Layout)> Tags() =>
+        TopLevelSmoke
+            .SingleTag()
+            .SelectMany(test => Layouts.Select(layout => (test.FileName, test.Tag, layout)))
+            .Distinct();
+
+    public static IEnumerable<(string FileName, string ClassName, CompactDocumentLayout Layout)> Classes() =>
+        TopLevelSmoke
+            .Classes()
+            .SelectMany(test => Layouts.Select(layout => (test.FileName, test.ClassName, layout)))
+            .Distinct();
+
+    public static IEnumerable<(string FileName, string Id, CompactDocumentLayout Layout)> Ids() =>
+        TopLevelSmoke
+            .Ids()
+            .SelectMany(test => Layouts.Select(layout => (test.FileName, test.Id, layout)))
+            .Distinct();
+
+    public static IEnumerable<(string FileName, string Tag1, string Tag2, CompactDocumentLayout Layout)> TwoTags() =>
+        TopLevelSmoke.TwoTags().SelectMany(test =>
+            Layouts.Select(layout => (test.FileName, test.Tag1, test.Tag2, layout))
+        ).Distinct();
+
+    public static IEnumerable<(
+        string FileName,
+        string Tag1,
+        string Tag2,
+        string Tag3,
+        CompactDocumentLayout Layout
+    )> ThreeTags() =>
+        TopLevelSmoke.ThreeTags().SelectMany(test =>
+            Layouts.Select(layout => (test.FileName, test.Tag1, test.Tag2, test.Tag3, layout))
+        ).Distinct();
+
+    public static IEnumerable<(TopLevelSmoke.SelectorTestCase TestCase, CompactDocumentLayout Layout)> Complex() =>
+        TopLevelSmoke
+            .AllComplexSelectors()
+            .SelectMany(testCase => Layouts.Select(layout => (testCase, layout)))
+            .Distinct();
 
     private static int Count(CompactDocument document, params Func<Node, bool>[] chain)
     {
@@ -77,11 +122,14 @@ public class TopLevelArenaSmoke
     }
 
     [Test]
-    public async Task ParentLinksSupportDescendantMatching()
+    [Arguments(CompactDocumentLayout.Packed)]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    public async Task ParentLinksSupportDescendantMatching(CompactDocumentLayout layout)
     {
         using var document = CompactParser.Parse(
             "<main><ul class=navigation><li><span>x</span></li></ul></main>",
-            CompactMetadataOptions.ParentLinks
+            CompactMetadataOptions.ParentLinks,
+            layout: layout
         );
 
         await Assert
@@ -90,55 +138,64 @@ public class TopLevelArenaSmoke
     }
 
     [Test]
-    [MethodDataSource<TopLevelSmoke>(nameof(TopLevelSmoke.SingleTag))]
-    public async Task SameResultTag(string fileName, string tag)
+    [MethodDataSource(nameof(Tags))]
+    public async Task SameResultTag(string fileName, string tag, CompactDocumentLayout layout)
     {
-        var (mutable, arena) = GetDocs(fileName);
+        var (mutable, arena) = GetDocs(fileName, layout);
         var expected = mutable.QuerySelectorAll(tag).Length;
         await Assert.That(Count(arena, n => n.Is(tag))).IsEqualTo(expected);
     }
 
     [Test]
-    [MethodDataSource<TopLevelSmoke>(nameof(TopLevelSmoke.Classes))]
-    public async Task SameResultClass(string fileName, string className)
+    [MethodDataSource(nameof(Classes))]
+    public async Task SameResultClass(string fileName, string className, CompactDocumentLayout layout)
     {
-        var (mutable, arena) = GetDocs(fileName);
+        var (mutable, arena) = GetDocs(fileName, layout);
         var expected = mutable.QuerySelectorAll($".{className}").Length;
         await Assert.That(Count(arena, n => n.HasClass(className))).IsEqualTo(expected);
     }
 
     [Test]
-    [MethodDataSource<TopLevelSmoke>(nameof(TopLevelSmoke.Ids))]
-    public async Task SameResultId(string fileName, string id)
+    [MethodDataSource(nameof(Ids))]
+    public async Task SameResultId(string fileName, string id, CompactDocumentLayout layout)
     {
-        var (mutable, arena) = GetDocs(fileName);
+        var (mutable, arena) = GetDocs(fileName, layout);
         var expected = mutable.QuerySelectorAll($"#{id}").Length;
         await Assert.That(Count(arena, n => n.Attr("id").SequenceEqual(id))).IsEqualTo(expected);
     }
 
     [Test]
-    [MethodDataSource<TopLevelSmoke>(nameof(TopLevelSmoke.TwoTags))]
-    public async Task SameResultTwoTags(string fileName, string tag1, string tag2)
+    [MethodDataSource(nameof(TwoTags))]
+    public async Task SameResultTwoTags(string fileName, string tag1, string tag2, CompactDocumentLayout layout)
     {
-        var (mutable, arena) = GetDocs(fileName);
+        var (mutable, arena) = GetDocs(fileName, layout);
         var expected = mutable.QuerySelectorAll($"{tag1} {tag2}").Length;
         await Assert.That(Count(arena, n => n.Is(tag1), n => n.Is(tag2))).IsEqualTo(expected);
     }
 
     [Test]
-    [MethodDataSource<TopLevelSmoke>(nameof(TopLevelSmoke.ThreeTags))]
-    public async Task SameResultThreeTags(string fileName, string tag1, string tag2, string tag3)
+    [MethodDataSource(nameof(ThreeTags))]
+    public async Task SameResultThreeTags(
+        string fileName,
+        string tag1,
+        string tag2,
+        string tag3,
+        CompactDocumentLayout layout
+    )
     {
-        var (mutable, arena) = GetDocs(fileName);
+        var (mutable, arena) = GetDocs(fileName, layout);
         var expected = mutable.QuerySelectorAll($"{tag1} {tag2} {tag3}").Length;
         await Assert.That(Count(arena, n => n.Is(tag1), n => n.Is(tag2), n => n.Is(tag3))).IsEqualTo(expected);
     }
 
     [Test]
-    [MethodDataSource<TopLevelSmoke>(nameof(TopLevelSmoke.AllComplexSelectors))]
-    public async Task SameResultComplex(TopLevelSmoke.SelectorTestCase testCase)
+    [MethodDataSource(nameof(Complex))]
+    public async Task SameResultComplex(
+        TopLevelSmoke.SelectorTestCase testCase,
+        CompactDocumentLayout layout
+    )
     {
-        var (mutable, arena) = GetDocs(testCase.FileName);
+        var (mutable, arena) = GetDocs(testCase.FileName, layout);
         var expected = mutable.QuerySelectorAll(testCase.CssSelector).Length;
         await Assert.That(Count(arena, CreateChain(testCase.CssSelector))).IsEqualTo(expected);
     }
