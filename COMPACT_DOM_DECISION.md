@@ -36,9 +36,11 @@ the final representation must be independent of the construction arena and sourc
 The removed owned/list-backed variants represented a different lifetime model and added branches throughout construction.
 If a permanently owned representation is required later, it should be an explicit deep copy.
 
-`CompactParser` and reusable `CompactParserSession` accept caller `HtmlParserOptions`, a token-aware attribute predicate,
-`TokenizerMiddleware`, and string, memory, or char-buffer input. Middleware and attribute filtering are predicate pushdown:
-discarded subtrees and attributes never enter the arena.
+`CompactParser` mirrors the read-only DOM integration: it exposes cached construction contexts and creates reusable
+`HtmlParser` instances whose `ParseCompactDocument` extensions accept `TokenizerMiddleware` and string, memory,
+char-buffer, or `TextSource` input. Parser creation accepts caller `HtmlParserOptions` and a token-aware attribute
+predicate. Middleware and attribute filtering are predicate pushdown: discarded subtrees and attributes never enter the
+arena.
 
 Namespace and prefix values are derived, source-reference storage is conditional, template storage is lazy, and the
 attribute arena is allocated only after the first accepted attribute.

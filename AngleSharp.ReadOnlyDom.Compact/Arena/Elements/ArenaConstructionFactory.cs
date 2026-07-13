@@ -9,11 +9,20 @@ internal sealed class ArenaConstructionFactory : IDomConstructionElementFactory<
 {
     private readonly CompactParserHints _hints;
     private readonly bool _trackSourceReferences;
+    private readonly CompactMetadataOptions _options;
+    private readonly CompactDocumentLayout _layout;
 
-    public ArenaConstructionFactory(CompactParserHints hints, bool trackSourceReferences)
+    public ArenaConstructionFactory(
+        CompactParserHints hints,
+        bool trackSourceReferences,
+        CompactMetadataOptions options,
+        CompactDocumentLayout layout
+    )
     {
         _hints = hints;
         _trackSourceReferences = trackSourceReferences;
+        _options = options;
+        _layout = layout;
     }
 
     public ArenaElement Create(
@@ -92,7 +101,7 @@ internal sealed class ArenaConstructionFactory : IDomConstructionElementFactory<
     public ArenaElement CreateUnknown(ArenaDocument document, StringOrMemory tagName) => Create(document, tagName);
 
     public ArenaDocument CreateDocument(TextSource source, IBrowsingContext? context = null) =>
-        new Arena(_hints, _trackSourceReferences).CreateDocument(source);
+        new Arena(_hints, _trackSourceReferences).CreateDocument(source, _options, _layout);
 
     private static ArenaElement CreateKnown(ArenaDocument document, StringOrMemory name, ElementMarker marker)
     {

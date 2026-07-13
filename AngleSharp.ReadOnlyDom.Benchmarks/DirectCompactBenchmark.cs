@@ -11,8 +11,8 @@ public class CompactBuildBenchmark
 {
     private static readonly string StructuralPage = CreateStructuralPage();
     private readonly HtmlParser _readOnlyParser = ReadOnlyParser.CreateParser(ReadOnlyMetadataProfile.Minimal);
-    private readonly CompactParserSession _compactParser = new();
-    private readonly CompactParserSession _compactParserNoAttributes = new(
+    private readonly HtmlParser _compactParser = CompactParser.CreateParser();
+    private readonly HtmlParser _compactParserNoAttributes = CompactParser.CreateParser(
         attributeFilter: static (ref _, _) => false
     );
 
@@ -26,21 +26,21 @@ public class CompactBuildBenchmark
     [Benchmark]
     public int ParseCompact()
     {
-        using var compact = CompactParser.Parse(StructuralPage);
+        using var compact = CompactParser.CreateParser().ParseCompactDocument(StructuralPage);
         return compact.NodeCount;
     }
 
     [Benchmark]
     public int ParseCompactReused()
     {
-        using var compact = _compactParser.Parse(StructuralPage);
+        using var compact = _compactParser.ParseCompactDocument(StructuralPage);
         return compact.NodeCount;
     }
 
     [Benchmark]
     public int ParseCompactReusedNoAttributes()
     {
-        using var compact = _compactParserNoAttributes.Parse(StructuralPage);
+        using var compact = _compactParserNoAttributes.ParseCompactDocument(StructuralPage);
         return compact.NodeCount;
     }
 
@@ -63,7 +63,7 @@ public class CompactSetupBenchmark
     public HtmlParser CreateReadOnlyParser() => ReadOnlyParser.CreateParser(ReadOnlyMetadataProfile.Minimal);
 
     [Benchmark]
-    public CompactParserSession CreateCompactParser() => new();
+    public HtmlParser CreateCompactParser() => CompactParser.CreateParser();
 }
 
 #endif
