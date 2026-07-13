@@ -98,14 +98,21 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task FactoryPathDocumentsForeignElementBoundary()
+    [Arguments("<svg><foreignObject><div>x</div></foreignObject></svg>")]
+    [Arguments("<svg><desc><div>x</div></desc></svg>")]
+    [Arguments("<svg><title><div>x</div></title></svg>")]
+    [Arguments("<math><mi><form><form><input>")]
+    [Arguments("<math><mn><div>x</div></mn></math>")]
+    [Arguments("<math><mo><div>x</div></mo></math>")]
+    [Arguments("<math><ms><div>x</div></ms></math>")]
+    [Arguments("<math><mtext><div>x</div></mtext></math>")]
+    [Arguments("<math><annotation-xml encoding=text/html><div>x</div></annotation-xml></math>")]
+    public async Task FactoryPathMatchesForeignElementIntegrationPoint(string html)
     {
-        const string html = "<svg><foreignObject><div>x</div></foreignObject></svg>";
         using var expected = new HtmlParser().ParseDocument(html);
         using var actual = CompactParser.Parse(html);
 
-        await Assert.That(Snapshot(actual, 0)).IsNotEqualTo(Snapshot(expected));
-        await Assert.That(Snapshot(expected)).Contains("foreignObject[]{Element:div");
+        await Assert.That(Snapshot(actual, 0)).IsEqualTo(Snapshot(expected));
     }
 
     [Test]
