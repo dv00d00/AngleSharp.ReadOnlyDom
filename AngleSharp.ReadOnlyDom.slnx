@@ -3,12 +3,14 @@
     <Project Path="AngleSharp.ReadOnlyDom/AngleSharp.ReadOnlyDom.csproj" />
     <Project Path="AngleSharp.ReadOnlyDom.Compact/AngleSharp.ReadOnlyDom.Compact.csproj" />
     <Project Path="AngleSharp.ReadOnlyDom.Helpers/AngleSharp.ReadOnlyDom.Helpers.csproj" />
-    <Project Path="tools/AngleSharp.ReadOnlyDom.TagGenerator/AngleSharp.ReadOnlyDom.TagGenerator.csproj" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj" />
   </Folder>
   <Folder Name="/Benchmarks/">
     <Project Path="AngleSharp.ReadOnlyDom.Benchmarks/AngleSharp.ReadOnlyDom.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/Tools/">
+    <Project Path="tools/AngleSharp.ReadOnlyDom.TagGenerator/AngleSharp.ReadOnlyDom.TagGenerator.csproj" />
   </Folder>
 </Solution>
