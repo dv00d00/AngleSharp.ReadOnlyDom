@@ -23,6 +23,11 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
             }
 
 #if NET10_0
+            if (args.Length > 0 && args[0].Equals("--compact-corpus", StringComparison.OrdinalIgnoreCase))
+            {
+                return CompactCorpusRunner.Run(args.Skip(1).ToArray());
+            }
+
             if (args.Length > 0 && args[0].Equals("--query-workloads", StringComparison.OrdinalIgnoreCase))
             {
                 return QueryWorkloadRunner.Run(args.Skip(1).ToArray());
