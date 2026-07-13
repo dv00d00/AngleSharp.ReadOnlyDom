@@ -7,8 +7,9 @@ using AngleSharp.ReadOnlyDom.Html;
 
 namespace AngleSharp.Readonly.Tests;
 
-// dont run from IDE, will generate 166K test cases
-// dotnet test --configuration Release
+// Do not run from the IDE; each top-level oracle generates about 166K test cases.
+// OG -> RO: --treenode-filter "/*/AngleSharp.Readonly.Tests/TopLevelSmoke/*"
+// OG -> Arena: --treenode-filter "/*/AngleSharp.Readonly.Tests/TopLevelArenaSmoke/*"
 public class TopLevelSmoke
 {
     const int MaxSize = (512 + 128) * 1024;

@@ -73,6 +73,8 @@ public readonly struct CompactAttribute
 
 public readonly record struct CompactSourceLocation(int Index, int Line, int Column);
 
+internal readonly record struct CompactTemplateBoundary(int Handle, int ContentStart, int ContentEnd);
+
 [Flags]
 public enum CompactMetadataOptions
 {
