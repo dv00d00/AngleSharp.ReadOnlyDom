@@ -7,7 +7,6 @@ using BenchmarkDotNet.Attributes;
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
 [MemoryDiagnoser]
-[GcServer(true)]
 public class FatDocumentParsingBenchmark
 {
     private static readonly HtmlParserOptions NonTrackingOptions = new()

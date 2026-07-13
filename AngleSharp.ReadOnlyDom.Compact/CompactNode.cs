@@ -17,7 +17,7 @@ public readonly struct CompactNode
 {
     internal CompactNode(
         int firstChild,
-        int nextSibling,
+        int subtreeEndExclusive,
         int payloadIndex,
         ushort nameId,
         CompactNodeKind kind,
@@ -25,7 +25,7 @@ public readonly struct CompactNode
     )
     {
         FirstChild = firstChild;
-        NextSibling = nextSibling;
+        SubtreeEndExclusive = subtreeEndExclusive;
         PayloadIndex = payloadIndex;
         NameId = nameId;
         Kind = kind;
@@ -33,7 +33,7 @@ public readonly struct CompactNode
     }
 
     public int FirstChild { get; }
-    public int NextSibling { get; }
+    public int SubtreeEndExclusive { get; }
     public int PayloadIndex { get; }
     public ushort NameId { get; }
     public CompactNodeKind Kind { get; }

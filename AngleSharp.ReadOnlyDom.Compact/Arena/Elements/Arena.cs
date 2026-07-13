@@ -288,6 +288,8 @@ internal sealed class Arena : IDisposable
         var sources = options.HasFlag(CompactMetadataOptions.SourceLocations)
             ? Allocate<CompactSourceLocation>(orderCount)
             : null;
+        var subtreeEnds = Allocate<int>(orderCount);
+        FillSubtreeEnds(subtreeEnds.AsSpan(0, orderCount), orderCount, preservesConstructionHandles, order, remap);
         var attributeIndex = 0;
         var payloadIndex = 0;
 
@@ -299,12 +301,6 @@ internal sealed class Arena : IDisposable
                 first < 0 ? -1
                 : preservesConstructionHandles ? first
                 : remap![first];
-            var sibling = _columns.NextSiblings[oldHandle];
-            var nextSibling =
-                sibling < 0 ? -1
-                : preservesConstructionHandles ? sibling
-                : remap![sibling];
-
             var nodePayload = -1;
             var stateAttributeCount = AttributeCount(oldHandle);
             var stateValue = Value(oldHandle);
@@ -332,7 +328,7 @@ internal sealed class Arena : IDisposable
 
             nodes[handle] = new CompactNode(
                 firstChild,
-                nextSibling,
+                subtreeEnds[handle],
                 nodePayload,
                 _columns.NameIds[oldHandle],
                 _columns.Kinds[oldHandle],
@@ -377,6 +373,7 @@ internal sealed class Arena : IDisposable
             ArrayPool<int>.Shared.Return(order);
         if (remap is not null)
             ArrayPool<int>.Shared.Return(remap);
+        ArrayPool<int>.Shared.Return(subtreeEnds);
         return result;
     }
 
@@ -391,6 +388,13 @@ internal sealed class Arena : IDisposable
         var nameArray = CopyCustomNames(_names);
         var templateBoundaries = CreateTemplateBoundaries(_columns.Count, true, null, null);
         var ownedText = OwnTextValues();
+        FillSubtreeEnds(
+            _columns.NextSiblings.AsSpan(0, _columns.Count),
+            _columns.Count,
+            preservesConstructionHandles: true,
+            order: null,
+            remap: null
+        );
         _columns.ReleaseConstructionColumns();
         _nodes.Dispose();
         _attributeWrappers?.Dispose();
@@ -417,7 +421,7 @@ internal sealed class Arena : IDisposable
 
     internal int FrozenFirstChild(int handle) => FinalFirstChild(handle);
 
-    internal int FrozenNextSibling(int handle) => _columns.NextSiblings[handle];
+    internal int FrozenSubtreeEnd(int handle) => _columns.NextSiblings[handle];
 
     internal int FrozenPayloadIndex(int handle) => _columns.PayloadIndexes[handle];
 
@@ -460,6 +464,42 @@ internal sealed class Arena : IDisposable
         _columns.TemplateFirstChild(handle) is var template && template >= 0
             ? template
             : _columns.FirstChildren[handle];
+
+    private void FillSubtreeEnds(
+        Span<int> destination,
+        int outputCount,
+        bool preservesConstructionHandles,
+        int[]? order,
+        int[]? remap
+    )
+    {
+        var open = ArrayPool<int>.Shared.Rent(outputCount);
+        var openCount = 0;
+        try
+        {
+            for (var outputHandle = 0; outputHandle < outputCount; outputHandle++)
+            {
+                var constructionHandle = preservesConstructionHandles ? outputHandle : order![outputHandle];
+                var constructionParent = _columns.Parents[constructionHandle];
+                var outputParent =
+                    constructionParent < 0 ? -1
+                    : preservesConstructionHandles ? constructionParent
+                    : remap![constructionParent];
+
+                while (openCount > 0 && open[openCount - 1] != outputParent)
+                    destination[open[--openCount]] = outputHandle;
+
+                open[openCount++] = outputHandle;
+            }
+
+            while (openCount > 0)
+                destination[open[--openCount]] = outputCount;
+        }
+        finally
+        {
+            ArrayPool<int>.Shared.Return(open);
+        }
+    }
 
     private CompactTemplateBoundary[] CreateTemplateBoundaries(
         int outputCount,
