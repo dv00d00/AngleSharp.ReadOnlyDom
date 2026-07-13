@@ -39,7 +39,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
             }
 #endif
 
-            var config = ManualConfig.Create(DefaultConfig.Instance).AddJob(Job.Default.WithGcServer(true));
+            var config = ManualConfig.Create(DefaultConfig.Instance).AddJob(Job.ShortRun.WithGcServer(true));
             BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
             return 0;
         }

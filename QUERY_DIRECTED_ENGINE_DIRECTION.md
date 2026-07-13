@@ -67,6 +67,11 @@ Compare:
 
 Measure total time, allocation, retained/peak memory, bytes consumed before termination, tokens processed, values decoded, nodes materialized, and output allocation. This establishes whether materialization avoidance is worth the much larger architecture.
 
+The compact-tree portion now has a minimal interpreted implementation. Its API, ownership rules, execution counters, and
+Server-GC comparison against read-only traversal and hand-written compact scans are recorded in
+[ISSUE_15_EXTRACTION_PLAN.md](ISSUE_15_EXTRACTION_PLAN.md). It remains a compact execution experiment, not the future
+query language or the tree-builder-integrated engine.
+
 ## Scope discipline
 
 Start with tag, id, class token, attribute equality, descendant/direct-child paths, first/all cardinality, attribute projection, and normalized subtree text. Use an inspectable interpreted plan. Do not begin with a full CSS language, generic optimizer, generated IL, SIMD selectors, bitmap rank/select storage, or a universal column framework.
