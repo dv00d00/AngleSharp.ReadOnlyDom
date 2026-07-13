@@ -104,6 +104,30 @@ public class MalformedHtmlPropertyTests
 
         Check.One(Config.QuickThrowOnFailure.WithMaxTest(10_000), property);
     }
+
+    [Test]
+    public void GeneratedMalformedHtmlMatchesAngleSharpForStreamingExtraction()
+    {
+        var property = Prop.ForAll(
+            MalformedHtml().ToArbitrary(),
+            fragment =>
+            {
+                var source = $"<main><div id=content>{fragment}</div><aside>tail</aside></main>";
+                using var mutable = new HtmlParser().ParseDocument(source);
+                var expected = mutable.QuerySelector("div#content");
+                var actual = CompactStreamingExtractor.ExtractFirstNormalizedText(source);
+                var expectedText = NormalizeWhitespace(expected?.TextContent ?? string.Empty);
+                if (actual.Found != (expected is not null) || actual.Value.ToString() != expectedText)
+                {
+                    throw new InvalidOperationException(
+                        $"Streaming extraction mismatch for generated HTML:\n{Escape(source)}\n\nMutable:\n{Escape(expectedText)}\n\nStreaming:\n{Escape(actual.Value.ToString())}"
+                    );
+                }
+            }
+        );
+
+        Check.One(Config.QuickThrowOnFailure.WithMaxTest(10_000), property);
+    }
 #endif
 
     private static Gen<string> MalformedHtml()
@@ -121,6 +145,27 @@ public class MalformedHtmlPropertyTests
     }
 
 #if NET10_0
+    private static string NormalizeWhitespace(string value)
+    {
+        var result = new StringBuilder(value.Length);
+        var pendingSpace = false;
+        foreach (var character in value)
+        {
+            if (char.IsWhiteSpace(character))
+            {
+                pendingSpace = result.Length != 0;
+                continue;
+            }
+            if (pendingSpace)
+            {
+                result.Append(' ');
+                pendingSpace = false;
+            }
+            result.Append(character);
+        }
+        return result.ToString();
+    }
+
     private static string NormalizeForCompact(IDocument document)
     {
         var result = new StringBuilder();
