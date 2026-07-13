@@ -10,6 +10,9 @@
   <Folder Name="/Benchmarks/">
     <Project Path="AngleSharp.ReadOnlyDom.Benchmarks/AngleSharp.ReadOnlyDom.Benchmarks.csproj" />
   </Folder>
+  <Folder Name="/Samples/">
+    <Project Path="samples/AngleSharp.ReadOnlyDom.Samples/AngleSharp.ReadOnlyDom.Samples.csproj" />
+  </Folder>
   <Folder Name="/Tools/">
     <Project Path="tools/AngleSharp.ReadOnlyDom.TagGenerator/AngleSharp.ReadOnlyDom.TagGenerator.csproj" />
   </Folder>
