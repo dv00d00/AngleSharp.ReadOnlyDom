@@ -58,7 +58,7 @@ public class MalformedHtmlPropertyTests
     public void GeneratedMalformedHtmlMatchesAngleSharpMutableDom()
     {
         var property = Prop.ForAll(
-            MalformedHtml(includeKnownCompactBoundaries: true).ToArbitrary(),
+            MalformedHtml().ToArbitrary(),
             source =>
             {
                 using var mutable = new HtmlParser().ParseDocument(source);
@@ -82,10 +82,10 @@ public class MalformedHtmlPropertyTests
 
 #if NET10_0
     [Test]
-    public void GeneratedMalformedHtmlWithinCompactSupportMatchesAngleSharpMutableDomForCompactArena()
+    public void GeneratedMalformedHtmlMatchesAngleSharpMutableDomForCompactArena()
     {
         var property = Prop.ForAll(
-            MalformedHtml(includeKnownCompactBoundaries: false).ToArbitrary(),
+            MalformedHtml().ToArbitrary(),
             source =>
             {
                 using var mutable = new HtmlParser().ParseDocument(source);
@@ -102,28 +102,17 @@ public class MalformedHtmlPropertyTests
             }
         );
 
-        Check.One(Config.QuickThrowOnFailure.WithMaxTest(500), property);
+        Check.One(Config.QuickThrowOnFailure.WithMaxTest(10_000), property);
     }
 #endif
 
-    private static Gen<string> MalformedHtml(bool includeKnownCompactBoundaries)
+    private static Gen<string> MalformedHtml()
     {
-        var availableFragments = includeKnownCompactBoundaries
-            ? Fragments
-            : Fragments
-                .Where(static value =>
-                    !value.StartsWith("<svg", StringComparison.Ordinal)
-                    && !value.StartsWith("<math", StringComparison.Ordinal)
-                )
-                .ToArray();
-        var generatedNames = includeKnownCompactBoundaries
-            ? new[] { "div", "span", "p", "li", "svg", "math", "x-z" }
-            : new[] { "div", "span", "p", "li", "x-z" };
         var fragment = Gen.Frequency(
-            (9, Gen.Elements(availableFragments)),
+            (9, Gen.Elements(Fragments)),
             (
                 1,
-                from name in Gen.Elements(generatedNames)
+                from name in Gen.Elements("div", "span", "p", "li", "svg", "math", "x-z")
                 from delimiter in Gen.Elements(">", "/> ", "", " attr='", " attr=\"")
                 select $"<{name}{delimiter}"
             )
@@ -192,17 +181,20 @@ public class MalformedHtmlPropertyTests
                 if (node.PayloadIndex >= 0)
                 {
                     var payload = document.GetPayload(node.PayloadIndex);
-                    var attributes = new List<string>(payload.AttributeCount);
+                    var attributes = new List<(string Name, string Value)>(payload.AttributeCount);
                     for (var i = 0; i < payload.AttributeCount; i++)
                     {
                         var attribute = document.GetAttribute(payload.FirstAttribute + i);
                         attributes.Add(
-                            $"{document.GetName(attribute.NameId)}={Escape(document.GetValue(attribute.ValueStart, attribute.ValueLength).ToString())}"
+                            (
+                                document.GetName(attribute.NameId).ToString(),
+                                Escape(document.GetValue(attribute.ValueStart, attribute.ValueLength).ToString())
+                            )
                         );
                     }
-                    attributes.Sort(StringComparer.Ordinal);
+                    attributes.Sort(static (left, right) => StringComparer.Ordinal.Compare(left.Name, right.Name));
                     foreach (var attribute in attributes)
-                        result.Append('|').Append(attribute);
+                        result.Append('|').Append(attribute.Name).Append('=').Append(attribute.Value);
                 }
                 result.Append("]{");
                 AppendCompactChildren(document, node.FirstChild, result);
