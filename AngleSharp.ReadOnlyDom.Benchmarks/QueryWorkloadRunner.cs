@@ -1,6 +1,7 @@
 #if NET10_0
 using System.Diagnostics;
 using System.Net;
+using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
 using AngleSharp.Dom;
@@ -184,6 +185,7 @@ internal static class QueryWorkloadRunner
         report.AppendLine($"- Commit: `{GetCommit()}`");
         report.AppendLine($"- Runtime: `{RuntimeInformation.FrameworkDescription}`");
         report.AppendLine($"- OS: `{RuntimeInformation.OSDescription}`");
+        report.AppendLine($"- GC: `{(GCSettings.IsServerGC ? "Server" : "Workstation")}`");
         report.AppendLine($"- Iterations: `{iterations}` per engine/workload");
         report.AppendLine(
             "- Time and total allocation cover parse, query, escaping output, and disposal. Retained bytes are incremental managed heap after parse and forced GC; pooled backing arrays already present in shared pools are excluded, so compact retained size is a lower bound. Peak live bytes are sampled and approximate."
@@ -671,9 +673,9 @@ internal static class QueryWorkloadRunner
                     output = Products(
                         cards,
                         static card => card.Attr("data-sku").ToString(),
-                        static card => Find(card, static node => node.Is("h2")).Text(),
+                        static card => card.Elements("h2").First().Text(),
                         static card => Find(card, static node => node.HasClass("price")).Text(),
-                        static card => Find(card, static node => node.Is("a")).Attr("href").ToString()
+                        static card => card.Elements("a").First().Attr("href").ToString()
                     );
                     counts.NodesRetained = cards.Count;
                     counts.AttributesRetained = cards.Count * 2;
@@ -705,14 +707,9 @@ internal static class QueryWorkloadRunner
             Func<Compact.Node, bool> predicate
         )
         {
-            foreach (var child in root.Children())
-            {
-                if (predicate(child))
-                    return child;
-                var descendant = Find(child, predicate);
-                if (descendant.Exists)
+            foreach (var descendant in root.Descendants())
+                if (predicate(descendant))
                     return descendant;
-            }
             return default;
         }
 

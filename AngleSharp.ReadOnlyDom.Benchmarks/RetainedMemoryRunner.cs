@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
 using AngleSharp.Dom;
@@ -182,6 +183,7 @@ internal static class RetainedMemoryRunner
         report.AppendLine($"- Commit: `{GetCommit()}`");
         report.AppendLine($"- Runtime: `{RuntimeInformation.FrameworkDescription}`");
         report.AppendLine($"- OS: `{RuntimeInformation.OSDescription}`");
+        report.AppendLine($"- GC: `{(GCSettings.IsServerGC ? "Server" : "Workstation")}`");
         report.AppendLine($"- Corpus: `{tier}` ({sources.Count} checked-in documents)");
         report.AppendLine($"- Repetitions: `{repetitions}` (median reported independently for each metric)");
         report.AppendLine(
