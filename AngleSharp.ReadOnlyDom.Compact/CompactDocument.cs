@@ -102,7 +102,7 @@ public sealed class CompactDocument : IDisposable
             return _nodes![handle];
         return new CompactNode(
             _arena.FrozenFirstChild(handle),
-            _arena.FrozenNextSibling(handle),
+            _arena.FrozenSubtreeEnd(handle),
             _arena.FrozenPayloadIndex(handle),
             _arena.FrozenNameId(handle),
             _arena.FrozenKind(handle),
@@ -143,19 +143,22 @@ public sealed class CompactDocument : IDisposable
     /// Returns the next node at or after <paramref name="start"/> with the given name ID, or -1.
     /// Frozen columns use a vectorized scan; packed documents use a scalar scan.
     /// </summary>
-    public int IndexOfName(ushort nameId, int start = 0)
+    public int IndexOfName(ushort nameId, int start = 0, int endExclusive = int.MaxValue)
     {
         if (start < 0)
             start = 0;
+        endExclusive = Math.Min(endExclusive, _nodeCount);
+        if (start >= endExclusive)
+            return -1;
         if (_arena is not null)
         {
             var column = _arena.NameIdColumn;
-            if (start >= column.Length)
-                return -1;
-            var relative = MemoryMarshal.Cast<ushort, char>(column[start..]).IndexOf((char)nameId);
+            var relative = MemoryMarshal
+                .Cast<ushort, char>(column.Slice(start, endExclusive - start))
+                .IndexOf((char)nameId);
             return relative < 0 ? -1 : start + relative;
         }
-        for (var handle = start; handle < _nodeCount; handle++)
+        for (var handle = start; handle < endExclusive; handle++)
             if (_nodes![handle].NameId == nameId)
                 return handle;
         return -1;
@@ -250,6 +253,18 @@ public sealed class CompactDocument : IDisposable
                 contentEnd = Math.Max(contentEnd, boundary.ContentEnd);
         }
         return contentEnd >= 0;
+    }
+
+    internal bool IsInSameTreeScope(int first, int second)
+    {
+        foreach (var boundary in _templateBoundaries)
+        {
+            var firstInContent = first >= boundary.ContentStart && first < boundary.ContentEnd;
+            var secondInContent = second >= boundary.ContentStart && second < boundary.ContentEnd;
+            if (firstInContent != secondInContent)
+                return false;
+        }
+        return true;
     }
 
     /// <summary>

@@ -17,25 +17,99 @@ public static class CompactQuery
     /// </summary>
     public static DescendantScan Descendants(this CompactDocument document) => new(document);
 
+    public static DescendantScan Descendants(this Node node) => new(node);
+
     /// <summary>Scans elements using the name-ID column.</summary>
     public static ElementQuery Elements(this CompactDocument document, string tag) =>
-        new(document, document.ResolveNameId(tag), hasClass: false, default, null, hasAttr: false, default, null);
+        new(
+            document,
+            document.ResolveNameId(tag),
+            0,
+            document.NodeCount,
+            hasClass: false,
+            default,
+            null,
+            hasAttr: false,
+            default,
+            null
+        );
 
     public static ElementQuery Elements(this CompactDocument document, ReadOnlySpan<char> tag) =>
-        new(document, document.ResolveNameId(tag), hasClass: false, default, null, hasAttr: false, default, null);
+        new(
+            document,
+            document.ResolveNameId(tag),
+            0,
+            document.NodeCount,
+            hasClass: false,
+            default,
+            null,
+            hasAttr: false,
+            default,
+            null
+        );
 
     public static ElementQuery Elements(this CompactDocument document, ushort tagId) =>
-        new(document, tagId, hasClass: false, default, null, hasAttr: false, default, null);
+        new(
+            document,
+            tagId,
+            0,
+            document.NodeCount,
+            hasClass: false,
+            default,
+            null,
+            hasAttr: false,
+            default,
+            null
+        );
+
+    public static ElementQuery Elements(this Node node, string tag) =>
+        CreateElements(node, node.Document.ResolveNameId(tag));
+
+    public static ElementQuery Elements(this Node node, ReadOnlySpan<char> tag) =>
+        CreateElements(node, node.Document.ResolveNameId(tag));
+
+    public static ElementQuery Elements(this Node node, ushort tagId) => CreateElements(node, tagId);
+
+    private static ElementQuery CreateElements(Node node, ushort tagId)
+    {
+        var document = node.Document;
+        var start = node.Handle + 1;
+        var end = document.IsTemplate(node.Handle) ? start : document.GetNode(node.Handle).SubtreeEndExclusive;
+        return new ElementQuery(
+            document,
+            tagId,
+            start,
+            end,
+            hasClass: false,
+            default,
+            null,
+            hasAttr: false,
+            default,
+            null
+        );
+    }
 
     public struct DescendantScan
     {
         private readonly CompactDocument _document;
         private int _handle;
+        private readonly int _endExclusive;
 
         internal DescendantScan(CompactDocument document)
         {
             _document = document;
             _handle = 0; // handle 0 is #document; MoveNext advances to the first real node
+            _endExclusive = document.NodeCount;
+        }
+
+        internal DescendantScan(Node node)
+        {
+            _document = node.Document;
+            _handle = node.Handle;
+            _endExclusive =
+                _document.IsTemplate(node.Handle)
+                    ? node.Handle + 1
+                    : _document.GetNode(node.Handle).SubtreeEndExclusive;
         }
 
         public readonly Node Current => new(_document, _handle);
@@ -46,7 +120,7 @@ public static class CompactQuery
             while (_document.TryGetContainingTemplateContentEnd(next, out var contentEnd))
                 next = contentEnd;
             _handle = next;
-            return _handle < _document.NodeCount;
+            return _handle < _endExclusive;
         }
 
         public readonly DescendantScan GetEnumerator() => this;
@@ -56,6 +130,8 @@ public static class CompactQuery
     {
         private readonly CompactDocument _document;
         private readonly ushort _tagId;
+        private readonly int _start;
+        private readonly int _endExclusive;
         private readonly bool _hasClass;
         private readonly ushort _classId;
         private readonly string? _classToken;
@@ -66,6 +142,8 @@ public static class CompactQuery
         internal ElementQuery(
             CompactDocument document,
             ushort tagId,
+            int start,
+            int endExclusive,
             bool hasClass,
             ushort classId,
             string? classToken,
@@ -76,6 +154,8 @@ public static class CompactQuery
         {
             _document = document;
             _tagId = tagId;
+            _start = start;
+            _endExclusive = endExclusive;
             _hasClass = hasClass;
             _classId = classId;
             _classToken = classToken;
@@ -86,11 +166,33 @@ public static class CompactQuery
 
         /// <summary>Filters by a whitespace-separated class token.</summary>
         public ElementQuery WithClass(string token) =>
-            new(_document, _tagId, true, _document.ResolveNameId("class"), token, _hasAttr, _attrId, _attrValue);
+            new(
+                _document,
+                _tagId,
+                _start,
+                _endExclusive,
+                true,
+                _document.ResolveNameId("class"),
+                token,
+                _hasAttr,
+                _attrId,
+                _attrValue
+            );
 
         /// <summary>Filters by attribute presence or value equality.</summary>
         public ElementQuery WithAttribute(string name, string? value = null) =>
-            new(_document, _tagId, _hasClass, _classId, _classToken, true, _document.ResolveNameId(name), value);
+            new(
+                _document,
+                _tagId,
+                _start,
+                _endExclusive,
+                _hasClass,
+                _classId,
+                _classToken,
+                true,
+                _document.ResolveNameId(name),
+                value
+            );
 
         public Enumerator GetEnumerator() => new(this);
 
@@ -158,7 +260,7 @@ public static class CompactQuery
             internal Enumerator(ElementQuery query)
             {
                 _query = query;
-                _current = -1;
+                _current = query._start - 1;
             }
 
             public Node Current => new(_query._document, _current);
@@ -169,12 +271,12 @@ public static class CompactQuery
                     return false;
 
                 var document = _query._document;
-                var handle = document.IndexOfName(_query._tagId, _current + 1);
+                var handle = document.IndexOfName(_query._tagId, _current + 1, _query._endExclusive);
                 while (handle >= 0)
                 {
                     if (document.TryGetContainingTemplateContentEnd(handle, out var contentEnd))
                     {
-                        handle = document.IndexOfName(_query._tagId, contentEnd);
+                        handle = document.IndexOfName(_query._tagId, contentEnd, _query._endExclusive);
                         continue;
                     }
                     if (document.KindAt(handle) == CompactNodeKind.Element && _query.Matches(handle))
@@ -182,7 +284,7 @@ public static class CompactQuery
                         _current = handle;
                         return true;
                     }
-                    handle = document.IndexOfName(_query._tagId, handle + 1);
+                    handle = document.IndexOfName(_query._tagId, handle + 1, _query._endExclusive);
                 }
                 return false;
             }

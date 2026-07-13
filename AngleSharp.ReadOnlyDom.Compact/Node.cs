@@ -51,6 +51,13 @@ public readonly struct Node
     public Node Parent =>
         _document is not null && _document.HasParentLinks ? new Node(_document, _document.GetParent(_handle)) : default;
 
+    public bool IsDescendantOf(Node ancestor) =>
+        _document is not null
+        && ReferenceEquals(_document, ancestor._document)
+        && _document.IsInSameTreeScope(_handle, ancestor._handle)
+        && _handle > ancestor._handle
+        && _handle < ancestor.Raw.SubtreeEndExclusive;
+
     /// <summary>The attribute value (empty span if absent — use <see cref="HasAttr(string)"/> to disambiguate).</summary>
     public ReadOnlySpan<char> Attr(string name) => Attr(name.AsSpan());
 
@@ -101,7 +108,11 @@ public readonly struct Node
             var payload = _document!.GetPayload(node.PayloadIndex);
             sink.Append(_document.GetValue(payload.ValueStart, payload.ValueLength));
         }
-        for (var child = node.FirstChild; child >= 0; child = _document!.GetNode(child).NextSibling)
+        for (
+            var child = node.FirstChild;
+            child >= 0 && child < node.SubtreeEndExclusive;
+            child = _document!.GetNode(child).SubtreeEndExclusive
+        )
             new Node(_document!, child).WriteText(ref sink);
     }
 
@@ -147,19 +158,28 @@ public readonly struct Node
             value.CopyTo(destination.Slice(written));
             written += value.Length;
         }
-        for (var child = node.FirstChild; child >= 0; child = _document!.GetNode(child).NextSibling)
+        for (
+            var child = node.FirstChild;
+            child >= 0 && child < node.SubtreeEndExclusive;
+            child = _document!.GetNode(child).SubtreeEndExclusive
+        )
             if (!new Node(_document!, child).WriteInto(destination, ref written))
                 return false;
         return true;
     }
 
     public ChildCursor Children() =>
-        new(_document!, _document!.IsTemplate(_handle) ? -1 : Raw.FirstChild);
+        new(
+            _document!,
+            _document!.IsTemplate(_handle) ? -1 : Raw.FirstChild,
+            Raw.SubtreeEndExclusive
+        );
 
     public ChildCursor TemplateContent() =>
         new(
             _document!,
-            _document!.TryGetTemplateContent(_handle, out var contentStart) ? contentStart : -1
+            _document!.TryGetTemplateContent(_handle, out var contentStart) ? contentStart : -1,
+            Raw.SubtreeEndExclusive
         );
 
     private bool TryFindAttribute(ushort nameId, out ReadOnlySpan<char> value)
@@ -203,13 +223,15 @@ public readonly struct Node
     {
         private readonly CompactDocument _document;
         private readonly int _first;
+        private readonly int _endExclusive;
         private int _current;
         private bool _started;
 
-        internal ChildCursor(CompactDocument document, int first)
+        internal ChildCursor(CompactDocument document, int first, int endExclusive)
         {
             _document = document;
             _first = first;
+            _endExclusive = endExclusive;
             _current = -1;
             _started = false;
         }
@@ -225,9 +247,9 @@ public readonly struct Node
             }
             else if (_current >= 0)
             {
-                _current = _document.GetNode(_current).NextSibling;
+                _current = _document.GetNode(_current).SubtreeEndExclusive;
             }
-            return _current >= 0;
+            return _current >= 0 && _current < _endExclusive;
         }
 
         public readonly ChildCursor GetEnumerator() => this;

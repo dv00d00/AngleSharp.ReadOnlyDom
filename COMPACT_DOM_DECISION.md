@@ -24,7 +24,8 @@ finalization so unreachable nodes cannot leak into the visible traversal. Caller
 `CompactDocumentLayout.Packed` explicitly. Packed finalization performs reachable preorder traversal, remaps handles, and
 copies only final columns into these buffers:
 
-- a 16-byte `CompactNode` core containing traversal links, payload index, name ID, kind, and compact flags;
+- a 16-byte `CompactNode` core containing first-child and exclusive subtree-end traversal fields, payload index, name ID,
+  kind, and compact flags;
 - sparse `CompactNodePayload` records for nodes with values or attributes;
 - one dense attribute arena reached through payload ranges;
 - interned names and a shared character buffer;
@@ -107,6 +108,11 @@ remains caller-specific. SVG/Math subtree suppression is deliberately not includ
 than unsafe token dropping.
 
 ## Next optimization boundary
+
+The final node core now replaces its construction-time next-sibling link with an exclusive preorder subtree boundary.
+This supports constant-time subtree skipping, interval descendant checks, direct-child jumps, and bounded forward/SIMD
+tag scans without widening the core. The Server-GC before/after measurements and default-versus-opt-in decision are
+recorded in [ISSUE_14_SUBTREE_BOUNDARIES.md](ISSUE_14_SUBTREE_BOUNDARIES.md).
 
 The default path no longer performs reachable preorder/remapping, text copying, standard-name string allocation, a text
 length scan, or a publication-time name-ID pass. Removing the per-document name lookup cache would require a pooled

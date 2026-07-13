@@ -17,6 +17,48 @@ public sealed class CompactParserTests
     public async Task CoreNodeIsExactlySixteenBytes() => await Assert.That(Unsafe.SizeOf<CompactNode>()).IsEqualTo(16);
 
     [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task SubtreeBoundariesSupportBoundedScansAndDirectChildren(CompactDocumentLayout layout)
+    {
+        using var document = CompactParser
+            .CreateParser(layout: layout)
+            .ParseCompactDocument(
+                "<main><section><p>one</p><div><p>two</p></div><template><p>detached</p></template></section><aside>tail</aside></main>"
+            );
+
+        for (var handle = 0; handle < document.NodeCount; handle++)
+        {
+            var end = document.GetNode(handle).SubtreeEndExclusive;
+            await Assert.That(end).IsGreaterThan(handle);
+            await Assert.That(end).IsLessThanOrEqualTo(document.NodeCount);
+        }
+
+        var main = document.Elements("main").First();
+        var section = main.Elements("section").First();
+        var nestedParagraph = section.Elements("p").First();
+        var template = section.Elements("template").First();
+        var templateParagraph = default(AngleSharp.ReadOnlyDom.Compact.Node);
+        foreach (var child in template.TemplateContent())
+        {
+            templateParagraph = child;
+            break;
+        }
+        var aside = main.Elements("aside").First();
+        var directChildren = new List<string>();
+        foreach (var child in main.Children())
+            directChildren.Add(child.Name);
+
+        await Assert.That(section.Elements("p").Count()).IsEqualTo(2);
+        await Assert.That(section.Elements("aside").Count()).IsEqualTo(0);
+        await Assert.That(nestedParagraph.IsDescendantOf(section)).IsTrue();
+        await Assert.That(templateParagraph.IsDescendantOf(template)).IsFalse();
+        await Assert.That(templateParagraph.IsDescendantOf(section)).IsFalse();
+        await Assert.That(aside.IsDescendantOf(section)).IsFalse();
+        await Assert.That(directChildren).IsEquivalentTo(["section", "aside"]);
+    }
+
+    [Test]
     public async Task AppendOnlyDocumentsFreezeColumnsByDefault()
     {
         using var document = CompactParser.CreateParser().ParseCompactDocument("<main><p>x</p></main>");
@@ -430,10 +472,10 @@ public sealed class CompactParserTests
         }
         result += "]{";
         var child = node.FirstChild;
-        while (child >= 0)
+        while (child >= 0 && child < node.SubtreeEndExclusive)
         {
             result += Snapshot(document, child);
-            child = document.GetNode(child).NextSibling;
+            child = document.GetNode(child).SubtreeEndExclusive;
         }
         return result + "}";
     }
