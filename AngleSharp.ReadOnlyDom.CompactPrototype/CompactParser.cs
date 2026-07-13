@@ -13,8 +13,18 @@ public static class CompactParser
         CompactParserHints? hints = null,
         CompactAttributeFilter? attributeFilter = null,
         HtmlParserOptions? parserOptions = null,
-        TokenizerMiddleware? middleware = null
-    ) => Parse(new TextSource(new StringTextSource(html)), options, hints, attributeFilter, parserOptions, middleware);
+        TokenizerMiddleware? middleware = null,
+        CompactDocumentLayout layout = CompactDocumentLayout.FrozenColumns
+    ) =>
+        Parse(
+            new TextSource(new StringTextSource(html)),
+            options,
+            hints,
+            attributeFilter,
+            parserOptions,
+            middleware,
+            layout
+        );
 
     public static CompactDocument Parse(
         ReadOnlyMemory<char> html,
@@ -22,7 +32,8 @@ public static class CompactParser
         CompactParserHints? hints = null,
         CompactAttributeFilter? attributeFilter = null,
         HtmlParserOptions? parserOptions = null,
-        TokenizerMiddleware? middleware = null
+        TokenizerMiddleware? middleware = null,
+        CompactDocumentLayout layout = CompactDocumentLayout.FrozenColumns
     ) =>
         Parse(
             new TextSource(new ReadOnlyMemoryTextSource(html)),
@@ -30,7 +41,8 @@ public static class CompactParser
             hints,
             attributeFilter,
             parserOptions,
-            middleware
+            middleware,
+            layout
         );
 
     public static CompactDocument Parse(
@@ -40,7 +52,8 @@ public static class CompactParser
         CompactParserHints? hints = null,
         CompactAttributeFilter? attributeFilter = null,
         HtmlParserOptions? parserOptions = null,
-        TokenizerMiddleware? middleware = null
+        TokenizerMiddleware? middleware = null,
+        CompactDocumentLayout layout = CompactDocumentLayout.FrozenColumns
     ) =>
         Parse(
             new TextSource(new CharArrayTextSource(html, length)),
@@ -48,7 +61,8 @@ public static class CompactParser
             hints,
             attributeFilter,
             parserOptions,
-            middleware
+            middleware,
+            layout
         );
 
     private static CompactDocument Parse(
@@ -57,7 +71,8 @@ public static class CompactParser
         CompactParserHints? hints,
         CompactAttributeFilter? attributeFilter,
         HtmlParserOptions? parserOptions,
-        TokenizerMiddleware? middleware
+        TokenizerMiddleware? middleware,
+        CompactDocumentLayout layout
     )
     {
         hints ??= new CompactParserHints();
@@ -72,7 +87,7 @@ public static class CompactParser
         var document = parser.ParseDocument<ArenaDocument, ArenaElement>(source, middleware);
         try
         {
-            return document.Arena.Finalize(document.NodeHandle, options);
+            return document.CreateCompactDocument(options, layout);
         }
         finally
         {

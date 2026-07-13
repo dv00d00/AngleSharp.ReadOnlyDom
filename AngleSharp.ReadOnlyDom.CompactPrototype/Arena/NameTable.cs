@@ -9,9 +9,9 @@ internal sealed class NameTable
 #else
     private readonly Dictionary<StringOrMemory, ushort> _ids = [];
 #endif
-    private readonly List<string> _names = [];
+    private List<string>? _customNames;
 
-    public int Count => _names.Count;
+    public int CustomCount => _customNames?.Count ?? 0;
 
     public ushort GetId(StringOrMemory name)
     {
@@ -19,19 +19,38 @@ internal sealed class NameTable
         var lookup = _ids.GetAlternateLookup<ReadOnlySpan<char>>();
         if (lookup.TryGetValue(name.Memory.Span, out var id))
             return id;
-        var ownedName = name.ToString();
-        id = checked((ushort)_names.Count);
+        string ownedName;
+        if (GeneratedTagMetadata.TryGetKnownNameId(name, out id))
+        {
+            ownedName = GeneratedTagMetadata.GetKnownName(id);
+        }
+        else
+        {
+            _customNames ??= [];
+            ownedName = name.ToString();
+            id = checked((ushort)(GeneratedTagMetadata.KnownNameCount + _customNames.Count));
+            _customNames.Add(ownedName);
+        }
         _ids.Add(ownedName, id);
-        _names.Add(ownedName);
 #else
         if (_ids.TryGetValue(name, out var id))
             return id;
-        id = checked((ushort)_names.Count);
-        _ids.Add(name, id);
-        _names.Add(name.ToString());
+        string ownedName;
+        if (GeneratedTagMetadata.TryGetKnownNameId(name, out id))
+        {
+            ownedName = GeneratedTagMetadata.GetKnownName(id);
+        }
+        else
+        {
+            _customNames ??= [];
+            ownedName = name.ToString();
+            id = checked((ushort)(GeneratedTagMetadata.KnownNameCount + _customNames.Count));
+            _customNames.Add(ownedName);
+        }
+        _ids.Add(ownedName, id);
 #endif
         return id;
     }
 
-    public void CopyTo(string[] destination) => _names.CopyTo(destination);
+    public void CopyCustomNamesTo(string[] destination) => _customNames?.CopyTo(destination);
 }

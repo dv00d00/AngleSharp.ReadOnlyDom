@@ -34,6 +34,18 @@ internal static class BenchmarkCorpus
             .ToArray();
     }
 
+    public static IReadOnlyList<CorpusDocument> LoadLargestAnonymized(int count)
+    {
+        var directory = FindCorpusDirectory();
+        return Directory
+            .GetFiles(directory, "*.html")
+            .Select(path => new FileInfo(path))
+            .OrderByDescending(file => file.Length)
+            .Take(count)
+            .Select((file, index) => new CorpusDocument($"Large{(char)('A' + index)}", File.ReadAllText(file.FullName)))
+            .ToArray();
+    }
+
     private static string FindCorpusDirectory()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

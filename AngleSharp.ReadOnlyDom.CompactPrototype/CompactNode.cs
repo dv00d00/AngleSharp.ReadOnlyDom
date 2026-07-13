@@ -80,3 +80,9 @@ public enum CompactMetadataOptions
     ParentLinks = 1 << 0,
     SourceLocations = 1 << 1,
 }
+
+public enum CompactDocumentLayout
+{
+    FrozenColumns,
+    Packed,
+}

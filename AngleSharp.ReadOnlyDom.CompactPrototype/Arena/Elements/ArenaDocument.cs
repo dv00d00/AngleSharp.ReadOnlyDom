@@ -6,6 +6,8 @@ namespace AngleSharp.ReadOnlyDom.CompactPrototype.Arena;
 
 internal sealed class ArenaDocument : ArenaElement, IConstructableDocument, IDisposable
 {
+    private bool _ownershipTransferred;
+
     public ArenaDocument(Arena arena, int handle, TextSource source)
         : base(arena, handle) => Source = source;
 
@@ -31,16 +33,28 @@ internal sealed class ArenaDocument : ArenaElement, IConstructableDocument, IDis
 
     public void ApplyManifest() { }
 
+    public CompactDocument CreateCompactDocument(CompactMetadataOptions options, CompactDocumentLayout layout)
+    {
+        if (layout == CompactDocumentLayout.Packed || !Arena.CanFreeze(NodeHandle))
+            return Arena.Finalize(NodeHandle, options);
+
+        var result = Arena.Freeze(NodeHandle, options, Source);
+        _ownershipTransferred = true;
+        return result;
+    }
+
     public void Dispose()
     {
         try
         {
             Builder?.Dispose();
-            Source.Dispose();
+            if (!_ownershipTransferred)
+                Source.Dispose();
         }
         finally
         {
-            Arena.Dispose();
+            if (!_ownershipTransferred)
+                Arena.Dispose();
         }
     }
 }

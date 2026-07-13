@@ -57,57 +57,33 @@ internal sealed class ArenaConstructionFactory : IDomConstructionElementFactory<
             document.Arena.CreateElement(name, default, NamespaceNames.SvgUri, NodeFlags.SvgMember, ElementMarker.Svg);
 
     public IConstructableMetaElement CreateMeta(ArenaDocument document) =>
-        (IConstructableMetaElement)
-            document.Arena.CreateElement(
-                TagNames.Meta,
-                default,
-                NamespaceNames.HtmlUri,
-                GeneratedTagMetadata.GetFlags(TagNames.Meta) | NodeFlags.HtmlMember,
-                ElementMarker.Meta
-            );
+        (IConstructableMetaElement)CreateKnown(document, TagNames.Meta, ElementMarker.Meta);
 
     public IConstructableScriptElement CreateScript(ArenaDocument document, bool parserInserted, bool started) =>
-        (IConstructableScriptElement)
-            document.Arena.CreateElement(
-                TagNames.Script,
-                default,
-                NamespaceNames.HtmlUri,
-                GeneratedTagMetadata.GetFlags(TagNames.Script) | NodeFlags.HtmlMember,
-                ElementMarker.Script
-            );
+        (IConstructableScriptElement)CreateKnown(document, TagNames.Script, ElementMarker.Script);
 
     public IConstructableFrameElement CreateFrame(ArenaDocument document) =>
-        (IConstructableFrameElement)
-            document.Arena.CreateElement(
-                TagNames.Frame,
-                default,
-                NamespaceNames.HtmlUri,
-                GeneratedTagMetadata.GetFlags(TagNames.Frame) | NodeFlags.HtmlMember,
-                ElementMarker.Frame
-            );
+        (IConstructableFrameElement)CreateKnown(document, TagNames.Frame, ElementMarker.Frame);
 
     public IConstructableTemplateElement CreateTemplate(ArenaDocument document) =>
-        (IConstructableTemplateElement)
-            document.Arena.CreateElement(
-                TagNames.Template,
-                default,
-                NamespaceNames.HtmlUri,
-                GeneratedTagMetadata.GetFlags(TagNames.Template) | NodeFlags.HtmlMember,
-                ElementMarker.Template
-            );
+        (IConstructableTemplateElement)CreateKnown(document, TagNames.Template, ElementMarker.Template);
 
     public IConstructableFormElement CreateForm(ArenaDocument document) =>
-        (IConstructableFormElement)
-            document.Arena.CreateElement(
-                TagNames.Form,
-                default,
-                NamespaceNames.HtmlUri,
-                GeneratedTagMetadata.GetFlags(TagNames.Form) | NodeFlags.HtmlMember,
-                ElementMarker.Form
-            );
+        (IConstructableFormElement)CreateKnown(document, TagNames.Form, ElementMarker.Form);
 
     public ArenaElement CreateUnknown(ArenaDocument document, StringOrMemory tagName) => Create(document, tagName);
 
     public ArenaDocument CreateDocument(TextSource source, IBrowsingContext? context = null) =>
         new Arena(_hints, _trackSourceReferences).CreateDocument(source);
+
+    private static ArenaElement CreateKnown(ArenaDocument document, StringOrMemory name, ElementMarker marker)
+    {
+        return document.Arena.CreateElement(
+            name,
+            default,
+            NamespaceNames.HtmlUri,
+            GeneratedTagMetadata.GetFlags(name) | NodeFlags.HtmlMember,
+            marker
+        );
+    }
 }

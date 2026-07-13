@@ -45,7 +45,7 @@ var create =
     ?? throw new InvalidOperationException("AngleSharp HtmlElementFactory.Create was not found.");
 
 using var document = new HtmlParser().ParseDocument(string.Empty);
-var tags = typeof(TagNames)
+var allTags = typeof(TagNames)
     .GetFields(BindingFlags.Public | BindingFlags.Static)
     .Where(field => field.FieldType == typeof(string))
     .Select(field => new Tag(field.Name, (string)field.GetValue(null)!))
@@ -57,10 +57,19 @@ var tags = typeof(TagNames)
         var flags = element.Flags & ~(NodeFlags.HtmlMember | NodeFlags.SvgMember | NodeFlags.MathMember);
         return tag with { Flags = flags };
     })
+    .ToArray();
+var tags = allTags
     .Where(tag => tag.Flags != NodeFlags.None)
     .OrderBy(tag => tag.Value.Length)
     .ThenBy(tag => hotTagRanks.TryGetValue(tag.Value, out var rank) ? rank : int.MaxValue)
     .ThenBy(tag => tag.Value, StringComparer.Ordinal)
+    .ToArray();
+var knownNames = new[] { "#comment", "#document", "#text" }
+    .Concat(GetStringConstants(typeof(TagNames)))
+    .Concat(GetStringConstants(typeof(AttributeNames)))
+    .Distinct(StringComparer.Ordinal)
+    .OrderBy(name => name, StringComparer.Ordinal)
+    .Select((name, id) => new KnownName(name, checked((ushort)id)))
     .ToArray();
 
 var version =
@@ -78,6 +87,8 @@ output.AppendLine("namespace AngleSharp.ReadOnlyDom;");
 output.AppendLine();
 output.AppendLine("internal static class GeneratedTagMetadata");
 output.AppendLine("{");
+output.AppendLine($"    public const ushort KnownNameCount = {knownNames.Length};");
+output.AppendLine();
 output.AppendLine("    public static NodeFlags GetFlags(StringOrMemory localName)");
 output.AppendLine("    {");
 output.AppendLine("        switch (localName.Length)");
@@ -99,6 +110,59 @@ output.AppendLine("        }");
 output.AppendLine();
 output.AppendLine("        return NodeFlags.None;");
 output.AppendLine("    }");
+output.AppendLine();
+output.AppendLine("    public static bool TryGetKnownNameId(StringOrMemory name, out ushort id) =>");
+output.AppendLine("        TryGetKnownNameId(name.Memory.Span, out id);");
+output.AppendLine();
+output.AppendLine("    public static bool TryGetKnownNameId(ReadOnlySpan<char> name, out ushort id)");
+output.AppendLine("    {");
+output.AppendLine("#if NET10_0");
+output.AppendLine("        return KnownNameIds.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(name, out id);");
+output.AppendLine("#else");
+output.AppendLine("        switch (name.Length)");
+output.AppendLine("        {");
+
+foreach (var lengthGroup in knownNames.GroupBy(name => name.Value.Length))
+{
+    output.AppendLine($"            case {lengthGroup.Key}:");
+    foreach (var name in lengthGroup)
+    {
+        output.AppendLine($"                if (name.SequenceEqual({Literal(name.Value)}))");
+        output.AppendLine("                {");
+        output.AppendLine($"                    id = {name.Id};");
+        output.AppendLine("                    return true;");
+        output.AppendLine("                }");
+    }
+
+    output.AppendLine("                break;");
+}
+
+output.AppendLine("        }");
+output.AppendLine();
+output.AppendLine("        id = ushort.MaxValue;");
+output.AppendLine("        return false;");
+output.AppendLine("#endif");
+output.AppendLine("    }");
+output.AppendLine();
+output.AppendLine("    public static string GetKnownName(ushort id) => KnownNames[id];");
+output.AppendLine();
+output.AppendLine("    private static readonly string[] KnownNames =");
+output.AppendLine("    [");
+foreach (var name in knownNames)
+    output.AppendLine($"        {Literal(name.Value)},");
+output.AppendLine("    ];");
+output.AppendLine();
+output.AppendLine("#if NET10_0");
+output.AppendLine("    private static readonly Dictionary<string, ushort> KnownNameIds = CreateKnownNameIds();");
+output.AppendLine();
+output.AppendLine("    private static Dictionary<string, ushort> CreateKnownNameIds()");
+output.AppendLine("    {");
+output.AppendLine("        var result = new Dictionary<string, ushort>(KnownNames.Length, StringComparer.Ordinal);");
+output.AppendLine("        for (ushort id = 0; id < KnownNames.Length; id++)");
+output.AppendLine("            result.Add(KnownNames[id], id);");
+output.AppendLine("        return result;");
+output.AppendLine("    }");
+output.AppendLine("#endif");
 output.AppendLine("}");
 
 var outputPath = Path.GetFullPath(args[^1]);
@@ -142,4 +206,13 @@ static string FormatFlags(NodeFlags flags)
     return string.Join(" | ", names);
 }
 
+static IEnumerable<string> GetStringConstants(Type type) =>
+    type.GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Where(field => field.FieldType == typeof(string))
+        .Select(field => (string)field.GetValue(null)!);
+
+static string Literal(string value) => $"\"{value.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
+
 internal sealed record Tag(string Constant, string Value, NodeFlags Flags = NodeFlags.None);
+
+internal sealed record KnownName(string Value, ushort Id);

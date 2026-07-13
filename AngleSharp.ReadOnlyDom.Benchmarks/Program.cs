@@ -16,6 +16,13 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
                 return CollectionShapeRunner.Run(args.Skip(1).ToArray());
             }
 
+#if NET10_0
+            if (args.Length > 0 && args[0].Equals("--compact-trace", StringComparison.OrdinalIgnoreCase))
+            {
+                return CompactTraceRunner.Run(args.Skip(1).ToArray());
+            }
+#endif
+
             BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
             return 0;
         }
