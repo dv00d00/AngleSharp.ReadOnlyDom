@@ -13,13 +13,26 @@ internal sealed class PooledReferenceBuffer<T> : IDisposable
     }
 
     public int Count { get; private set; }
-    public T this[int index] => index < Count ? _items[index] : throw new ArgumentOutOfRangeException(nameof(index));
+    public T? this[int index]
+    {
+        get => index < Count ? _items[index] : throw new ArgumentOutOfRangeException(nameof(index));
+        set => _items[index] = value!;
+    }
 
     public void Add(T item)
     {
         if (Count == _items.Length)
             Grow();
         _items[Count++] = item;
+    }
+
+    // Reserves a slot without materializing a wrapper. Keeps handle == index alignment for leaf nodes
+    // whose reference object is only created on demand (see Arena.Node).
+    public void AddEmpty()
+    {
+        if (Count == _items.Length)
+            Grow();
+        _items[Count++] = null!;
     }
 
     public void Dispose()

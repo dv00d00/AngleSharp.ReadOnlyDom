@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Runtime.InteropServices;
 using AngleSharp.Text;
 using ArenaStorage = AngleSharp.ReadOnlyDom.CompactPrototype.Arena.Arena;
 
@@ -15,8 +16,6 @@ public sealed class CompactDocument : IDisposable
 
     private readonly ArenaStorage? _arena;
     private readonly TextSource? _source;
-    private readonly ushort[]? _nodeNameIds;
-    private readonly ushort[]? _attributeNameIds;
     private readonly CompactMetadataOptions _metadataOptions;
 
     private readonly string[] _names;
@@ -59,8 +58,6 @@ public sealed class CompactDocument : IDisposable
     internal CompactDocument(
         ArenaStorage arena,
         TextSource source,
-        ushort[] nodeNameIds,
-        ushort[] attributeNameIds,
         string[] names,
         int nodeCount,
         int payloadCount,
@@ -72,8 +69,6 @@ public sealed class CompactDocument : IDisposable
     {
         _arena = arena;
         _source = source;
-        _nodeNameIds = nodeNameIds;
-        _attributeNameIds = attributeNameIds;
         _names = names;
         _nodeCount = nodeCount;
         _payloadCount = payloadCount;
@@ -102,7 +97,7 @@ public sealed class CompactDocument : IDisposable
             _arena.FrozenFirstChild(handle),
             _arena.FrozenNextSibling(handle),
             _arena.FrozenPayloadIndex(handle),
-            _nodeNameIds![handle],
+            _arena.FrozenNameId(handle),
             _arena.FrozenKind(handle),
             _arena.FrozenFlags(handle)
         );
@@ -127,10 +122,35 @@ public sealed class CompactDocument : IDisposable
             return _attributes![index];
         var value = _arena.FrozenAttributeValue(index);
         return new CompactAttribute(
-            _attributeNameIds![index],
+            _arena.FrozenAttributeNameId(index),
             value.IsEmpty ? -1 : EncodeAttributeValue(index),
             value.Length
         );
+    }
+
+    /// <summary>
+    /// Returns the next node handle at or after <paramref name="start"/> whose name-id equals
+    /// <paramref name="nameId"/>, or -1. In the frozen (columnar) layout the name-id column is a
+    /// contiguous <see cref="ushort"/> span, reinterpreted as <see cref="char"/> so the scan uses
+    /// the vectorized <c>IndexOf</c>. Because a known tag's id is unique to elements, matching the
+    /// id alone selects elements (no kind check needed). Packed layout falls back to a scalar scan.
+    /// </summary>
+    public int IndexOfName(ushort nameId, int start = 0)
+    {
+        if (start < 0)
+            start = 0;
+        if (_arena is not null)
+        {
+            var column = _arena.NameIdColumn;
+            if (start >= column.Length)
+                return -1;
+            var relative = MemoryMarshal.Cast<ushort, char>(column[start..]).IndexOf((char)nameId);
+            return relative < 0 ? -1 : start + relative;
+        }
+        for (var handle = start; handle < _nodeCount; handle++)
+            if (_nodes![handle].NameId == nameId)
+                return handle;
+        return -1;
     }
 
     public string GetName(ushort id) =>
@@ -206,8 +226,6 @@ public sealed class CompactDocument : IDisposable
             ArrayPool<string>.Shared.Return(_names, clearArray: true);
         if (_arena is not null)
         {
-            ArrayPool<ushort>.Shared.Return(_nodeNameIds!);
-            ArrayPool<ushort>.Shared.Return(_attributeNameIds!);
             try
             {
                 _arena.Dispose();
