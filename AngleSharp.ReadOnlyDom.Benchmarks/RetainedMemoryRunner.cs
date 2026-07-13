@@ -6,7 +6,7 @@ using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Html;
 #if NET10_0
-using AngleSharp.ReadOnlyDom.CompactPrototype;
+using AngleSharp.ReadOnlyDom.Compact;
 #endif
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;

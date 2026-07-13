@@ -6,7 +6,7 @@ using System.Text;
 using AngleSharp.Dom;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
-using AngleSharp.ReadOnlyDom.CompactPrototype;
+using AngleSharp.ReadOnlyDom.Compact;
 using AngleSharp.ReadOnlyDom.Html;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
@@ -665,7 +665,7 @@ internal static class QueryWorkloadRunner
                     counts.NodesRetained = content.Exists ? 1 : 0;
                     break;
                 case QueryKind.Products:
-                    var cards = new List<CompactPrototype.Node>();
+                    var cards = new List<Compact.Node>();
                     foreach (var card in document.Elements("article").WithClass("product"))
                         cards.Add(card);
                     output = Products(
@@ -700,9 +700,9 @@ internal static class QueryWorkloadRunner
             return new QueryResult(output, counts);
         }
 
-        private static CompactPrototype.Node Find(
-            CompactPrototype.Node root,
-            Func<CompactPrototype.Node, bool> predicate
+        private static Compact.Node Find(
+            Compact.Node root,
+            Func<Compact.Node, bool> predicate
         )
         {
             foreach (var child in root.Children())

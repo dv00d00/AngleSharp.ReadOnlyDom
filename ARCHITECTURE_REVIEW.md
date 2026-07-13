@@ -354,9 +354,9 @@ Two possible paths remain:
 
 Benchmark each change independently rather than combining representation changes into one opaque rewrite.
 
-### Phase 5: compact prototype
+### Phase 5: compact DOM (implemented)
 
-Build a separate `CompactReadOnlyDocument` experiment. Measure:
+The separate `AngleSharp.ReadOnlyDom.Compact` project implements the measured compact representation. Its gates cover:
 
 - peak parse allocation;
 - retained bytes after parsing;
@@ -364,10 +364,10 @@ Build a separate `CompactReadOnlyDocument` experiment. Measure:
 - traversal and selector speed;
 - compatibility-wrapper materialization cost.
 
-### Phase 6: upstream proposal
+### Phase 6: upstream proposal (deferred)
 
-If the compact prototype wins materially, propose an AngleSharp construction sink whose parser works with opaque
-handles instead of `IConstructableNode` references.
+The existing generic builder works with stable arena-backed facades and passes the differential correctness matrix. An
+opaque-handle upstream proposal is deferred until wrapper-count or peak-memory measurements justify removing that layer.
 
 ## Immediate recommendation
 

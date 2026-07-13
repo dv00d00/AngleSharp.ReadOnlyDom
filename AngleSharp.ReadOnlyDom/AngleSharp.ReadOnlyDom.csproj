@@ -19,7 +19,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="AngleSharp.ReadOnlyDom.Helpers" />
-    <InternalsVisibleTo Include="AngleSharp.ReadOnlyDom.CompactPrototype" />
+    <InternalsVisibleTo Include="AngleSharp.ReadOnlyDom.Compact" />
     <InternalsVisibleTo Include="AngleSharp.ReadOnlyDom.Tests" />
   </ItemGroup>
 </Project>
