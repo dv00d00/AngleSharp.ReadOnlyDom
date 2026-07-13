@@ -1,7 +1,4 @@
 #if NET10_0
-// og AngleSharp parser commented out for now (these usings only served it).
-// using AngleSharp.Dom;
-// using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.CompactPrototype;
 using AngleSharp.ReadOnlyDom.Html;
@@ -13,9 +10,6 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 [GcServer(true)]
 public class FatDocumentParsingBenchmark
 {
-    // Explicit parser configuration per tier so the comparison is not at the mercy of defaults.
-    // Both tiers skip comments/PIs (matching the read-only Minimal/SourceMapped profiles); the only
-    // difference between tiers is whether source references are kept.
     private static readonly HtmlParserOptions NonTrackingOptions = new()
     {
         SkipComments = true,
@@ -29,9 +23,6 @@ public class FatDocumentParsingBenchmark
         SkipProcessingInstructions = true,
         IsKeepingSourceReferences = true,
     };
-
-    // og AngleSharp parser commented out for now.
-    // private readonly HtmlParser _angleSharpParser = new();
 
     private readonly HtmlParser _readOnlyParser = new(
         NonTrackingOptions,
@@ -57,7 +48,6 @@ public class FatDocumentParsingBenchmark
         var corpus = BenchmarkCorpus.LoadLargestAnonymized(3);
         _html = corpus.Single(document => document.Name == Document).Html;
 
-        // using var angleSharp = _angleSharpParser.ParseDocument(_html);
         using var readOnly = _readOnlyParser.ParseReadOnlyDocument(_html);
         using var readOnlySource = _readOnlySourceParser.ParseReadOnlyDocument(_html);
         using var frozen = _frozenParser.Parse(_html);
@@ -88,14 +78,6 @@ public class FatDocumentParsingBenchmark
         }
     }
 
-    // og AngleSharp parser commented out for now.
-    // [Benchmark(Baseline = true)]
-    // public int AngleSharpDefault()
-    // {
-    //     using var document = _angleSharpParser.ParseDocument(_html);
-    //     return document.ChildNodes.Length;
-    // }
-
     [Benchmark(Baseline = true)]
     public int ReadOnlyDom()
     {
@@ -123,16 +105,6 @@ public class FatDocumentParsingBenchmark
         using var document = _frozenSourceParser.Parse(_html);
         return document.NodeCount;
     }
-
-    // og AngleSharp parser commented out for now.
-    // private static int CountElements(INode node)
-    // {
-    //     var count = node is IElement ? 1 : 0;
-    //     var children = node is IHtmlTemplateElement template ? template.Content.ChildNodes : node.ChildNodes;
-    //     foreach (var child in children)
-    //         count += CountElements(child);
-    //     return count;
-    // }
 
     private static int CountElements(IReadOnlyNode node)
     {

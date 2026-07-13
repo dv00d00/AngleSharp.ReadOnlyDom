@@ -71,8 +71,6 @@ internal sealed class Arena : IDisposable
         return node;
     }
 
-    // Adds a leaf node (text/comment/PI) without allocating a wrapper. The tree builder never retains
-    // these; a wrapper is materialized lazily by Node(handle) only if something navigates to it.
     private int AddLeaf(StringOrMemory name, StringOrMemory value, CompactNodeKind kind)
     {
         var handle = AddState(name, NodeFlags.None, kind);
@@ -372,9 +370,6 @@ internal sealed class Arena : IDisposable
         if (!CanFreeze(root))
             throw new InvalidOperationException("This arena requires packed finalization.");
 
-        // Names were interned during construction into the NameIds column and the MutableAttribute
-        // structs, so freezing no longer re-walks the tree to build id arrays — the frozen document
-        // reads ids straight from the retained columns.
         var attributeCount = _attributes?.Count ?? 0;
         var nameArray = CopyCustomNames(_names);
         _columns.ReleaseConstructionColumns();
@@ -397,8 +392,6 @@ internal sealed class Arena : IDisposable
 
     internal ushort FrozenAttributeNameId(int attribute) => _attributes![attribute].NameId;
 
-    // The interned name-id column is contiguous, which lets callers scan it with SIMD (see
-    // CompactDocument.IndexOfName). An object-graph DOM cannot expose anything equivalent.
     internal ReadOnlySpan<ushort> NameIdColumn => _columns.NameIds.AsSpan(0, _columns.Count);
 
     internal int FrozenFirstChild(int handle) => FinalFirstChild(handle);

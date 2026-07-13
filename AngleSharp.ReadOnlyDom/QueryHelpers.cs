@@ -166,9 +166,7 @@ public static class QueryHelpers
     }
 
     /// <summary>
-    /// Counts descendant elements matching <paramref name="tag"/> + <paramref name="className"/> via a
-    /// concrete-typed, element-only recursive walk — an allocation-free fast path that avoids the
-    /// interface-dispatched <see cref="AllDescendants"/> traversal. Falls back to 0 for foreign node types.
+    /// Counts matching descendant elements without allocating a traversal collection.
     /// </summary>
     public static int CountTagClass(this IReadOnlyNode node, StringOrMemory tag, string className) =>
         node is ReadOnlyNode concrete ? concrete.CountTagClassElements(tag, className) : 0;

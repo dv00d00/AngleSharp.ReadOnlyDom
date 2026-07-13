@@ -4,11 +4,7 @@ using System.Text;
 namespace AngleSharp.ReadOnlyDom.CompactPrototype;
 
 /// <summary>
-/// A zero-allocation cursor over a single node in a <see cref="CompactDocument"/> — just a
-/// (document, handle) pair. It is the ergonomic unit both query surfaces return: the familiar
-/// descendant walk (<see cref="CompactQuery.Descendants"/>) and the SIMD-friendly tag scan
-/// (<see cref="CompactQuery.Elements(CompactDocument, string)"/>). Names resolve either by string
-/// (convenient) or by a pre-resolved id from <see cref="CompactQuery.Name"/> (for hot loops).
+/// A value-type cursor over one node in a <see cref="CompactDocument"/>.
 /// </summary>
 public readonly struct Node
 {
@@ -42,13 +38,10 @@ public readonly struct Node
         }
     }
 
-    /// <summary>True when this is an element named <paramref name="tag"/>.</summary>
     public bool Is(string tag) => Is(_document!.ResolveNameId(tag));
 
-    /// <summary>Span overload — resolves without allocating a name string.</summary>
     public bool Is(ReadOnlySpan<char> tag) => Is(_document!.ResolveNameId(tag));
 
-    /// <summary>Id-based overload for hot loops; resolve once with <see cref="CompactQuery.Name"/>.</summary>
     public bool Is(ushort tagId) =>
         tagId != ushort.MaxValue
         && _document!.KindAt(_handle) == CompactNodeKind.Element
@@ -112,21 +105,18 @@ public readonly struct Node
             new Node(_document!, child).WriteText(ref sink);
     }
 
-    /// <summary>Appends descendant text into <paramref name="builder"/> without allocating a string.</summary>
     public void AppendText(StringBuilder builder)
     {
         var sink = new StringBuilderSink(builder);
         WriteText(ref sink);
     }
 
-    /// <summary>Writes descendant text directly to a <see cref="TextWriter"/> from the value spans.</summary>
     public void WriteText(TextWriter writer)
     {
         var sink = new TextWriterSink(writer);
         WriteText(ref sink);
     }
 
-    /// <summary>Writes descendant text into an <see cref="IBufferWriter{Char}"/> from the value spans.</summary>
     public void WriteText(IBufferWriter<char> writer)
     {
         var sink = new BufferWriterSink(writer);
@@ -200,7 +190,6 @@ public readonly struct Node
         return false;
     }
 
-    /// <summary>Allocation-free enumerator over direct child nodes (first-child / next-sibling walk).</summary>
     public struct ChildCursor
     {
         private readonly CompactDocument _document;

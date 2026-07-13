@@ -33,6 +33,16 @@ public sealed class CompactParserTests
     }
 
     [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task ElementQueriesExcludeNonElementNames(CompactDocumentLayout layout)
+    {
+        using var document = CompactParser.Parse("<main>text</main>", layout: layout);
+
+        await Assert.That(document.Elements("#text").Count()).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task MutationHeavyMarkupFallsBackToPackedLayout()
     {
         using var document = CompactParser.Parse("<main><table>before<tr><td>x</td></tr></table></main>");

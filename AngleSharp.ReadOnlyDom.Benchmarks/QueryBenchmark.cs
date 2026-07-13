@@ -8,12 +8,6 @@ using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
-// Query-only (no parse, no extraction): the document is parsed once in Setup and held; each benchmark
-// just counts a sparse div.error. Exercises the new query extensions on the arena:
-//   ArenaDescendants - familiar surface: doc.Descendants() + n.Is("div") && n.HasClass("error").
-//   ArenaPushdown    - fast surface: doc.Elements("div").WithClass("error") (tag pushed into the SIMD
-//                      name-id scan, class checked only on candidates).
-// Compared against AngleSharp CSS QuerySelectorAll and the read-only DOM's QueryHelpers.
 [MemoryDiagnoser]
 [GcServer(true)]
 public class QueryBenchmark
@@ -94,7 +88,6 @@ public class QueryBenchmark
         return count;
     }
 
-    // Additive RODOM fast path: concrete-typed, element-only walk (no interface-dispatched AllDescendants).
     [Benchmark]
     public int ReadOnlyFast() => _readOnly.CountTagClass("div", "error");
 
@@ -110,7 +103,6 @@ public class QueryBenchmark
         return count;
     }
 
-    // Familiar surface with the tag id pre-resolved once (the documented hot-loop pattern).
     [Benchmark]
     public int ArenaDescendantsPre()
     {

@@ -103,7 +103,6 @@ public sealed class CompactDocument : IDisposable
         );
     }
 
-    // Single-column reads for hot predicates, so Is/Kind/NameId don't reconstruct a whole CompactNode.
     internal CompactNodeKind KindAt(int handle) => _arena is null ? _nodes![handle].Kind : _arena.FrozenKind(handle);
 
     internal ushort NameIdAt(int handle) => _arena is null ? _nodes![handle].NameId : _arena.FrozenNameId(handle);
@@ -134,11 +133,8 @@ public sealed class CompactDocument : IDisposable
     }
 
     /// <summary>
-    /// Returns the next node handle at or after <paramref name="start"/> whose name-id equals
-    /// <paramref name="nameId"/>, or -1. In the frozen (columnar) layout the name-id column is a
-    /// contiguous <see cref="ushort"/> span, reinterpreted as <see cref="char"/> so the scan uses
-    /// the vectorized <c>IndexOf</c>. Because a known tag's id is unique to elements, matching the
-    /// id alone selects elements (no kind check needed). Packed layout falls back to a scalar scan.
+    /// Returns the next node at or after <paramref name="start"/> with the given name ID, or -1.
+    /// Frozen columns use a vectorized scan; packed documents use a scalar scan.
     /// </summary>
     public int IndexOfName(ushort nameId, int start = 0)
     {
@@ -213,10 +209,7 @@ public sealed class CompactDocument : IDisposable
     }
 
     /// <summary>
-    /// Resolves a name to its id only if the name actually occurs in this document, else
-    /// <see cref="ushort.MaxValue"/> — i.e. an existence check. Presence is verified by scanning, so this
-    /// is O(nodes); do NOT call it per node. For per-node predicates pre-resolve once with
-    /// <see cref="CompactQuery.Name"/> / <see cref="ResolveNameId(string)"/> and compare ids.
+    /// Resolves a name only when it occurs in this document. This scans nodes and attributes.
     /// </summary>
     public ushort FindNameId(string name) => FindNameId(name.AsSpan());
 
@@ -227,10 +220,7 @@ public sealed class CompactDocument : IDisposable
     }
 
     /// <summary>
-    /// Resolves a name to its id without a presence scan — O(1) for known tags/attributes, O(distinct
-    /// custom names) otherwise. A known name returns its stable id even when absent from the document
-    /// (the query layer surfaces "no matches" by scanning), which keeps per-node predicates cheap. This
-    /// is the resolver the query surfaces use; <see cref="FindNameId(string)"/> adds the existence check.
+    /// Resolves a stable name ID without checking whether it occurs in this document.
     /// </summary>
     public ushort ResolveNameId(string name) => ResolveNameId(name.AsSpan());
 

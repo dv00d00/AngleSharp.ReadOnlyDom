@@ -26,8 +26,7 @@ internal sealed class PooledReferenceBuffer<T> : IDisposable
         _items[Count++] = item;
     }
 
-    // Reserves a slot without materializing a wrapper. Keeps handle == index alignment for leaf nodes
-    // whose reference object is only created on demand (see Arena.Node).
+    // Preserve handle/index alignment without allocating a leaf wrapper.
     public void AddEmpty()
     {
         if (Count == _items.Length)

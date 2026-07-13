@@ -1,48 +1,32 @@
 namespace AngleSharp.ReadOnlyDom.CompactPrototype;
 
 /// <summary>
-/// Predicate-pushdown-lite query helpers over the columnar store.
-///
-/// The tag predicate is the selective one, so it is "pushed down" into a vectorized scan of the
-/// contiguous name-id column (<see cref="CompactDocument.IndexOfName"/>). Cheaper-to-check secondary
-/// predicates (a class token, one attribute presence/equality) are applied only to the candidates the
-/// scan surfaces — so attribute values are read for matches, not for every node.
-///
-/// Enumeration is a struct enumerator yielding node handles; there are no per-node allocations and no
-/// delegate predicates. An object-graph DOM cannot push a tag filter into a SIMD scan like this because
-/// its names live behind per-node reference indirection.
+/// Allocation-free queries over the compact columnar store.
 /// </summary>
 public static class CompactQuery
 {
-    /// <summary>The document root as a cursor.</summary>
     public static Node Root(this CompactDocument document) => new(document, 0);
 
-    /// <summary>Pre-resolves a tag/attribute name to its id for id-based predicates in hot loops.</summary>
+    /// <summary>Resolves a name once for ID-based predicates.</summary>
     public static ushort Name(this CompactDocument document, string name) => document.ResolveNameId(name);
 
-    /// <summary>Span overload — resolves without allocating a name string.</summary>
     public static ushort Name(this CompactDocument document, ReadOnlySpan<char> name) => document.ResolveNameId(name);
 
     /// <summary>
-    /// Familiar surface: every node in document (preorder) as a cursor. Handles are stored in preorder,
-    /// so this is a flat scan — cheap, but scalar (touches every node). Use for arbitrary predicates:
-    /// <c>doc.Descendants().Where(n =&gt; n.Is("div") &amp;&amp; n.HasClass("error"))</c>.
+    /// Scans every node below the document root in preorder.
     /// </summary>
     public static DescendantScan Descendants(this CompactDocument document) => new(document);
 
-    /// <summary>Fast surface: tag pushed into a vectorized name-id scan. Yields <see cref="Node"/> cursors.</summary>
+    /// <summary>Scans elements using the name-ID column.</summary>
     public static ElementQuery Elements(this CompactDocument document, string tag) =>
         new(document, document.ResolveNameId(tag), hasClass: false, default, null, hasAttr: false, default, null);
 
-    /// <summary>Span overload — resolves the tag without allocating a name string.</summary>
     public static ElementQuery Elements(this CompactDocument document, ReadOnlySpan<char> tag) =>
         new(document, document.ResolveNameId(tag), hasClass: false, default, null, hasAttr: false, default, null);
 
-    /// <summary>Fast surface with a pre-resolved tag id (see <see cref="Name"/>).</summary>
     public static ElementQuery Elements(this CompactDocument document, ushort tagId) =>
         new(document, tagId, hasClass: false, default, null, hasAttr: false, default, null);
 
-    /// <summary>Allocation-free preorder scan over all nodes below the document root.</summary>
     public struct DescendantScan
     {
         private readonly CompactDocument _document;
@@ -93,11 +77,11 @@ public static class CompactQuery
             _attrValue = attrValue;
         }
 
-        /// <summary>Adds a <c>class</c>-token filter (whitespace-separated match), applied to candidates.</summary>
+        /// <summary>Filters by a whitespace-separated class token.</summary>
         public ElementQuery WithClass(string token) =>
             new(_document, _tagId, true, _document.ResolveNameId("class"), token, _hasAttr, _attrId, _attrValue);
 
-        /// <summary>Adds an attribute filter: presence when <paramref name="value"/> is null, else equality.</summary>
+        /// <summary>Filters by attribute presence or value equality.</summary>
         public ElementQuery WithAttribute(string name, string? value = null) =>
             new(_document, _tagId, _hasClass, _classId, _classToken, true, _document.ResolveNameId(name), value);
 
@@ -181,7 +165,7 @@ public static class CompactQuery
                 var handle = document.IndexOfName(_query._tagId, _current + 1);
                 while (handle >= 0)
                 {
-                    if (_query.Matches(handle))
+                    if (document.KindAt(handle) == CompactNodeKind.Element && _query.Matches(handle))
                     {
                         _current = handle;
                         return true;

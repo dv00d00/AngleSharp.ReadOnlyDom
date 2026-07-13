@@ -7,11 +7,6 @@ using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
-// Isolated selection cost (no parse, no extraction): the document is parsed once in Setup and held,
-// then each benchmark just counts a SPARSE tag (<form>) buried in noise. This is the regime where the
-// columnar SIMD scan should win: the target is a tiny fraction of nodes, so a vectorized IndexOf over
-// the name-id column skips huge non-matching runs, while the scalar loop reconstructs every node and the
-// read-only DOM walks every object. Contrast with FullFlowBenchmark, which is extraction-bound and hides this.
 [MemoryDiagnoser]
 [GcServer(true)]
 public class SelectivityBenchmark

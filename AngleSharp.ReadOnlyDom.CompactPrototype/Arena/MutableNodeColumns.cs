@@ -57,7 +57,6 @@ internal sealed class MutableNodeColumns : IDisposable
         return handle;
     }
 
-    // Returns the columns that are only read during construction so a frozen arena does not retain them.
     public void ReleaseConstructionColumns()
     {
         Return(PreviousSiblings, false);
