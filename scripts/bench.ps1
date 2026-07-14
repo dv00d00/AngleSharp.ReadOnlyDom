@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("micro", "small", "full", "retained", "compact", "query", "plan", "streaming", "aggregate", "long-streaming", "all")]
+    [ValidateSet("micro", "small", "full", "retained", "compact", "query", "plan", "streaming", "aggregate", "long-streaming", "utf8-tokenizer", "utf8-rodom", "utf8-dom", "all")]
     [string] $Tier = "all"
 )
 
@@ -59,6 +59,15 @@ if ($Tier -in @("streaming", "aggregate", "all")) {
 }
 if ($Tier -in @("long-streaming", "all")) {
     Invoke-Benchmark "*LongSyntheticConstructionBenchmark*" "long-streaming"
+}
+if ($Tier -in @("utf8-tokenizer", "all")) {
+    Invoke-Benchmark "*Utf8TokenizerBenchmark*" "utf8-tokenizer"
+}
+if ($Tier -in @("utf8-rodom", "all")) {
+    Invoke-Benchmark "*Utf8RodomBenchmark*" "utf8-rodom"
+}
+if ($Tier -in @("utf8-dom", "all")) {
+    Invoke-Benchmark "*Utf8DomProjectionBenchmark*" "utf8-dom"
 }
 if ($Tier -in @("small", "all")) {
     Invoke-Benchmark "*CorpusBenchmark*" "corpus-small" "small"

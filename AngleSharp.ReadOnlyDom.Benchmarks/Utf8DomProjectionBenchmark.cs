@@ -2,6 +2,7 @@
 using System.Text;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
+using AngleSharp.ReadOnlyDom.Streaming;
 using AngleSharp.ReadOnlyDom.Compact.Experimental;
 using BenchmarkDotNet.Attributes;
 

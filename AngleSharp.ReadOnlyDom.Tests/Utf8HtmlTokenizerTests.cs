@@ -6,7 +6,7 @@ using AngleSharp.Html;
 using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens;
 using AngleSharp.Text;
-using AngleSharp.ReadOnlyDom.Compact.Experimental;
+using AngleSharp.ReadOnlyDom.Streaming;
 
 namespace AngleSharp.Readonly.Tests;
 
@@ -72,6 +72,10 @@ public sealed class Utf8HtmlTokenizerTests
     [Arguments("<p>&notin;&notit;&ampx</p>")]
     [Arguments("<a x='&notit;' y='&ampx'>x</a>")]
     [Arguments("<p>&#x80;&#0;&#xD800;</p>")]
+    [Arguments("<p>&#12foo &#x12zoo</p>")]
+    [Arguments("<p>&#99999999999999999999999999999999999999999999999999;</p>")]
+    [Arguments("<p>&#xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;</p>")]
+    [Arguments("<p>&#xFDD0;&#x1F;&#13;</p>")]
     public async Task CommonReadOnlyLexicalPathMatchesAngleSharp(string html)
     {
         var utf8 = Encoding.UTF8.GetBytes(html);

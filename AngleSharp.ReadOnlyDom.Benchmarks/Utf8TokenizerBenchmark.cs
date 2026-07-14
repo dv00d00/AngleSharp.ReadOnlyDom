@@ -3,7 +3,7 @@ using System.Text;
 using AngleSharp.Html;
 using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens;
-using AngleSharp.ReadOnlyDom.Compact.Experimental;
+using AngleSharp.ReadOnlyDom.Streaming;
 using AngleSharp.Text;
 using BenchmarkDotNet.Attributes;
 
@@ -21,6 +21,12 @@ public class Utf8TokenizerBenchmark
         var document = BenchmarkCorpus.LoadLargestAnonymized(2)[1];
         _utf8 = Encoding.UTF8.GetBytes(document.Html);
         Console.WriteLine($"UTF-8 tokenizer fixture: {_utf8.Length:N0} bytes.");
+
+        var tokenizer = new Utf8HtmlTokenizer(_sink);
+        tokenizer.Write(_utf8);
+        tokenizer.Complete();
+        Console.WriteLine($"Maximum buffered token data: {tokenizer.Counters.MaximumBufferedTokenBytes:N0} bytes.");
+        _sink.Reset();
     }
 
     [Benchmark(Baseline = true)]

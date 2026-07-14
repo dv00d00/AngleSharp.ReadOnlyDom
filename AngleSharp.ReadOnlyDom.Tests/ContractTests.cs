@@ -9,6 +9,30 @@ namespace AngleSharp.Readonly.Tests;
 
 public class ContractTests
 {
+#if NET10_0
+    [Test]
+    public async Task ByteMemoryInputSupportsAutomaticEncodingDetection()
+    {
+        var source = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes("<main>café</main>")).ToArray();
+        var parser = new HtmlParser(default, ReadOnlyParser.DefaultContext);
+
+        using var document = parser.ParseReadOnlyDocument(source.AsMemory());
+
+        await Assert.That(document.Body.GetTextContent()).IsEqualTo("café");
+    }
+
+    [Test]
+    public async Task ByteMemoryInputSupportsAuthoritativeEncoding()
+    {
+        var source = Encoding.Latin1.GetBytes("<main>café</main>");
+        var parser = new HtmlParser(default, ReadOnlyParser.DefaultContext);
+
+        using var document = parser.ParseReadOnlyDocument(source.AsMemory(), Encoding.Latin1);
+
+        await Assert.That(document.Body.GetTextContent()).IsEqualTo("café");
+    }
+#endif
+
     [Test]
     public async Task DocumentNavigationUsesTheHtmlTree()
     {

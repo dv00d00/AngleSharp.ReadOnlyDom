@@ -15,6 +15,31 @@ namespace AngleSharp.Readonly.Tests;
 public sealed class CompactParserTests
 {
     [Test]
+    public async Task ByteMemoryInputConstructsCompactDocument()
+    {
+        var source = Encoding.UTF8.GetBytes("<main data-kind=sample>café</main>");
+
+        using var document = CompactParser.CreateParser().ParseCompactDocument(source.AsMemory());
+        var main = document.Elements("main").First();
+
+        await Assert.That(main.Attr("data-kind").ToString()).IsEqualTo("sample");
+        await Assert.That(main.Text()).IsEqualTo("café");
+    }
+
+    [Test]
+    public async Task Utf8StreamConstructsCompactDocumentThroughBoundedSource()
+    {
+        var source = Encoding.UTF8.GetBytes("<main data-kind=stream>café</main>");
+        var parser = CompactParser.CreateParser();
+
+        using var document = await parser.ParseCompactDocumentAsync(new MemoryStream(source));
+        var main = document.Elements("main").First();
+
+        await Assert.That(main.Attr("data-kind").ToString()).IsEqualTo("stream");
+        await Assert.That(main.Text()).IsEqualTo("café");
+    }
+
+    [Test]
     public async Task CoreNodeIsExactlySixteenBytes() => await Assert.That(Unsafe.SizeOf<CompactNode>()).IsEqualTo(16);
 
     [Test]

@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using AngleSharp.Dom;
 using AngleSharp.Html.Dom.Events;
 using AngleSharp.Html.Parser;
@@ -106,6 +107,24 @@ public static class ReadOnlyParser
                 )
         );
     }
+
+#if NET8_0_OR_GREATER
+    public static IReadOnlyDocument ParseReadOnlyDocument(
+        this IHtmlParser parser,
+        ReadOnlyMemory<byte> source,
+        Encoding? encoding = null,
+        TokenizerMiddleware? middleware = null
+    ) =>
+        ParseReadOnlyDocument(
+            parser,
+            new TextSource(
+                encoding is null
+                    ? new ReadOnlyByteTextSource(source)
+                    : new ReadOnlyByteTextSource(source, encoding)
+            ),
+            middleware
+        );
+#endif
 
     private static IReadOnlyDocument ParseWithDiagnostics(IHtmlParser parser, Func<ReadOnlyDocument> parse)
     {

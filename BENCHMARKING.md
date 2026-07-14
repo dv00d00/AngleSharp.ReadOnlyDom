@@ -16,6 +16,9 @@ Run a tier from the repository root:
 ./scripts/bench.ps1 streaming
 ./scripts/bench.ps1 aggregate
 ./scripts/bench.ps1 long-streaming
+./scripts/bench.ps1 utf8-tokenizer
+./scripts/bench.ps1 utf8-rodom
+./scripts/bench.ps1 utf8-dom
 ./scripts/bench.ps1 full
 ./scripts/bench.ps1 all
 ```
@@ -40,6 +43,19 @@ forced-GC retained-memory measurement without running BenchmarkDotNet.
 near EOF. Every implementation consumes the full rooted string and runs AngleSharp HTML construction semantics. It
 compares read-only DOM traversal, compact materialization plus plan, specialized construction-time extraction, and the
 EOF aggregate; it does not claim bounded-memory input or early termination.
+
+`utf8-tokenizer` is an exploratory wire-byte benchmark. It compares complete UTF-8-to-string decoding followed by the
+AngleSharp tokenizer against the monotonic UTF-8 tokenizer kernel and a borrowed-span counting sink. Run
+`dotnet run --project AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- --utf8-token-smoke` first to write both
+normalized token streams under `%TEMP%\AngleSharp.ReadOnlyDom\utf8-token-smoke` and fail at their first difference.
+
+`utf8-rodom` measures complete compact RODOM construction plus a tag query from the same UTF-8 bytes. It compares a full
+string decode, the resident byte text source, and the bounded AngleSharp streaming source with 4 KiB network-like reads.
+
+`utf8-dom` compares decode plus mutable AngleSharp DOM construction and a `div` `{id, class, descendant text}` projection
+against the native UTF-8 tokenizer folding directly into the same fingerprint. Setup requires exact equality with the
+ordinary DOM on the 2 MB fixture. This validates that concrete view and corpus, not all HTML tree-construction behavior.
+
 
 ## Retained-memory method
 

@@ -2,9 +2,11 @@ using System.Buffers;
 using System.Globalization;
 using System.IO.Pipelines;
 using System.Text;
+using AngleSharp.Common;
 using AngleSharp.Html;
+using AngleSharp.Html.Parser;
 
-namespace AngleSharp.ReadOnlyDom.Compact.Experimental;
+namespace AngleSharp.ReadOnlyDom.Streaming;
 
 /// <summary>
 /// Experimental monotonic UTF-8 tokenizer kernel for read-only construction. HTML syntax is scanned as ASCII bytes;
@@ -71,6 +73,7 @@ public sealed class Utf8HtmlTokenizer
     private readonly ArrayBufferWriter<byte> _doctypePublic = new(64);
     private readonly ArrayBufferWriter<byte> _doctypeSystem = new(64);
     private readonly byte[] _utf8Carry = new byte[4];
+    private readonly char[] _entityName = new char[33];
     private State _state;
     private State _returnState;
     private bool _isEndTag;
@@ -82,6 +85,7 @@ public sealed class Utf8HtmlTokenizer
     private long _reconsumes;
     private int _maximumBufferedTokenBytes;
     private int _utf8CarryLength;
+    private bool _numericReferenceOverflow;
     private bool _completed;
 
     public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink) =>
@@ -89,6 +93,32 @@ public sealed class Utf8HtmlTokenizer
 
     public Utf8HtmlTokenizerCounters Counters =>
         new(_bytesConsumed, _segments, _reconsumes, 0, _maximumBufferedTokenBytes);
+
+    /// <summary>
+    /// Applies the tokenizer state selected by an external tree constructor.
+    /// </summary>
+    public void SetMode(HtmlParseMode mode, string? contextTagName)
+    {
+        _rawEndTag = mode switch
+        {
+            HtmlParseMode.RCData => "rcdata:" + (contextTagName ?? "\0"),
+            HtmlParseMode.Rawtext => contextTagName ?? "\0",
+            HtmlParseMode.Script => contextTagName ?? "script",
+            HtmlParseMode.Plaintext => "\0",
+            _ => null,
+        };
+        _state = mode switch
+        {
+            HtmlParseMode.RCData or HtmlParseMode.Rawtext => State.RawText,
+            HtmlParseMode.Script => State.ScriptData,
+            HtmlParseMode.Plaintext => State.Plaintext,
+            _ => State.Data,
+        };
+    }
+
+    public bool IsAcceptingCharacterData { get; set; }
+
+    public bool IsModeControlledExternally { get; set; }
 
     public void Write(ReadOnlyMemory<byte> utf8)
     {
@@ -102,7 +132,59 @@ public sealed class Utf8HtmlTokenizer
         ThrowIfCompleted();
         _bytesConsumed += utf8.Length;
         var index = 0;
-        FlushUtf8Carry(utf8, ref index);
+        while (_utf8CarryLength != 0)
+        {
+            var status = Rune.DecodeFromUtf8(_utf8Carry.AsSpan(0, _utf8CarryLength), out _, out var consumed);
+            if (status == OperationStatus.Done)
+            {
+                WriteValidUtf8(_utf8Carry.AsSpan(0, consumed));
+                _utf8CarryLength = 0;
+                break;
+            }
+            if (status == OperationStatus.InvalidData)
+            {
+                WriteValidUtf8("\uFFFD"u8);
+                ShiftUtf8Carry(Math.Max(consumed, 1));
+                continue;
+            }
+            if (index == utf8.Length)
+                return;
+            _utf8Carry[_utf8CarryLength++] = utf8[index++];
+        }
+
+        while (index < utf8.Length)
+        {
+            var asciiStart = index;
+            while (index < utf8.Length && utf8[index] < 0x80)
+                index++;
+            if (index != asciiStart)
+                WriteValidUtf8(utf8[asciiStart..index]);
+            if (index == utf8.Length)
+                break;
+
+            var status = Rune.DecodeFromUtf8(utf8[index..], out _, out var consumed);
+            if (status == OperationStatus.Done)
+            {
+                WriteValidUtf8(utf8.Slice(index, consumed));
+                index += consumed;
+            }
+            else if (status == OperationStatus.InvalidData)
+            {
+                WriteValidUtf8("\uFFFD"u8);
+                index += Math.Max(consumed, 1);
+            }
+            else
+            {
+                utf8[index..].CopyTo(_utf8Carry);
+                _utf8CarryLength = utf8.Length - index;
+                break;
+            }
+        }
+    }
+
+    private void WriteValidUtf8(ReadOnlySpan<byte> utf8)
+    {
+        var index = 0;
         while (index < utf8.Length)
         {
             if (_state is State.Data or State.RawText or State.Plaintext && !_pendingCarriageReturn)
@@ -543,6 +625,42 @@ public sealed class Utf8HtmlTokenizer
 
     private void ProcessCharacterReference(byte value, ref bool reconsume)
     {
+        var source = _candidate.WrittenSpan;
+        if (!source.IsEmpty && source[0] == (byte)'#')
+        {
+            if (source.Length == 1 && value is (byte)'x' or (byte)'X')
+            {
+                Append(_candidate, value);
+                return;
+            }
+
+            if (value == (byte)';')
+            {
+                if (!_numericReferenceOverflow)
+                    Append(_candidate, value);
+                ResolveCharacterReference();
+                _state = _returnState;
+                return;
+            }
+
+            var isHex = source.Length > 1 && source[1] is (byte)'x' or (byte)'X';
+            var isDigit = isHex
+                ? (uint)(value - '0') <= 9 || (uint)(AsciiLower(value) - 'a') <= 5
+                : (uint)(value - '0') <= 9;
+            if (isDigit)
+            {
+                if (_candidate.WrittenCount < 32)
+                    Append(_candidate, value);
+                else
+                    _numericReferenceOverflow = true;
+                return;
+            }
+
+            ResolveCharacterReference(value);
+            Reconsume(ref reconsume, _returnState);
+            return;
+        }
+
         if (value == (byte)';')
         {
             Append(_candidate, value);
@@ -565,27 +683,44 @@ public sealed class Utf8HtmlTokenizer
         var source = _candidate.WrittenSpan;
         Span<byte> replacement = stackalloc byte[8];
         var replacementLength = 0;
-        if (TryParseNumeric(source, out var scalar))
+        if (_numericReferenceOverflow && !source.IsEmpty && source[0] == (byte)'#')
         {
-            var numeric = HtmlEntityProvider.IsInCharacterTable(scalar)
-                ? HtmlEntityProvider.GetSymbolFromTable(scalar)!
-                : HtmlEntityProvider.IsInvalidNumber(scalar)
-                    ? "\uFFFD"
-                    : char.ConvertFromUtf32(scalar);
-            replacementLength = Encoding.UTF8.GetBytes(numeric, replacement);
+            replacementLength = Encoding.UTF8.GetBytes("\uFFFD", replacement);
+        }
+        else if (TryParseNumeric(source, out var scalar))
+        {
+            if (HtmlEntityProvider.IsInCharacterTable(scalar))
+            {
+                replacementLength = Encoding.UTF8.GetBytes(
+                    HtmlEntityProvider.GetSymbolFromTable(scalar)!,
+                    replacement
+                );
+            }
+            else if (HtmlEntityProvider.IsInvalidNumber(scalar) || !Rune.TryCreate(scalar, out var rune))
+            {
+                replacementLength = Encoding.UTF8.GetBytes("\uFFFD", replacement);
+            }
+            else
+            {
+                replacementLength = rune.EncodeToUtf8(replacement);
+            }
         }
         else if (!source.IsEmpty)
         {
-            Span<char> chars = stackalloc char[33];
             for (var i = 0; i < source.Length; i++)
-                chars[i] = (char)source[i];
+                _entityName[i] = (char)source[i];
             for (var length = source.Length; length > 0; length--)
             {
-                var key = chars[..length].ToString();
-                var entity = HtmlEntityProvider.Resolver.GetSymbol(key);
+                var key = new StringOrMemory(_entityName.AsMemory(0, length));
+                var entity = HtmlEntityProvider.ResolverExtended.GetSymbol(key);
                 var missingSemicolon = source[length - 1] != (byte)';';
                 if (entity is null && missingSemicolon)
-                    entity = HtmlEntityProvider.Resolver.GetSymbol(key + ";");
+                {
+                    _entityName[length] = ';';
+                    entity = HtmlEntityProvider.ResolverExtended.GetSymbol(
+                        new StringOrMemory(_entityName.AsMemory(0, length + 1))
+                    );
+                }
                 if (entity is null)
                     continue;
                 if (
@@ -640,6 +775,7 @@ public sealed class Utf8HtmlTokenizer
     private void BeginCharacterReference(State returnState)
     {
         _candidate.Clear();
+        _numericReferenceOverflow = false;
         _returnState = returnState;
         _state = State.CharacterReference;
     }
@@ -961,7 +1097,7 @@ public sealed class Utf8HtmlTokenizer
         {
             EmitTagStart();
             _sink.StartTagEnd(selfClosing);
-            if (!selfClosing)
+            if (!selfClosing && !IsModeControlledExternally)
             {
                 var name = _name.WrittenSpan;
                 if (name.SequenceEqual("title"u8) || name.SequenceEqual("textarea"u8))
@@ -1047,28 +1183,10 @@ public sealed class Utf8HtmlTokenizer
         );
     }
 
-    private void FlushUtf8Carry(ReadOnlySpan<byte> utf8, ref int index)
+    private void ShiftUtf8Carry(int consumed)
     {
-        if (_utf8CarryLength == 0)
-            return;
-        var expected = Utf8SequenceLength(_utf8Carry[0]);
-        while (_utf8CarryLength < expected && index < utf8.Length)
-        {
-            var next = utf8[index];
-            if ((next & 0xC0) != 0x80)
-            {
-                EmitReplacementCharacter();
-                _utf8CarryLength = 0;
-                return;
-            }
-            _utf8Carry[_utf8CarryLength++] = next;
-            index++;
-        }
-        if (_utf8CarryLength == expected)
-        {
-            _sink.Text(_utf8Carry.AsSpan(0, _utf8CarryLength));
-            _utf8CarryLength = 0;
-        }
+        _utf8Carry.AsSpan(consumed, _utf8CarryLength - consumed).CopyTo(_utf8Carry);
+        _utf8CarryLength -= consumed;
     }
 
     private static int CompleteUtf8PrefixLength(ReadOnlySpan<byte> value)

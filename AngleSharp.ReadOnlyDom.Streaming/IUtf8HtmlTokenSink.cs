@@ -1,4 +1,4 @@
-namespace AngleSharp.ReadOnlyDom.Compact.Experimental;
+namespace AngleSharp.ReadOnlyDom.Streaming;
 
 public readonly ref struct Utf8DoctypeToken(
     ReadOnlySpan<byte> name,

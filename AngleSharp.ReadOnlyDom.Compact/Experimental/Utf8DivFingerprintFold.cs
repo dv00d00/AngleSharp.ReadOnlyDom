@@ -4,6 +4,8 @@ using System.Text;
 
 namespace AngleSharp.ReadOnlyDom.Compact.Experimental;
 
+using AngleSharp.ReadOnlyDom.Streaming;
+
 /// <summary>
 /// Query-directed native UTF-8 fold used to validate the streaming extraction architecture.
 /// This is not an HTML tree builder: it maintains a lexical open-element stack and handles void elements,
