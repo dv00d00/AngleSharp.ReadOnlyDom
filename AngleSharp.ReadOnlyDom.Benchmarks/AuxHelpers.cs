@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-
-namespace AngleSharp.ReadOnlyDom.Benchmarks;
+﻿namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
 internal static class AuxHelpers
 {

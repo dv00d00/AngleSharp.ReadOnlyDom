@@ -7,8 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AngleSharp" />
     <PackageReference Include="System.IO.Pipelines" />
-    <ProjectReference Include="..\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj" />
-    <ProjectReference Include="..\AngleSharp.ReadOnlyDom.Streaming\AngleSharp.ReadOnlyDom.Streaming.csproj" />
   </ItemGroup>
 </Project>

@@ -4,7 +4,7 @@ using System.Text;
 using AngleSharp.Html;
 using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens;
-using AngleSharp.ReadOnlyDom.Compact.Experimental;
+using AngleSharp.ReadOnlyDom.Streaming;
 using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;

@@ -34,6 +34,12 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
                 return 0;
             }
 
+            if (args.Length > 0 && args[0].Equals("--qq-scraper-check", StringComparison.OrdinalIgnoreCase))
+            {
+                new QqArticleScraperBenchmark().Setup();
+                return 0;
+            }
+
             if (args.Length > 0 && args[0].Equals("--compact-corpus", StringComparison.OrdinalIgnoreCase))
             {
                 return CompactCorpusRunner.Run(args.Skip(1).ToArray());

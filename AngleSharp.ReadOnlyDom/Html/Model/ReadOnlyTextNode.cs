@@ -1,5 +1,4 @@
 ﻿using AngleSharp.Common;
-using AngleSharp.Dom;
 
 namespace AngleSharp.ReadOnlyDom.Html.Model;
 

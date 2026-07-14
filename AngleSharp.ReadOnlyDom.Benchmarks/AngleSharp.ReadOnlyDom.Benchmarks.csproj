@@ -33,6 +33,10 @@
       Include="..\AngleSharp.ReadOnlyDom.Compact\AngleSharp.ReadOnlyDom.Compact.csproj"
       Condition=" '$(TargetFramework)' == 'net10.0' "
     />
+    <ProjectReference
+      Include="..\AngleSharp.ReadOnlyDom.Streaming\AngleSharp.ReadOnlyDom.Streaming.csproj"
+      Condition=" '$(TargetFramework)' == 'net10.0' "
+    />
     <ProjectReference Include="..\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj" />
     <ProjectReference
       Include="..\AngleSharp.ReadOnlyDom.Helpers\AngleSharp.ReadOnlyDom.Helpers.csproj"

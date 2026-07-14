@@ -20,8 +20,10 @@ public class CompactStreamingExtractionBenchmark
         .TakeFirst()
         .SelectNormalizedText("text", required: true)
         .Compile();
+
     private readonly CompactStreamingExtractionPlan _streamingPlan = CompactStreamingExtractor
         .CompileFirstNormalizedText();
+
     private readonly CompactAggregatePlan _aggregatePlan = CompactAggregate
         .First(CompactAggregateSelector.Tag("div").WithId("content"))
         .Field("text", CompactAggregateProjection.SelfNormalizedText(), required: true)

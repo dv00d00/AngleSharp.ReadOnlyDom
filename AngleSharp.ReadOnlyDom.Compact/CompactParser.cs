@@ -2,6 +2,7 @@ using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.ReadOnlyDom.Compact.Arena;
 using AngleSharp.Text;
+using System.Text;
 
 namespace AngleSharp.ReadOnlyDom.Compact;
 
@@ -132,6 +133,50 @@ public static class CompactParser
         int length,
         TokenizerMiddleware? middleware = null
     ) => Parse(parser, new TextSource(new CharArrayTextSource(source, length)), middleware);
+
+    public static CompactDocument ParseCompactDocument(
+        this IHtmlParser parser,
+        ReadOnlyMemory<byte> source,
+        Encoding? encoding = null,
+        TokenizerMiddleware? middleware = null
+    ) =>
+        Parse(
+            parser,
+            new TextSource(
+                encoding is null
+                    ? new ReadOnlyByteTextSource(source)
+                    : new ReadOnlyByteTextSource(source, encoding)
+            ),
+            middleware
+        );
+
+    public static async Task<CompactDocument> ParseCompactDocumentAsync(
+        this HtmlParser parser,
+        Stream source,
+        HtmlStreamSourceMode sourceMode = HtmlStreamSourceMode.Streaming,
+        Encoding? encoding = null,
+        TokenizerMiddleware? middleware = null,
+        CancellationToken cancel = default
+    )
+    {
+        var document = await parser
+            .ParseDocumentAsync<ArenaDocument, ArenaElement>(
+                source,
+                sourceMode,
+                encoding,
+                middleware,
+                cancel
+            )
+            .ConfigureAwait(false);
+        try
+        {
+            return document.CreateCompactDocument();
+        }
+        finally
+        {
+            document.Dispose();
+        }
+    }
 
     internal static HtmlParserOptions CreateParserOptions(CompactMetadataOptions options) =>
         new()
