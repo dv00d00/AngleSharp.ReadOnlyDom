@@ -23,6 +23,17 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
             }
 
 #if NET10_0
+            if (args.Length > 0 && args[0].Equals("--utf8-token-smoke", StringComparison.OrdinalIgnoreCase))
+            {
+                return Utf8TokenSmoke.Run();
+            }
+
+            if (args.Length > 0 && args[0].Equals("--utf8-dom-check", StringComparison.OrdinalIgnoreCase))
+            {
+                new Utf8DomProjectionBenchmark().Setup();
+                return 0;
+            }
+
             if (args.Length > 0 && args[0].Equals("--compact-corpus", StringComparison.OrdinalIgnoreCase))
             {
                 return CompactCorpusRunner.Run(args.Skip(1).ToArray());
