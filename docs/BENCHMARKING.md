@@ -29,7 +29,7 @@ runs tokenizer, compact-RODOM construction, and mutable-DOM projection from wire
 Run the anonymous three-document fat-page comparison directly:
 
 ```powershell
-dotnet run --project AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- `
+dotnet run --project benchmarks/AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- `
   --filter "*FatDocumentParsingBenchmark*" --job short
 ```
 
@@ -186,7 +186,7 @@ allocation totals; UTF-8-only aggregate callbacks can avoid that final ownership
 
 `utf8-tokenizer` is an exploratory wire-byte benchmark. It compares complete UTF-8-to-string decoding followed by the
 AngleSharp tokenizer against the monotonic UTF-8 tokenizer kernel and a borrowed-span counting sink. Run
-`dotnet run --project AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- --utf8-token-smoke` first to write both
+`dotnet run --project benchmarks/AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- --utf8-token-smoke` first to write both
 normalized token streams under `%TEMP%\AngleSharp.ReadOnlyDom\utf8-token-smoke` and fail at their first difference.
 
 `utf8-rodom` measures complete compact RODOM construction plus a tag query from the same UTF-8 bytes. It compares a full
@@ -204,7 +204,7 @@ a real `HttpClient` request and socket; it compares `GetByteArrayAsync` plus a f
 out of the parser measurement.
 
 ```powershell
-dotnet run --project AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- `
+dotnet run --project benchmarks/AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- `
   --filter "*HttpClientStreamingQueryBenchmark*"
 ```
 

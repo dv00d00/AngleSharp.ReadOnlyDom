@@ -1,15 +1,15 @@
 <Solution>
-  <Folder Name="/Code/">
-    <Project Path="AngleSharp.ReadOnlyDom/AngleSharp.ReadOnlyDom.csproj" />
-    <Project Path="AngleSharp.ReadOnlyDom.Compact/AngleSharp.ReadOnlyDom.Compact.csproj" />
-    <Project Path="AngleSharp.ReadOnlyDom.Helpers/AngleSharp.ReadOnlyDom.Helpers.csproj" />
-    <Project Path="AngleSharp.ReadOnlyDom.Streaming/AngleSharp.ReadOnlyDom.Streaming.csproj" />
+  <Folder Name="/Source/">
+    <Project Path="src/AngleSharp.ReadOnlyDom/AngleSharp.ReadOnlyDom.csproj" />
+    <Project Path="src/AngleSharp.ReadOnlyDom.Compact/AngleSharp.ReadOnlyDom.Compact.csproj" />
+    <Project Path="src/AngleSharp.ReadOnlyDom.Helpers/AngleSharp.ReadOnlyDom.Helpers.csproj" />
+    <Project Path="src/AngleSharp.ReadOnlyDom.Streaming/AngleSharp.ReadOnlyDom.Streaming.csproj" />
   </Folder>
   <Folder Name="/Tests/">
-    <Project Path="AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj" />
+    <Project Path="tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj" />
   </Folder>
   <Folder Name="/Benchmarks/">
-    <Project Path="AngleSharp.ReadOnlyDom.Benchmarks/AngleSharp.ReadOnlyDom.Benchmarks.csproj" />
+    <Project Path="benchmarks/AngleSharp.ReadOnlyDom.Benchmarks/AngleSharp.ReadOnlyDom.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/Samples/">
     <Project Path="samples/AngleSharp.ReadOnlyDom.MarkdownProxy/AngleSharp.ReadOnlyDom.MarkdownProxy.csproj" />

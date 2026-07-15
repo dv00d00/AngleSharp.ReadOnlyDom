@@ -31,16 +31,16 @@
 
   <ItemGroup>
     <ProjectReference
-      Include="..\AngleSharp.ReadOnlyDom.Compact\AngleSharp.ReadOnlyDom.Compact.csproj"
+      Include="..\..\src\AngleSharp.ReadOnlyDom.Compact\AngleSharp.ReadOnlyDom.Compact.csproj"
       Condition=" '$(TargetFramework)' == 'net10.0' "
     />
     <ProjectReference
-      Include="..\AngleSharp.ReadOnlyDom.Streaming\AngleSharp.ReadOnlyDom.Streaming.csproj"
+      Include="..\..\src\AngleSharp.ReadOnlyDom.Streaming\AngleSharp.ReadOnlyDom.Streaming.csproj"
       Condition=" '$(TargetFramework)' == 'net10.0' "
     />
-    <ProjectReference Include="..\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj" />
+    <ProjectReference Include="..\..\src\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj" />
     <ProjectReference
-      Include="..\AngleSharp.ReadOnlyDom.Helpers\AngleSharp.ReadOnlyDom.Helpers.csproj"
+      Include="..\..\src\AngleSharp.ReadOnlyDom.Helpers\AngleSharp.ReadOnlyDom.Helpers.csproj"
       Condition=" '$(TargetFramework)' != 'net472' "
     />
   </ItemGroup>

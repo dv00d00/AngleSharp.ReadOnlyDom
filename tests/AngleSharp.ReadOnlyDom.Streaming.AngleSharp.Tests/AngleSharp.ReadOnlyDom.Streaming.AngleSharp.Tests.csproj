@@ -9,6 +9,6 @@
 
   <ItemGroup>
     <PackageReference Include="TUnit" />
-    <ProjectReference Include="..\AngleSharp.ReadOnlyDom.Streaming.AngleSharp\AngleSharp.ReadOnlyDom.Streaming.AngleSharp.csproj" />
+    <ProjectReference Include="..\..\src\AngleSharp.ReadOnlyDom.Streaming.AngleSharp\AngleSharp.ReadOnlyDom.Streaming.AngleSharp.csproj" />
   </ItemGroup>
 </Project>
