@@ -18,6 +18,7 @@ const string Html = """
 RunReadOnlyDom();
 RunCompactDom();
 RunConstructionTimeViews();
+StreamingQueryExamples.Run();
 
 static void RunReadOnlyDom()
 {

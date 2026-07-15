@@ -18,6 +18,43 @@ public delegate void TextHandler<TState>(ref TState state, ReadOnlySpan<byte> ut
 
 public delegate void EndHandler<TState>(ref TState state);
 
+public delegate void CompletedElementHandler<TState>(ref TState state, in CompletedElement element);
+
+public readonly ref struct CompletedElement
+{
+    private readonly string[] _attributeNames;
+    private readonly string?[] _attributeValues;
+
+    internal CompletedElement(string text, string[] attributeNames, string?[] attributeValues)
+    {
+        Text = text;
+        _attributeNames = attributeNames;
+        _attributeValues = attributeValues;
+    }
+
+    public string Text { get; }
+
+    public string? Attribute(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        for (var index = 0; index < _attributeNames.Length; index++)
+        {
+            if (_attributeNames[index].Equals(name, StringComparison.OrdinalIgnoreCase))
+                return _attributeValues[index];
+        }
+        return null;
+    }
+
+    public string AttributeOrEmpty(string name) => Attribute(name) ?? string.Empty;
+}
+
+internal enum CompletedTextMode : byte
+{
+    None,
+    Raw,
+    Normalized,
+}
+
 public readonly ref struct Element
 {
     private readonly string[] _attributeNames;
@@ -146,6 +183,8 @@ public sealed class QueryNode<TState>
     private StartHandler<TState>? _start;
     private TextHandler<TState>? _text;
     private EndHandler<TState>? _end;
+    private CompletedElementHandler<TState>? _completed;
+    private CompletedTextMode _completedTextMode;
 
     private QueryNode(Selector selector, QueryRelation relation, QueryNode<TState>? parent)
     {
@@ -164,15 +203,56 @@ public sealed class QueryNode<TState>
     internal StartHandler<TState>? StartHandler => _start;
     internal TextHandler<TState>? TextHandler => _text;
     internal EndHandler<TState>? EndHandler => _end;
+    internal CompletedElementHandler<TState>? CompletedHandler => _completed;
+    internal CompletedTextMode CompletedTextMode => _completedTextMode;
 
     public static QueryNode<TState> Root(Selector selector) => new(selector, QueryRelation.Root, null);
 
+    public static QueryNode<TState> Root(string tagName) => Root(Selector.Tag(tagName));
+
     public QueryNode<TState> Descendant(Selector selector) => AddChild(selector, QueryRelation.Descendant);
+
+    public QueryNode<TState> Descendant(string tagName) => Descendant(Selector.Tag(tagName));
 
     public QueryNode<TState> Child(Selector selector) => AddChild(selector, QueryRelation.Child);
 
+    public QueryNode<TState> Child(string tagName) => Child(Selector.Tag(tagName));
+
+    public QueryNode<TState> WithId(string value)
+    {
+        Selector.WithId(value);
+        return this;
+    }
+
+    public QueryNode<TState> Id(string value) => WithId(value);
+
+    public QueryNode<TState> WithClass(string token)
+    {
+        Selector.WithClass(token);
+        return this;
+    }
+
+    public QueryNode<TState> Class(string token) => WithClass(token);
+
+    public QueryNode<TState> WithAttribute(string name)
+    {
+        Selector.WithAttribute(name);
+        return this;
+    }
+
+    public QueryNode<TState> Attribute(string name) => WithAttribute(name);
+
+    public QueryNode<TState> WithAttribute(string name, string value)
+    {
+        Selector.WithAttribute(name, value);
+        return this;
+    }
+
+    public QueryNode<TState> Attribute(string name, string value) => WithAttribute(name, value);
+
     public QueryNode<TState> OnStart(StartHandler<TState> handler, params string[] projectedAttributes)
     {
+        EnsureLowLevelHandlersCanBeAdded();
         _start = handler ?? throw new ArgumentNullException(nameof(handler));
         foreach (var attribute in projectedAttributes)
             _projectedAttributes.Add(Selector.NormalizeName(attribute, nameof(projectedAttributes)));
@@ -181,15 +261,32 @@ public sealed class QueryNode<TState>
 
     public QueryNode<TState> OnText(TextHandler<TState> handler)
     {
+        EnsureLowLevelHandlersCanBeAdded();
         _text = handler ?? throw new ArgumentNullException(nameof(handler));
         return this;
     }
 
     public QueryNode<TState> OnEnd(EndHandler<TState> handler)
     {
+        EnsureLowLevelHandlersCanBeAdded();
         _end = handler ?? throw new ArgumentNullException(nameof(handler));
         return this;
     }
+
+    public QueryNode<TState> OnClose(
+        CompletedElementHandler<TState> handler,
+        params string[] projectedAttributes
+    ) => OnCompleted(CompletedTextMode.None, handler, projectedAttributes);
+
+    public QueryNode<TState> OnTextContent(
+        CompletedElementHandler<TState> handler,
+        params string[] projectedAttributes
+    ) => OnCompleted(CompletedTextMode.Raw, handler, projectedAttributes);
+
+    public QueryNode<TState> OnNormalizedText(
+        CompletedElementHandler<TState> handler,
+        params string[] projectedAttributes
+    ) => OnCompleted(CompletedTextMode.Normalized, handler, projectedAttributes);
 
     public QueryPlan<TState> Compile() => QueryCompiler.Compile(_root);
 
@@ -199,6 +296,38 @@ public sealed class QueryNode<TState>
         _children.Add(child);
         return child;
     }
+
+    private QueryNode<TState> OnCompleted(
+        CompletedTextMode textMode,
+        CompletedElementHandler<TState> handler,
+        string[] projectedAttributes
+    )
+    {
+        if (_start is not null || _text is not null || _end is not null)
+            throw new InvalidOperationException(
+                "A completed-element callback cannot be combined with start, text, or end callbacks on the same query node."
+            );
+        if (_completed is not null)
+            throw new InvalidOperationException("A query node can have only one completed-element callback.");
+        _completed = handler ?? throw new ArgumentNullException(nameof(handler));
+        _completedTextMode = textMode;
+        foreach (var attribute in projectedAttributes)
+            _projectedAttributes.Add(Selector.NormalizeName(attribute, nameof(projectedAttributes)));
+        return this;
+    }
+
+    private void EnsureLowLevelHandlersCanBeAdded()
+    {
+        if (_completed is not null)
+            throw new InvalidOperationException(
+                "Start, text, and end callbacks cannot be combined with a completed-element callback on the same query node."
+            );
+    }
+}
+
+public static class StreamQuery
+{
+    public static QueryNode<TState> For<TState>(string rootTag) => QueryNode<TState>.Root(rootTag);
 }
 
 public sealed record QueryExplanation(
@@ -227,6 +356,10 @@ public sealed class QueryPlan<TState>
             0UL,
             static (bits, node) => node.Text is null ? bits : bits | (1UL << node.Index)
         );
+        CompletedHandlerBits = nodes.Aggregate(
+            0UL,
+            static (bits, node) => node.Completed is null ? bits : bits | (1UL << node.Index)
+        );
         Explanation = explanation;
     }
 
@@ -234,6 +367,7 @@ public sealed class QueryPlan<TState>
     internal string[] AttributeNames { get; }
     internal byte[][] AttributeNameUtf8 { get; }
     internal ulong TextHandlerBits { get; }
+    internal ulong CompletedHandlerBits { get; }
 
     public QueryExplanation Explanation { get; }
 
@@ -270,7 +404,11 @@ internal sealed record CompiledQueryNode<TState>(
     CompiledAttributePredicate[] Predicates,
     StartHandler<TState>? Start,
     TextHandler<TState>? Text,
-    EndHandler<TState>? End
+    EndHandler<TState>? End,
+    CompletedElementHandler<TState>? Completed,
+    CompletedTextMode CompletedTextMode,
+    string[] CompletedAttributeNames,
+    int[] CompletedAttributeIndexes
 );
 
 internal readonly record struct CompiledAttributePredicate(
@@ -321,6 +459,13 @@ internal static class QueryCompiler
                 .Selector.Attributes.Select(static predicate => predicate.Name)
                 .Concat(source.ProjectedAttributes)
                 .Aggregate(0UL, (bits, name) => bits | (1UL << attributeIndexes[name]));
+            var completedAttributeNames = source.CompletedHandler is null
+                ? []
+                : source
+                    .Selector.Attributes.Select(static predicate => predicate.Name)
+                    .Concat(source.ProjectedAttributes)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
             nodes[index] = new CompiledQueryNode<TState>(
                 index,
                 source.Parent is null ? -1 : sourceIndexes[source.Parent],
@@ -331,7 +476,11 @@ internal static class QueryCompiler
                 predicates,
                 source.StartHandler,
                 source.TextHandler,
-                source.EndHandler
+                source.EndHandler,
+                source.CompletedHandler,
+                source.CompletedTextMode,
+                completedAttributeNames,
+                completedAttributeNames.Select(name => attributeIndexes[name]).ToArray()
             );
         }
 
@@ -391,6 +540,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
     private byte[] _attributeValues;
     private readonly int[] _attributeStarts;
     private readonly int[] _attributeLengths;
+    private readonly List<ElementCapture>?[] _completedCaptures;
     private TState _state;
     private int _frameCount;
     private int _attributeValueLength;
@@ -412,6 +562,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         _attributeStarts = ArrayPool<int>.Shared.Rent(Math.Max(plan.AttributeNames.Length, 1));
         _attributeLengths = ArrayPool<int>.Shared.Rent(Math.Max(plan.AttributeNames.Length, 1));
         _attributeLengths.AsSpan(0, plan.AttributeNames.Length).Fill(-1);
+        _completedCaptures = plan.CompletedHandlerBits == 0 ? [] : new List<ElementCapture>?[plan.Nodes.Length];
     }
 
     public TState State => _state;
@@ -486,6 +637,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
             starts &= starts - 1;
             _plan.Nodes[index].Start?.Invoke(ref _state, in element);
         }
+        StartCompletedCaptures(matches);
 
         var closesImmediately = selfClosing || IsVoidTag(_pendingTagHash, _pendingTagLength);
         if (closesImmediately)
@@ -510,6 +662,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
             for (var match = 0; match < count; match++)
                 _plan.Nodes[nodeIndex].Text!.Invoke(ref _state, utf8);
         }
+        AppendCompletedText(utf8);
     }
 
     public void EndTag(ReadOnlySpan<byte> name)
@@ -543,6 +696,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         ArrayPool<byte>.Shared.Return(_attributeValues);
         ArrayPool<int>.Shared.Return(_attributeStarts, clearArray: true);
         ArrayPool<int>.Shared.Return(_attributeLengths, clearArray: true);
+        Array.Clear(_completedCaptures);
         _frames = [];
         _attributeValues = [];
     }
@@ -588,8 +742,72 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         {
             var index = 63 - BitOperations.LeadingZeroCount(matches);
             matches &= ~(1UL << index);
+            CompleteCapture(index);
             _plan.Nodes[index].End?.Invoke(ref _state);
         }
+    }
+
+    private void StartCompletedCaptures(ulong matches)
+    {
+        var completed = matches & _plan.CompletedHandlerBits;
+        while (completed != 0)
+        {
+            var index = BitOperations.TrailingZeroCount(completed);
+            completed &= completed - 1;
+            var node = _plan.Nodes[index];
+            var attributeValues = node.CompletedAttributeIndexes.Length == 0
+                ? []
+                : new string?[node.CompletedAttributeIndexes.Length];
+            for (var attribute = 0; attribute < node.CompletedAttributeIndexes.Length; attribute++)
+            {
+                var attributeIndex = node.CompletedAttributeIndexes[attribute];
+                var length = _attributeLengths[attributeIndex];
+                if (length >= 0)
+                {
+                    attributeValues[attribute] = Encoding.UTF8.GetString(
+                        _attributeValues,
+                        _attributeStarts[attributeIndex],
+                        length
+                    );
+                }
+            }
+            var captures = _completedCaptures[index] ??= [];
+            captures.Add(new ElementCapture(node.CompletedTextMode, attributeValues));
+        }
+    }
+
+    private void AppendCompletedText(ReadOnlySpan<byte> utf8)
+    {
+        var completed = _plan.CompletedHandlerBits;
+        while (completed != 0)
+        {
+            var index = BitOperations.TrailingZeroCount(completed);
+            completed &= completed - 1;
+            var captures = _completedCaptures[index];
+            if (captures is null)
+                continue;
+            foreach (var capture in captures)
+                capture.Append(utf8);
+        }
+    }
+
+    private void CompleteCapture(int index)
+    {
+        var node = _plan.Nodes[index];
+        if (node.Completed is null)
+            return;
+        var captures = _completedCaptures[index];
+        if (captures is null || captures.Count == 0)
+            throw new InvalidOperationException("The completed-element capture stack is unbalanced.");
+        var captureIndex = captures.Count - 1;
+        var capture = captures[captureIndex];
+        captures.RemoveAt(captureIndex);
+        var element = new CompletedElement(
+            capture.GetText(),
+            node.CompletedAttributeNames,
+            capture.AttributeValues
+        );
+        node.Completed.Invoke(ref _state, in element);
     }
 
     private void IncrementActive(ulong matches)
@@ -695,3 +913,45 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
 }
 
 internal readonly record struct QueryFrame(ulong TagHash, int TagLength, ulong Matches);
+
+internal sealed class ElementCapture
+{
+    private readonly CompletedTextMode _textMode;
+    private readonly StringBuilder? _text;
+    private bool _pendingSpace;
+
+    internal ElementCapture(CompletedTextMode textMode, string?[] attributeValues)
+    {
+        _textMode = textMode;
+        AttributeValues = attributeValues;
+        _text = textMode == CompletedTextMode.None ? null : new StringBuilder();
+    }
+
+    internal string?[] AttributeValues { get; }
+
+    internal void Append(ReadOnlySpan<byte> utf8)
+    {
+        if (_text is null)
+            return;
+        Span<char> chars = stackalloc char[2];
+        while (!utf8.IsEmpty)
+        {
+            Rune.DecodeFromUtf8(utf8, out var rune, out var consumed);
+            utf8 = utf8[consumed..];
+            if (_textMode == CompletedTextMode.Normalized && Rune.IsWhiteSpace(rune))
+            {
+                _pendingSpace = _text.Length != 0;
+                continue;
+            }
+            if (_pendingSpace)
+            {
+                _text.Append(' ');
+                _pendingSpace = false;
+            }
+            var written = rune.EncodeToUtf16(chars);
+            _text.Append(chars[..written]);
+        }
+    }
+
+    internal string GetText() => _text?.ToString() ?? string.Empty;
+}

@@ -106,6 +106,34 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task CompletedElementCallbackCapturesNestedTextAndAttributesOnce()
+    {
+        var root = StreamQuery.For<QueryState>("main");
+        root.Descendant("section")
+            .WithAttribute("data-id")
+            .OnNormalizedText(
+                static (ref state, in element) =>
+                    state.Events.Add($"{element.Attribute("data-id")}:{element.Text}"),
+                "title"
+            );
+        root.Descendant("img")
+            .OnClose(
+                static (ref state, in element) =>
+                    state.Events.Add($"img:{element.AttributeOrEmpty("alt")}"),
+                "alt"
+            );
+
+        var state = root.Compile()
+            .Execute(
+                "<main><section data-id=outer> Outer <section data-id=inner> Inner </section> tail </section><img alt=Logo></main>"u8,
+                new QueryState()
+            );
+
+        await Assert.That(string.Join('|', state.Events))
+            .IsEqualTo("inner:Inner|outer:Outer Inner tail|img:Logo");
+    }
+
+    [Test]
     public async Task MalformedTableNestingDocumentsTheLexicalTopologyBoundary()
     {
         const string html = "<table><div id=inside>lexically nested</div></table>";

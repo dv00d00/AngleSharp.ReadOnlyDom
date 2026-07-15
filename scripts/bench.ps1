@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("micro", "small", "full", "retained", "compact", "query", "plan", "streaming", "aggregate", "long-streaming", "utf8-tokenizer", "utf8-rodom", "utf8-dom", "all")]
+    [ValidateSet("small", "full", "retained", "compact", "query", "extraction", "scraping", "utf8", "plan", "long-streaming", "utf8-tokenizer", "utf8-rodom", "utf8-dom", "all")]
     [string] $Tier = "all"
 )
 
@@ -45,28 +45,25 @@ function Invoke-Benchmark([string] $filter, [string] $name, [string] $corpusTier
     }
 }
 
-if ($Tier -in @("micro", "all")) {
-    Invoke-Benchmark "*OverheadBenchmark*" "micro"
-}
 if ($Tier -in @("compact", "all")) {
     Invoke-Benchmark "*CompactBuildBenchmark*" "compact"
 }
-if ($Tier -in @("plan", "all")) {
+if ($Tier -in @("plan", "extraction", "all")) {
     Invoke-Benchmark "*CompactExtractionPlanBenchmark*" "plan"
 }
-if ($Tier -in @("streaming", "aggregate", "all")) {
-    Invoke-Benchmark "*CompactStreamingExtractionBenchmark*" "streaming"
-}
-if ($Tier -in @("long-streaming", "all")) {
+if ($Tier -in @("long-streaming", "extraction", "scraping", "all")) {
     Invoke-Benchmark "*LongSyntheticConstructionBenchmark*" "long-streaming"
 }
-if ($Tier -in @("utf8-tokenizer", "all")) {
+if ($Tier -in @("scraping", "extraction", "all")) {
+    Invoke-Benchmark "*QqArticleScraperBenchmark*" "qq-scraper"
+}
+if ($Tier -in @("utf8-tokenizer", "utf8", "all")) {
     Invoke-Benchmark "*Utf8TokenizerBenchmark*" "utf8-tokenizer"
 }
-if ($Tier -in @("utf8-rodom", "all")) {
+if ($Tier -in @("utf8-rodom", "utf8", "all")) {
     Invoke-Benchmark "*Utf8RodomBenchmark*" "utf8-rodom"
 }
-if ($Tier -in @("utf8-dom", "all")) {
+if ($Tier -in @("utf8-dom", "utf8", "all")) {
     Invoke-Benchmark "*Utf8DomProjectionBenchmark*" "utf8-dom"
 }
 if ($Tier -in @("small", "all")) {

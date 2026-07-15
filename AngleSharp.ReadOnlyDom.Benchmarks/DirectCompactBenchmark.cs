@@ -56,14 +56,4 @@ public class CompactBuildBenchmark
         + "</main></body></html>";
 }
 
-[MemoryDiagnoser]
-public class CompactSetupBenchmark
-{
-    [Benchmark(Baseline = true)]
-    public HtmlParser CreateReadOnlyParser() => ReadOnlyParser.CreateParser(ReadOnlyMetadataProfile.Minimal);
-
-    [Benchmark]
-    public HtmlParser CreateCompactParser() => CompactParser.CreateParser();
-}
-
 #endif

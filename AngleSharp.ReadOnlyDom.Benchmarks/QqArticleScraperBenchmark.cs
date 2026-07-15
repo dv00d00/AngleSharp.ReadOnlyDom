@@ -21,6 +21,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 public class QqArticleScraperBenchmark
 {
     private static readonly QueryPlan<CompiledArticleState> ArticleQuery = CreateArticleQuery();
+    private static readonly QueryPlan<CompiledArticleState> CompletedArticleQuery = CreateCompletedArticleQuery();
     private readonly HtmlParser _angleSharp = new();
     private readonly HtmlParser _readOnlyMinimal = CreateReadOnlyParser(ReadOnlyMetadataProfile.Minimal);
     private readonly HtmlParser _readOnlySourceMapped = CreateReadOnlyParser(ReadOnlyMetadataProfile.SourceMapped);
@@ -46,6 +47,7 @@ public class QqArticleScraperBenchmark
         AssertEqual(nameof(CompactFrozenBodyFiltered), CompactFrozenBodyFiltered());
         AssertEqual(nameof(NativeUtf8Fold), NativeUtf8Fold());
         AssertEqual(nameof(QueryCompiledUtf8Fold), QueryCompiledUtf8Fold());
+        AssertEqual(nameof(QueryCompletedElementFold), QueryCompletedElementFold());
 
         Console.WriteLine(
             $"QQ scraper fixture: {_utf8.Length:N0} UTF-8 bytes, {_expected.Count:N0} article-link objects."
@@ -147,24 +149,50 @@ public class QqArticleScraperBenchmark
     }
     
     [Benchmark]
-    public List<Article> QueryCompiledUtf8Fold2()
+    public List<Article> QueryCompletedElementFold()
     {
-        var list = QueryNode<CompiledArticleState>.Root(Selector.Tag("ul").WithClass("news-list"));
-        
-        var card = list.Descendant(Selector.Tag("li").WithAttribute("dt-eid", "em_item_article"))
-            .OnStart(static (ref state, in element) => state.StartCard(element), "dt-params")
-            .OnEnd(static (ref state) => state.EndCard());
-        
-        var link = card.Descendant(Selector.Tag("a").WithAttribute("href"))
-            .OnStart(static (ref state, in element) => state.StartLink(element), "href")
-            .OnText(static (ref state, text) => state.AppendText(text))
-            .OnEnd(static (ref state) => state.EndLink());
-        
-        link.Descendant(Selector.Tag("img"))
-            .OnStart(static (ref state, in element) => state.Image(element), "src", "alt");
-        
-        var state = ArticleQuery.Execute(_utf8, new CompiledArticleState());
+        var state = CompletedArticleQuery.Execute(_utf8, new CompiledArticleState());
         return state.DetachResults();
+    }
+
+    private static QueryPlan<CompiledArticleState> CreateCompletedArticleQuery()
+    {
+        var list = StreamQuery.For<CompiledArticleState>("ul").WithClass("news-list");
+        var card = list.Descendant("li")
+            .WithAttribute("dt-eid", "em_item_article")
+            .OnStart(
+                static (ref state, in element) => state.StartCard(element),
+                "dt-params"
+            )
+            .OnEnd(static (ref state) => state.EndCard());
+
+        var link = card.Descendant("a")
+            .WithAttribute("href")
+            .OnNormalizedText(static (ref state, in element) =>
+            {
+                AddArticle(
+                    state._results,
+                    element.Text,
+                    element.AttributeOrEmpty("href"),
+                    state._imageUrl,
+                    state._imageAlt,
+                    state._cardMetadata
+                );
+                state._imageUrl = null;
+                state._imageAlt = null;
+            });
+
+        link.Descendant("img")
+            .OnClose(
+                static (ref state, in element) =>
+                {
+                    state._imageUrl ??= element.Attribute("src");
+                    state._imageAlt ??= element.Attribute("alt");
+                },
+                "src",
+                "alt"
+            );
+        return list.Compile();
     }
 
     private static QueryPlan<CompiledArticleState> CreateArticleQuery()
@@ -299,12 +327,12 @@ public class QqArticleScraperBenchmark
 
     private sealed class CompiledArticleState
     {
-        private readonly StringBuilder _title = new();
-        private List<Article> _results = new(128);
-        private string _cardMetadata = string.Empty;
-        private string? _href;
-        private string? _imageUrl;
-        private string? _imageAlt;
+        internal readonly StringBuilder _title = new();
+        internal List<Article> _results = new(128);
+        internal string _cardMetadata = string.Empty;
+        internal string? _href;
+        internal string? _imageUrl;
+        internal string? _imageAlt;
 
         public void StartCard(in Element element) => _cardMetadata = Decode(element, "dt-params") ?? string.Empty;
 
@@ -353,7 +381,7 @@ public class QqArticleScraperBenchmark
             return results;
         }
 
-        private static string? Decode(in Element element, string attribute) =>
+        internal static string? Decode(in Element element, string attribute) =>
             element.TryGetAttribute(attribute, out var value) ? Encoding.UTF8.GetString(value) : null;
     }
 

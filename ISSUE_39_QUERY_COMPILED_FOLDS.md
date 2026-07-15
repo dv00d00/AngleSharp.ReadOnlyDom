@@ -69,3 +69,27 @@ the complete structural and predicate match. Owned result objects dominate both 
 3. Add explicit malformed-input policy only if users need automatic rejection instead of documented
    lexical semantics.
 4. Keep full browser semantics in the AngleSharp tree-builder lane.
+
+## Ergonomic completed-element layer
+
+The low-level borrowed start/text/end handlers remain the zero-overhead escape hatch. A fluent layer now covers the common
+case where user state only changes after an element is complete:
+
+- `StreamQuery.For<TState>("tag")` and string-based `Child` / `Descendant` paths;
+- concise `Id`, `Class`, and `Attribute` predicates;
+- `OnClose` for attributes only;
+- `OnTextContent` for exact subtree text;
+- `OnNormalizedText` for whitespace-normalized subtree text.
+
+Predicate attributes are projected automatically. Optional attributes are named only when registering the completed
+callback. Nested matches retain independent captures, and outer matches include descendant text.
+
+On the QQ extraction workload, the ergonomic completed-element lane returned the same 16 articles as the low-level fold:
+
+| Lane | Mean | Allocated |
+|---|---:|---:|
+| Low-level compiled fold | 1.217 ms | 16.30 KB |
+| Completed-element fold | 1.237 ms | 20.71 KB |
+
+The ShortRun mean difference was 1.6%. The additional 4.4 KB owns per-match normalized text and decoded attributes until
+the element closes. Plans that do not use completed-element callbacks do not allocate capture storage.
