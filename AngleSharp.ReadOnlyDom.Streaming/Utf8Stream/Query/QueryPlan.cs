@@ -36,12 +36,14 @@ public sealed class QueryPlan<TState>
 
     public QueryExplanation Explanation { get; }
 
-    public QuerySession<TState> CreateSession(TState state) => new(this, state);
+    public QuerySession<TState> CreateSession(TState state, HtmlStreamingLimits? limits = null) =>
+        new(this, state, limits ?? HtmlStreamingLimits.Default);
 
-    public TState Execute(ReadOnlySpan<byte> utf8, TState state)
+    public TState Execute(ReadOnlySpan<byte> utf8, TState state, HtmlStreamingLimits? limits = null)
     {
-        using var session = CreateSession(state);
-        var tokenizer = new Utf8HtmlTokenizer(session);
+        limits ??= HtmlStreamingLimits.Default;
+        using var session = CreateSession(state, limits);
+        var tokenizer = new Utf8HtmlTokenizer(session, limits);
         tokenizer.Write(utf8);
         tokenizer.Complete();
         return session.State;
@@ -50,11 +52,31 @@ public sealed class QueryPlan<TState>
     public async ValueTask<TState> ExecuteAsync(
         PipeReader reader,
         TState state,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        HtmlStreamingLimits? limits = null
     )
     {
-        using var session = CreateSession(state);
-        await Utf8HtmlTokenizer.TokenizeAsync(reader, session, cancellationToken).ConfigureAwait(false);
+        limits ??= HtmlStreamingLimits.Default;
+        using var session = CreateSession(state, limits);
+        await Utf8HtmlTokenizer
+            .TokenizeAsync(reader, session, cancellationToken, limits)
+            .ConfigureAwait(false);
+        return session.State;
+    }
+
+    public async ValueTask<TState> ExecuteEncodedAsync(
+        PipeReader reader,
+        HtmlInputEncoding inputEncoding,
+        TState state,
+        CancellationToken cancellationToken = default,
+        HtmlStreamingLimits? limits = null
+    )
+    {
+        limits ??= HtmlStreamingLimits.Default;
+        using var session = CreateSession(state, limits);
+        await EncodedHtmlInput
+            .TokenizeAsync(reader, inputEncoding, session, cancellationToken, limits: limits)
+            .ConfigureAwait(false);
         return session.State;
     }
 }

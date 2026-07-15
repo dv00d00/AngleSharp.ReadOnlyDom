@@ -17,6 +17,8 @@ internal sealed class ElementCapture : IDisposable
 
     internal ReadOnlySpan<byte> TextUtf8 => _utf8.AsSpan(_textStart, _length - _textStart);
 
+    internal int Length => _length;
+
     internal void Reset(CompletedTextMode textMode, int attributeCount)
     {
         _textMode = textMode;

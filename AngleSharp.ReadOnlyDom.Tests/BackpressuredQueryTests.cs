@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Text;
+using AngleSharp.ReadOnlyDom.Streaming;
 using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
 using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
 
@@ -10,7 +11,9 @@ namespace AngleSharp.Readonly.Tests;
 public sealed class BackpressuredQueryTests
 {
     [Test]
-    public async Task SlowOutputStopsInputDrainAndResumesWithoutChangingBytes()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task SlowOutputStopsInputDrainAndResumesWithoutChangingBytes(bool encoded)
     {
         var root = StreamQuery.For<TestOutput>("html").OnText(static (ref output, text) => output.Append(text));
         var plan = root.Compile();
@@ -24,9 +27,11 @@ public sealed class BackpressuredQueryTests
             )
         );
         var state = new TestOutput();
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        var expected = string.Concat(Enumerable.Repeat("abcdef café—uvwxyz012345", 128));
+        var sourceEncoding = encoded ? Encoding.GetEncoding(1252) : Encoding.UTF8;
+        var html = sourceEncoding.GetBytes($"<html><body><p>{expected}</p></body></html>");
         var execution = ExecuteAndCompleteOutputAsync();
-        var expected = string.Concat(Enumerable.Repeat("abcdefghijklmnopqrstuvwxyz012345", 128));
-        var html = Encoding.UTF8.GetBytes($"<html><body><p>{expected}</p></body></html>");
 
         await input.Writer.WriteAsync(html);
         await input.Writer.CompleteAsync();
@@ -58,13 +63,22 @@ public sealed class BackpressuredQueryTests
         {
             try
             {
-                return await plan.ExecuteBackpressuredAsync(
-                    input.Reader,
-                    output.Writer,
-                    state,
-                    flushThreshold: 32,
-                    inputSliceSize: 16
-                );
+                return encoded
+                    ? await plan.ExecuteEncodedBackpressuredAsync(
+                        input.Reader,
+                        output.Writer,
+                        HtmlInputEncoding.Known(sourceEncoding),
+                        state,
+                        flushThreshold: 32,
+                        inputSliceSize: 16
+                    )
+                    : await plan.ExecuteBackpressuredAsync(
+                        input.Reader,
+                        output.Writer,
+                        state,
+                        flushThreshold: 32,
+                        inputSliceSize: 16
+                    );
             }
             finally
             {
