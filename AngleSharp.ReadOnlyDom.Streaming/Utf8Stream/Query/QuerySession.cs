@@ -3,7 +3,7 @@ using System.Numerics;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
 
-public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
+public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposable
 {
     private readonly QueryPlan<TState> _plan;
     private readonly int[] _activeCounts;
@@ -40,18 +40,24 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
 
     public TState State => _state;
 
-    public void StartTag(ReadOnlySpan<byte> name)
+    public void StartTag(ReadOnlySpan<byte> name) => StartTag(name, QueryCompiler.Hash(name));
+
+    void IOptimizedUtf8HtmlTokenSink.StartTag(ReadOnlySpan<byte> name, ulong hash) => StartTag(name, hash);
+
+    private void StartTag(ReadOnlySpan<byte> name, ulong hash)
     {
-        _pendingTagHash = QueryCompiler.Hash(name);
+        _pendingTagHash = hash;
         _pendingTagLength = name.Length;
         _pendingCandidateBits = 0;
         _pendingAttributeBits = 0;
-        foreach (var node in _plan.Nodes)
+        var candidates = FindTagCandidates(hash, name.Length);
+        while (candidates != 0)
         {
+            var index = BitOperations.TrailingZeroCount(candidates);
+            candidates &= candidates - 1;
+            var node = _plan.Nodes[index];
             if (
-                node.TagHash != _pendingTagHash
-                || node.TagName.Length != _pendingTagLength
-                || !name.SequenceEqual(node.TagName)
+                !name.SequenceEqual(node.TagName)
                 || !ParentMatches(node)
             )
                 continue;
@@ -59,6 +65,19 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
             _pendingAttributeBits |= node.RequiredAttributeBits;
         }
         ResetAttributes();
+    }
+
+    bool IOptimizedUtf8HtmlTokenSink.WantsAttribute(ReadOnlySpan<byte> name)
+    {
+        var attributes = _pendingAttributeBits;
+        while (attributes != 0)
+        {
+            var index = BitOperations.TrailingZeroCount(attributes);
+            attributes &= attributes - 1;
+            if (name.SequenceEqual(_plan.AttributeNameUtf8[index]))
+                return true;
+        }
+        return false;
     }
 
     public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
@@ -138,9 +157,12 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         AppendCompletedText(utf8);
     }
 
-    public void EndTag(ReadOnlySpan<byte> name)
+    public void EndTag(ReadOnlySpan<byte> name) => EndTag(name, QueryCompiler.Hash(name));
+
+    void IOptimizedUtf8HtmlTokenSink.EndTag(ReadOnlySpan<byte> name, ulong hash) => EndTag(name, hash);
+
+    private void EndTag(ReadOnlySpan<byte> name, ulong hash)
     {
-        var hash = QueryCompiler.Hash(name);
         for (var index = _frameCount - 1; index >= 0; index--)
         {
             if (_frames[index].TagHash != hash || _frames[index].TagLength != name.Length)
@@ -150,6 +172,28 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
             _frameCount = index;
             return;
         }
+    }
+
+    private ulong FindTagCandidates(ulong hash, int length)
+    {
+        var entries = _plan.TagDispatch;
+        var low = 0;
+        var high = entries.Length - 1;
+        while (low <= high)
+        {
+            var middle = (low + high) >>> 1;
+            var entry = entries[middle];
+            var comparison = entry.Hash.CompareTo(hash);
+            if (comparison == 0)
+                comparison = entry.Length.CompareTo(length);
+            if (comparison < 0)
+                low = middle + 1;
+            else if (comparison > 0)
+                high = middle - 1;
+            else
+                return entry.CandidateBits;
+        }
+        return 0;
     }
 
     public void EndOfFile()

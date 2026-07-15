@@ -73,8 +73,18 @@ internal static class QueryCompiler
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToArray();
+        var tagDispatch = nodes
+            .GroupBy(static node => (node.TagHash, node.TagName.Length))
+            .Select(static group => new CompiledTagDispatch(
+                group.Key.TagHash,
+                group.Key.Length,
+                group.Aggregate(0UL, static (bits, node) => bits | (1UL << node.Index))
+            ))
+            .OrderBy(static entry => entry.Hash)
+            .ThenBy(static entry => entry.Length)
+            .ToArray();
         var explanation = new QueryExplanation("StreamingOnly", tags, attributeNames, nodes.Length, 24, false, null);
-        return new QueryPlan<TState>(nodes, attributeNames, attributeNameUtf8, explanation);
+        return new QueryPlan<TState>(nodes, attributeNames, attributeNameUtf8, tagDispatch, explanation);
     }
 
     private static void AddPreorder<TState>(QueryNode<TState> node, List<QueryNode<TState>> nodes)
@@ -84,16 +94,5 @@ internal static class QueryCompiler
             AddPreorder(child, nodes);
     }
 
-    internal static ulong Hash(ReadOnlySpan<byte> value)
-    {
-        const ulong offset = 14695981039346656037;
-        const ulong prime = 1099511628211;
-        var hash = offset;
-        foreach (var character in value)
-        {
-            hash ^= character;
-            hash *= prime;
-        }
-        return hash;
-    }
+    internal static ulong Hash(ReadOnlySpan<byte> value) => Utf8NameHash.Compute(value);
 }

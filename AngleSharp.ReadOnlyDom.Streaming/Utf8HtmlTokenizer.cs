@@ -92,6 +92,8 @@ public sealed class Utf8HtmlTokenizer
     }
 
     private readonly IUtf8HtmlTokenSink _sink;
+    private readonly IOptimizedUtf8HtmlTokenSink? _optimizedSink;
+    private readonly Utf8HtmlTokenizerStateMetrics? _stateMetrics;
     private readonly ArrayBufferWriter<byte> _name = new(32);
     private readonly ArrayBufferWriter<byte> _attributeName = new(32);
     private readonly ArrayBufferWriter<byte> _attributeValue = new(128);
@@ -119,8 +121,24 @@ public sealed class Utf8HtmlTokenizer
     private bool _numericReferenceHasDigits;
     private uint _numericReferenceValue;
     private bool _completed;
+    private ulong _tagHash;
+    private bool _attributeCaptureDecided;
+    private bool _captureAttributeValue = true;
 
-    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink) => _sink = sink ?? throw new ArgumentNullException(nameof(sink));
+    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink)
+        : this(sink, null) { }
+
+    internal Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink, Utf8HtmlTokenizerStateMetrics? stateMetrics)
+    {
+        _sink = sink ?? throw new ArgumentNullException(nameof(sink));
+        _optimizedSink = sink as IOptimizedUtf8HtmlTokenSink;
+        _stateMetrics = stateMetrics;
+    }
+
+    internal static int StateCount => Enum.GetValues<State>().Length;
+
+    internal IReadOnlyList<Utf8HtmlTokenizerStateMetric> GetStateMetrics() =>
+        _stateMetrics?.Snapshot(Enum.GetNames<State>()) ?? [];
 
     public Utf8HtmlTokenizerCounters Counters =>
         new(_bytesConsumed, _segments, _reconsumes, 0, _maximumBufferedTokenBytes);
@@ -223,8 +241,22 @@ public sealed class Utf8HtmlTokenizer
         var index = 0;
         while (index < utf8.Length)
         {
-            if (
-                _state is State.Data or State.RawText or State.Plaintext
+            if (_state == State.TagName)
+            {
+                var remaining = utf8[index..];
+                var run = remaining.IndexOfAnyExceptInRange((byte)'a', (byte)'z');
+                if (run < 0)
+                    run = remaining.Length;
+                if (run > 0)
+                {
+                    _stateMetrics?.Record((int)_state, run);
+                    AppendTagName(remaining[..run]);
+                    index += run;
+                    continue;
+                }
+            }
+            else if (
+                _state is State.Data or State.RawText or State.ScriptData or State.Plaintext
                 && !_pendingCarriageReturn
                 && _textUtf8CarryLength == 0
             )
@@ -235,6 +267,7 @@ public sealed class Utf8HtmlTokenizer
                         : FindTextTerminator(utf8[index..], _state == State.Data || IsRcData());
                 if (run > 0)
                 {
+                    _stateMetrics?.Record((int)_state, run);
                     var text = utf8.Slice(index, run);
                     var safeLength = run == utf8.Length - index ? CompleteUtf8PrefixLength(text) : run;
                     if (safeLength > 0)
@@ -248,7 +281,48 @@ public sealed class Utf8HtmlTokenizer
                     continue;
                 }
             }
-
+            else if (
+                _state is State.AttributeValueDoubleQuoted or State.AttributeValueSingleQuoted
+                && !_pendingCarriageReturn
+            )
+            {
+                var remaining = utf8[index..];
+                var quote = _state == State.AttributeValueDoubleQuoted ? (byte)'"' : (byte)'\'';
+                var run = FindQuotedAttributeValueTerminator(remaining, quote);
+                if (run > 0)
+                {
+                    _stateMetrics?.Record((int)_state, run);
+                    if (_captureAttributeValue)
+                        Append(_attributeValue, remaining[..run]);
+                    index += run;
+                    continue;
+                }
+            }
+            else if (_state == State.AttributeValueUnquoted && !_pendingCarriageReturn)
+            {
+                var remaining = utf8[index..];
+                var run = FindUnquotedAttributeValueTerminator(remaining);
+                if (run > 0)
+                {
+                    _stateMetrics?.Record((int)_state, run);
+                    if (_captureAttributeValue)
+                        Append(_attributeValue, remaining[..run]);
+                    index += run;
+                    continue;
+                }
+            }
+            else if (_state == State.Comment && !_pendingCarriageReturn)
+            {
+                var remaining = utf8[index..];
+                var run = FindCommentTerminator(remaining);
+                if (run > 0)
+                {
+                    _stateMetrics?.Record((int)_state, run);
+                    Append(_candidate, remaining[..run]);
+                    index += run;
+                    continue;
+                }
+            }
             var value = utf8[index++];
             if (_pendingCarriageReturn)
             {
@@ -359,6 +433,7 @@ public sealed class Utf8HtmlTokenizer
         while (reconsume)
         {
             reconsume = false;
+            _stateMetrics?.Record((int)_state, 1);
             if (IsScriptState(_state))
             {
                 ProcessScript(value, ref reconsume);
@@ -433,7 +508,7 @@ public sealed class Utf8HtmlTokenizer
                     else if (value == (byte)'>')
                         FinishTag(selfClosing: false);
                     else
-                        AppendReplacedNull(_name, value, lowerAscii: true);
+                        AppendTagNameReplacedNull(value);
                     break;
                 case State.BeforeAttributeName:
                     if (IsSpace(value))
@@ -457,7 +532,10 @@ public sealed class Utf8HtmlTokenizer
                     if (IsSpace(value))
                         _state = State.AfterAttributeName;
                     else if (value == (byte)'=')
+                    {
+                        DecideAttributeCapture();
                         _state = State.BeforeAttributeValue;
+                    }
                     else if (value is (byte)'/' or (byte)'>')
                     {
                         CommitAttribute();
@@ -471,6 +549,7 @@ public sealed class Utf8HtmlTokenizer
                         break;
                     if (value == (byte)'=')
                     {
+                        DecideAttributeCapture();
                         _state = State.BeforeAttributeValue;
                         break;
                     }
@@ -503,7 +582,10 @@ public sealed class Utf8HtmlTokenizer
                     else if (value == (byte)'&')
                         BeginCharacterReference(_state);
                     else
-                        AppendReplacedNull(_attributeValue, value, lowerAscii: false);
+                    {
+                        if (_captureAttributeValue)
+                            AppendReplacedNull(_attributeValue, value, lowerAscii: false);
+                    }
                     break;
                 case State.AttributeValueUnquoted:
                     if (IsSpace(value))
@@ -519,7 +601,10 @@ public sealed class Utf8HtmlTokenizer
                         FinishTag(selfClosing: false);
                     }
                     else
-                        AppendReplacedNull(_attributeValue, value, lowerAscii: false);
+                    {
+                        if (_captureAttributeValue)
+                            AppendReplacedNull(_attributeValue, value, lowerAscii: false);
+                    }
                     break;
                 case State.AfterAttributeValueQuoted:
                     CommitAttribute();
@@ -720,7 +805,8 @@ public sealed class Utf8HtmlTokenizer
                     else if (_state == State.RawEndTagName && IsTagDelimiter(value) && RawCandidateMatches())
                     {
                         _name.Clear();
-                        Append(_name, _candidate.WrittenSpan[2..]);
+                        ResetTagHash();
+                        AppendTagName(_candidate.WrittenSpan[2..]);
                         _candidate.Clear();
                         _isEndTag = true;
                         _rawEndTag = null;
@@ -943,7 +1029,7 @@ public sealed class Utf8HtmlTokenizer
     {
         if (_returnState is State.Data or State.RawText)
             _sink.Text(utf8);
-        else
+        else if (_captureAttributeValue)
             Append(_attributeValue, utf8);
     }
 
@@ -965,7 +1051,10 @@ public sealed class Utf8HtmlTokenizer
         _attributeName.Clear();
         _attributeValue.Clear();
         _seenAttributeNames.Clear();
-        Append(_name, AsciiLower(firstByte));
+        _attributeCaptureDecided = false;
+        _captureAttributeValue = true;
+        ResetTagHash();
+        AppendTagName(AsciiLower(firstByte));
         _state = State.TagName;
     }
 
@@ -973,8 +1062,26 @@ public sealed class Utf8HtmlTokenizer
     {
         if (_startTagEmitted || _isEndTag)
             return;
-        _sink.StartTag(_name.WrittenSpan);
+        if (_optimizedSink is null)
+            _sink.StartTag(_name.WrittenSpan);
+        else
+            _optimizedSink.StartTag(_name.WrittenSpan, _tagHash);
         _startTagEmitted = true;
+    }
+
+    private void DecideAttributeCapture()
+    {
+        if (_attributeCaptureDecided)
+            return;
+        if (_isEndTag)
+        {
+            _captureAttributeValue = false;
+            _attributeCaptureDecided = true;
+            return;
+        }
+        EmitTagStart();
+        _captureAttributeValue = _optimizedSink?.WantsAttribute(_attributeName.WrittenSpan) ?? true;
+        _attributeCaptureDecided = true;
     }
 
     private void CommitAttribute()
@@ -985,17 +1092,23 @@ public sealed class Utf8HtmlTokenizer
         {
             _attributeName.Clear();
             _attributeValue.Clear();
+            _attributeCaptureDecided = false;
+            _captureAttributeValue = true;
             return;
         }
         EmitTagStart();
+        DecideAttributeCapture();
         if (!HasSeenAttribute(_attributeName.WrittenSpan))
         {
-            _sink.Attribute(_attributeName.WrittenSpan, _attributeValue.WrittenSpan);
+            if (_captureAttributeValue)
+                _sink.Attribute(_attributeName.WrittenSpan, _attributeValue.WrittenSpan);
             Append(_seenAttributeNames, _attributeName.WrittenSpan);
             Append(_seenAttributeNames, (byte)0);
         }
         _attributeName.Clear();
         _attributeValue.Clear();
+        _attributeCaptureDecided = false;
+        _captureAttributeValue = true;
     }
 
     private bool HasSeenAttribute(ReadOnlySpan<byte> name)
@@ -1482,7 +1595,8 @@ public sealed class Utf8HtmlTokenizer
         if (RawCandidateMatches() && IsTagDelimiter(value))
         {
             _name.Clear();
-            Append(_name, candidate[2..]);
+            ResetTagHash();
+            AppendTagName(candidate[2..]);
             _candidate.Clear();
             _isEndTag = true;
             _rawEndTag = null;
@@ -1516,7 +1630,10 @@ public sealed class Utf8HtmlTokenizer
         CommitAttribute();
         if (_isEndTag)
         {
-            _sink.EndTag(_name.WrittenSpan);
+            if (_optimizedSink is null)
+                _sink.EndTag(_name.WrittenSpan);
+            else
+                _optimizedSink.EndTag(_name.WrittenSpan, _tagHash);
             _rawEndTag = null;
         }
         else
@@ -1681,11 +1798,65 @@ public sealed class Utf8HtmlTokenizer
         return value.Length;
     }
 
+    private void ResetTagHash() => _tagHash = Utf8NameHash.Offset;
+
+    private void AppendTagName(byte value)
+    {
+        Append(_name, value);
+        if (_optimizedSink is not null)
+            _tagHash = Utf8NameHash.Append(_tagHash, value);
+    }
+
+    private void AppendTagName(ReadOnlySpan<byte> value)
+    {
+        Append(_name, value);
+        if (_optimizedSink is not null)
+            _tagHash = Utf8NameHash.Append(_tagHash, value);
+    }
+
+    private void AppendTagNameReplacedNull(byte value)
+    {
+        if (value == 0)
+            AppendTagName("\uFFFD"u8);
+        else
+            AppendTagName(AsciiLower(value));
+    }
+
     private static int FindPlaintextTerminator(ReadOnlySpan<byte> value)
     {
         for (var i = 0; i < value.Length; i++)
         {
             if (value[i] is 0 or (byte)'\r')
+                return i;
+        }
+        return value.Length;
+    }
+
+    private static int FindQuotedAttributeValueTerminator(ReadOnlySpan<byte> value, byte quote)
+    {
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (value[i] == quote || value[i] is (byte)'&' or 0 or (byte)'\r')
+                return i;
+        }
+        return value.Length;
+    }
+
+    private static int FindUnquotedAttributeValueTerminator(ReadOnlySpan<byte> value)
+    {
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (value[i] is 0 or (byte)'&' or (byte)'>' || IsSpace(value[i]))
+                return i;
+        }
+        return value.Length;
+    }
+
+    private static int FindCommentTerminator(ReadOnlySpan<byte> value)
+    {
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (value[i] is (byte)'<' or (byte)'-' or 0 or (byte)'\r')
                 return i;
         }
         return value.Length;

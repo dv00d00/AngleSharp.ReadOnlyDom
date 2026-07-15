@@ -1,5 +1,7 @@
 using System.Runtime;
+using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Diagnosers;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
 
@@ -26,6 +28,11 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
             if (args.Length > 0 && args[0].Equals("--utf8-token-smoke", StringComparison.OrdinalIgnoreCase))
             {
                 return Utf8TokenSmoke.Run();
+            }
+
+            if (args.Length > 0 && args[0].Equals("--utf8-tokenizer-baseline", StringComparison.OrdinalIgnoreCase))
+            {
+                return Utf8TokenizerBaselineRunner.Run(args.Skip(1).ToArray());
             }
 
             if (args.Length > 0 && args[0].Equals("--utf8-dom-check", StringComparison.OrdinalIgnoreCase))
@@ -56,7 +63,12 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
             }
 #endif
 
-            var config = ManualConfig.Create(DefaultConfig.Instance).AddJob(Job.ShortRun.WithGcServer(true));
+            var config = ManualConfig
+                .Create(DefaultConfig.Instance)
+                .AddJob(Job.ShortRun.WithGcServer(true))
+                .AddColumn(StatisticColumn.OperationsPerSecond);
+            if (Environment.GetEnvironmentVariable("AS_BENCH_HARDWARE_COUNTERS") == "1")
+                config.AddHardwareCounters(HardwareCounter.TotalCycles);
             BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
             return 0;
         }

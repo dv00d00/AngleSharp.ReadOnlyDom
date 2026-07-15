@@ -107,6 +107,47 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task OptimizedTagHashMatchesNormalizedNamesAcrossChunks()
+    {
+        var root = QueryNode<QueryState>
+            .Root(Selector.Tag("article"))
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("start"))
+            .OnEnd(static (ref QueryState state) => state.Events.Add("end"));
+        var plan = root.Compile();
+        var state = new QueryState();
+        using (var session = plan.CreateSession(state))
+        {
+            var tokenizer = new Utf8HtmlTokenizer(session);
+            var html = "<ArTiClE></aRtIcLe>"u8;
+            foreach (var value in html)
+                tokenizer.Write([value]);
+            tokenizer.Complete();
+        }
+
+        await Assert.That(state.Events).IsEquivalentTo(["start", "end"]);
+    }
+
+    [Test]
+    public async Task QueryTokenizerDoesNotMaterializeUnrequestedAttributeValues()
+    {
+        var root = QueryNode<QueryState>
+            .Root(Selector.Tag("article").WithId("story"))
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("match"));
+        var state = new QueryState();
+        Utf8HtmlTokenizerCounters counters;
+        using (var session = root.Compile().CreateSession(state))
+        {
+            var tokenizer = new Utf8HtmlTokenizer(session);
+            tokenizer.Write(Encoding.UTF8.GetBytes($"<article ignored='{new string('x', 8192)}' id=story></article>"));
+            tokenizer.Complete();
+            counters = tokenizer.Counters;
+        }
+
+        await Assert.That(state.Events).IsEquivalentTo(["match"]);
+        await Assert.That(counters.MaximumBufferedTokenBytes).IsLessThan(256);
+    }
+
+    [Test]
     public async Task CompletedElementCallbackCapturesNestedTextAndAttributesOnce()
     {
         var root = StreamQuery.For<QueryState>("main");
