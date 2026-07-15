@@ -2,7 +2,8 @@ using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
 
 internal static class StreamingQueryExamples
 {
-    private static readonly byte[] Html = """
+    private static readonly byte[] Html =
+        """
         <main>
           <article id="intro">
             <h1> A small <em>streaming</em> catalogue </h1>
@@ -27,28 +28,26 @@ internal static class StreamingQueryExamples
     private static void TypedRows()
     {
         var products = StreamQuery.For<ProductFold>("ul").Id("products");
-        var product = products.Child("li")
+        var product = products
+            .Child("li")
             .Attribute("data-sku")
-            .OnClose(static (ref state, in element) =>
-            {
-                state.Products.Add(
-                    new Product(
-                        element.AttributeOrEmpty("data-sku"),
-                        state.Name,
-                        state.Price,
-                        state.Url
-                    )
-                );
-                state.Name = state.Price = state.Url = string.Empty;
-            });
+            .OnClose(
+                static (ref state, in element) =>
+                {
+                    state.Products.Add(
+                        new Product(element.AttributeOrEmpty("data-sku"), state.Name, state.Price, state.Url)
+                    );
+                    state.Name = state.Price = state.Url = string.Empty;
+                }
+            );
 
-        product.Descendant("a")
+        product
+            .Descendant("a")
             .Attribute("href")
-            .OnClose(static (ref state, in element) =>
-                state.Url = element.AttributeOrEmpty("href"));
-        product.Descendant("h2")
-            .OnNormalizedText(static (ref state, in element) => state.Name = element.Text);
-        product.Descendant("span")
+            .OnClose(static (ref state, in element) => state.Url = element.AttributeOrEmpty("href"));
+        product.Descendant("h2").OnNormalizedText(static (ref state, in element) => state.Name = element.Text);
+        product
+            .Descendant("span")
             .Class("price")
             .OnNormalizedText(static (ref state, in element) => state.Price = element.Text);
 
@@ -58,7 +57,8 @@ internal static class StreamingQueryExamples
 
     private static void SubtreeText()
     {
-        var article = StreamQuery.For<List<string>>("article")
+        var article = StreamQuery
+            .For<List<string>>("article")
             .Id("intro")
             .OnNormalizedText(static (ref output, in element) => output.Add(element.Text));
 
@@ -71,16 +71,20 @@ internal static class StreamingQueryExamples
         var page = StreamQuery.For<PageSummary>("main");
         page.Descendant("a")
             .Attribute("href")
-            .OnNormalizedText(static (ref summary, in element) =>
-            {
-                summary.Links++;
-                if (element.AttributeOrEmpty("href").StartsWith("http", StringComparison.Ordinal))
-                    summary.ExternalLinks++;
-                summary.LinkTextCharacters += element.Text.Length;
-            });
+            .OnNormalizedText(
+                static (ref summary, in element) =>
+                {
+                    summary.Links++;
+                    if (element.AttributeOrEmpty("href").StartsWith("http", StringComparison.Ordinal))
+                        summary.ExternalLinks++;
+                    summary.LinkTextCharacters += element.Text.Length;
+                }
+            );
         page.Descendant("p")
-            .OnNormalizedText(static (ref summary, in element) =>
-                summary.ParagraphWords += element.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
+            .OnNormalizedText(
+                static (ref summary, in element) =>
+                    summary.ParagraphWords += element.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length
+            );
 
         var summary = page.Compile().Execute(Html, new PageSummary());
         Console.WriteLine(

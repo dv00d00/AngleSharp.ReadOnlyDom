@@ -106,17 +106,19 @@ public class LongSyntheticConstructionBenchmark
         QueryNode<RawFoldState>
             .Root("article")
             .Id("content")
-            .OnText(static (ref state, text) =>
-            {
-                Span<char> chars = stackalloc char[2];
-                while (!text.IsEmpty)
+            .OnText(
+                static (ref state, text) =>
                 {
-                    Rune.DecodeFromUtf8(text, out var rune, out var consumed);
-                    var written = rune.EncodeToUtf16(chars);
-                    state.Text.Append(chars[..written]);
-                    text = text[consumed..];
+                    Span<char> chars = stackalloc char[2];
+                    while (!text.IsEmpty)
+                    {
+                        Rune.DecodeFromUtf8(text, out var rune, out var consumed);
+                        var written = rune.EncodeToUtf16(chars);
+                        state.Text.Append(chars[..written]);
+                        text = text[consumed..];
+                    }
                 }
-            })
+            )
             .Compile();
 
     private static QueryPlan<CompletedFoldState> CreateCompletedUtf8Plan() =>
