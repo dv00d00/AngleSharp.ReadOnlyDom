@@ -5,14 +5,16 @@ namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
 
 public static class BackpressuredQueryExecution
 {
-    public static async ValueTask<TState> ExecuteBackpressuredAsync<TState>(
+    public static async ValueTask<TState> ExecuteEncodedBackpressuredAsync<TState>(
         this QueryPlan<TState> plan,
         PipeReader reader,
         PipeWriter writer,
+        HtmlInputEncoding inputEncoding,
         TState state,
         int flushThreshold = 16 * 1024,
         int inputSliceSize = 4 * 1024,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        HtmlStreamingLimits? limits = null
     )
         where TState : class, ICommittedUtf8Output
     {
@@ -22,8 +24,49 @@ public static class BackpressuredQueryExecution
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(flushThreshold);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(inputSliceSize);
 
-        using var session = plan.CreateSession(state);
-        var tokenizer = new Utf8HtmlTokenizer(session);
+        limits ??= HtmlStreamingLimits.Default;
+        using var session = plan.CreateSession(state, limits);
+        await EncodedHtmlInput
+            .TokenizeAsync(
+                reader,
+                inputEncoding,
+                session,
+                cancellationToken,
+                inputSliceSize,
+                FlushIfNeededAsync,
+                limits
+            )
+            .ConfigureAwait(false);
+        await FlushCommittedAsync(writer, state, cancellationToken).ConfigureAwait(false);
+        return session.State;
+
+        ValueTask FlushIfNeededAsync() =>
+            state.CommittedUtf8.Length >= flushThreshold
+                ? FlushCommittedAsync(writer, state, cancellationToken)
+                : ValueTask.CompletedTask;
+    }
+
+    public static async ValueTask<TState> ExecuteBackpressuredAsync<TState>(
+        this QueryPlan<TState> plan,
+        PipeReader reader,
+        PipeWriter writer,
+        TState state,
+        int flushThreshold = 16 * 1024,
+        int inputSliceSize = 4 * 1024,
+        CancellationToken cancellationToken = default,
+        HtmlStreamingLimits? limits = null
+    )
+        where TState : class, ICommittedUtf8Output
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(flushThreshold);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(inputSliceSize);
+
+        limits ??= HtmlStreamingLimits.Default;
+        using var session = plan.CreateSession(state, limits);
+        var tokenizer = new Utf8HtmlTokenizer(session, limits);
 
         while (true)
         {

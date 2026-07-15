@@ -22,11 +22,17 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
     private ulong _pendingAttributeBits;
     private ulong _seenAttributeBits;
     private bool _disposed;
+    private readonly int _maximumNestingDepth;
+    private readonly long _maximumQueryCaptureBytes;
+    private long _queryCaptureBytes;
 
-    internal QuerySession(QueryPlan<TState> plan, TState state)
+    internal QuerySession(QueryPlan<TState> plan, TState state, HtmlStreamingLimits limits)
     {
+        ArgumentNullException.ThrowIfNull(limits);
         _plan = plan;
         _state = state;
+        _maximumNestingDepth = limits.MaximumNestingDepth;
+        _maximumQueryCaptureBytes = limits.MaximumQueryCaptureBytes;
         _activeCounts = ArrayPool<int>.Shared.Rent(Math.Max(plan.Nodes.Length, 1));
         _activeCounts.AsSpan(0, plan.Nodes.Length).Clear();
         _frames = ArrayPool<QueryFrame>.Shared.Rent(64);
@@ -91,12 +97,14 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
                 continue;
             if (_attributeLengths[index] >= 0)
                 return;
+            EnsureQueryCaptureCapacity(value.Length);
             EnsureAttributeCapacity(value.Length);
             _attributeStarts[index] = _attributeValueLength;
             _attributeLengths[index] = value.Length;
             _seenAttributeBits |= 1UL << index;
             value.CopyTo(_attributeValues.AsSpan(_attributeValueLength));
             _attributeValueLength += value.Length;
+            _queryCaptureBytes += value.Length;
             return;
         }
     }
@@ -115,6 +123,15 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
             matches |= 1UL << node.Index;
         }
 
+        var closesImmediately = selfClosing || IsVoidTag(_pendingTagHash, _pendingTagLength);
+        if (!closesImmediately && _frameCount >= _maximumNestingDepth)
+            throw new HtmlStreamingLimitExceededException(
+                HtmlStreamingLimit.NestingDepth,
+                _maximumNestingDepth,
+                (long)_frameCount + 1
+            );
+        EnsureQueryCaptureCapacity(GetCompletedAttributeBytes(matches));
+
         var element = new Element(
             _plan.AttributeNames,
             _plan.AttributeNameUtf8,
@@ -131,7 +148,6 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
         }
         StartCompletedCaptures(matches);
 
-        var closesImmediately = selfClosing || IsVoidTag(_pendingTagHash, _pendingTagLength);
         if (closesImmediately)
         {
             CloseMatches(matches);
@@ -145,6 +161,7 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
 
     public void Text(ReadOnlySpan<byte> utf8)
     {
+        EnsureQueryCaptureCapacity(GetCompletedTextUpperBound(utf8.Length));
         var handlers = _plan.TextHandlerBits;
         while (handlers != 0)
         {
@@ -294,6 +311,7 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
                 if (length >= 0)
                 {
                     capture.SetAttribute(attribute, _attributeValues.AsSpan(_attributeStarts[attributeIndex], length));
+                    _queryCaptureBytes += length;
                 }
             }
             capture.BeginText();
@@ -313,7 +331,11 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
             if (captures is null)
                 continue;
             foreach (var capture in captures)
+            {
+                var previousLength = capture.Length;
                 capture.Append(utf8);
+                _queryCaptureBytes += capture.Length - previousLength;
+            }
         }
     }
 
@@ -328,6 +350,7 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
         var captureIndex = captures.Count - 1;
         var capture = captures[captureIndex];
         captures.RemoveAt(captureIndex);
+        _queryCaptureBytes -= capture.Length;
         try
         {
             var element = new CompletedElement(
@@ -366,6 +389,7 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
 
     private void ResetAttributes()
     {
+        _queryCaptureBytes -= _attributeValueLength;
         _attributeValueLength = 0;
         while (_seenAttributeBits != 0)
         {
@@ -396,6 +420,58 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
         ArrayPool<QueryFrame>.Shared.Return(_frames, clearArray: true);
         _frames = replacement;
     }
+
+    private long GetCompletedAttributeBytes(ulong matches)
+    {
+        var total = 0L;
+        var completed = matches & _plan.CompletedHandlerBits;
+        while (completed != 0)
+        {
+            var index = BitOperations.TrailingZeroCount(completed);
+            completed &= completed - 1;
+            foreach (var attributeIndex in _plan.Nodes[index].CompletedAttributeIndexes)
+            {
+                var length = _attributeLengths[attributeIndex];
+                if (length > 0)
+                    total = SaturatingAdd(total, length);
+            }
+        }
+        return total;
+    }
+
+    private long GetCompletedTextUpperBound(int textLength)
+    {
+        var captureCount = 0L;
+        var completed = _plan.CompletedHandlerBits;
+        while (completed != 0)
+        {
+            var index = BitOperations.TrailingZeroCount(completed);
+            completed &= completed - 1;
+            captureCount = SaturatingAdd(captureCount, _completedCaptures[index]?.Count ?? 0);
+        }
+        return captureCount == 0 || textLength == 0
+            ? 0
+            : captureCount > long.MaxValue / textLength
+                ? long.MaxValue
+                : captureCount * textLength;
+    }
+
+    private void EnsureQueryCaptureCapacity(long additional)
+    {
+        var observed =
+            _queryCaptureBytes > long.MaxValue - additional
+                ? long.MaxValue
+                : _queryCaptureBytes + additional;
+        if (observed > _maximumQueryCaptureBytes)
+            throw new HtmlStreamingLimitExceededException(
+                HtmlStreamingLimit.QueryCaptureBytes,
+                _maximumQueryCaptureBytes,
+                observed
+            );
+    }
+
+    private static long SaturatingAdd(long value, long additional) =>
+        value > long.MaxValue - additional ? long.MaxValue : value + additional;
 
     private static bool ContainsToken(ReadOnlySpan<byte> tokens, ReadOnlySpan<byte> wanted)
     {

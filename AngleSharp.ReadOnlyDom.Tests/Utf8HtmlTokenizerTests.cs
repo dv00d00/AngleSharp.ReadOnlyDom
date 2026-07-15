@@ -54,6 +54,59 @@ public sealed class Utf8HtmlTokenizerTests
     }
 
     [Test]
+    public async Task KnownLegacyEncodingIsTranscodedIntoTheUtf8Tokenizer()
+    {
+        const string html = "<main data-label='café'>olá</main>";
+        var sourceEncoding = Encoding.Latin1;
+        var reader = PipeReader.Create(new MemoryStream(sourceEncoding.GetBytes(html)));
+        var sink = new RecordingSink();
+
+        var counters = await EncodedHtmlInput.TokenizeAsync(
+            reader,
+            HtmlInputEncoding.Known(sourceEncoding),
+            sink,
+            CancellationToken.None
+        );
+        var expectedUtf8 = Encoding.UTF8.GetBytes(html);
+        var expected = Tokenize(expectedUtf8, expectedUtf8.Length);
+
+        await Assert.That(sink.Events).IsEquivalentTo(expected.Events);
+        await Assert.That(counters.BytesConsumed).IsEqualTo(expectedUtf8.Length);
+        await reader.CompleteAsync();
+    }
+
+    [Test]
+    public async Task AutoEncodingUsesMetaBeforeInvokingTheUtf8Tokenizer()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        const string html = "<meta charset=windows-1252><main>“café”</main>";
+        var sourceEncoding = Encoding.GetEncoding(1252);
+        var bytes = sourceEncoding.GetBytes(html);
+        var expectedUtf8 = Encoding.UTF8.GetBytes(html);
+        var expected = Tokenize(expectedUtf8, expectedUtf8.Length);
+
+        foreach (var chunkSize in new[] { 1, 7, bytes.Length })
+        {
+            var actual = await TokenizeEncoded(bytes, HtmlInputEncoding.Auto(), chunkSize);
+            await Assert.That(actual.Events).IsEquivalentTo(expected.Events);
+        }
+    }
+
+    [Test]
+    public async Task AutoEncodingUsesSplitUtf16BomAndPreservesSurrogatePairs()
+    {
+        const string html = "<main>hello 😀</main>";
+        var content = Encoding.Unicode.GetBytes(html);
+        var bytes = Encoding.Unicode.GetPreamble().Concat(content).ToArray();
+        var expectedUtf8 = Encoding.UTF8.GetBytes(html);
+        var expected = Tokenize(expectedUtf8, expectedUtf8.Length);
+
+        var actual = await TokenizeEncoded(bytes, HtmlInputEncoding.Auto(), chunkSize: 1);
+
+        await Assert.That(actual.Events).IsEquivalentTo(expected.Events);
+    }
+
+    [Test]
     public async Task OptionalStateMetricsCaptureBulkAndScalarRuns()
     {
         var sink = new RecordingSink();
@@ -250,6 +303,30 @@ public sealed class Utf8HtmlTokenizerTests
             tokenizer.Write(utf8.AsMemory(offset, Math.Min(segmentSize, utf8.Length - offset)));
         tokenizer.Complete();
         return (sink.Events, tokenizer.Counters);
+    }
+
+    private static async Task<(IReadOnlyList<string> Events, Utf8HtmlTokenizerCounters Counters)> TokenizeEncoded(
+        byte[] source,
+        HtmlInputEncoding inputEncoding,
+        int chunkSize
+    )
+    {
+        var pipe = new Pipe(new PipeOptions(minimumSegmentSize: 8, useSynchronizationContext: false));
+        var sink = new RecordingSink();
+        var tokenization = EncodedHtmlInput
+            .TokenizeAsync(pipe.Reader, inputEncoding, sink, CancellationToken.None)
+            .AsTask();
+
+        for (var offset = 0; offset < source.Length; offset += chunkSize)
+        {
+            var length = Math.Min(chunkSize, source.Length - offset);
+            await pipe.Writer.WriteAsync(source.AsMemory(offset, length));
+        }
+        await pipe.Writer.CompleteAsync();
+
+        var counters = await tokenization;
+        await pipe.Reader.CompleteAsync();
+        return (sink.Events, counters);
     }
 
     private static IReadOnlyList<string> TokenizeWithAngleSharp(string html)
