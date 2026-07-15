@@ -82,6 +82,11 @@ same construction seam to C#-configured object rows, normalized text, and delibe
 query language or incremental result emission. AngleSharp's current stream-backed `TextSource` reads incrementally but
 retains the decoded input, so bounded-memory input remains a separate tokenizer/source-substrate problem.
 
+The first tokenizer-native compiled query prototype is recorded in
+[ISSUE_39_QUERY_COMPILED_FOLDS.md](ISSUE_39_QUERY_COMPILED_FOLDS.md). It compiles a constrained C# object model into
+structural match and attribute-projection bitsets, delivers borrowed UTF-8 events to arbitrary caller state, and keeps
+lexical streaming semantics explicitly separate from browser-equivalent malformed tree construction.
+
 ## Scope discipline
 
 Start with tag, id, class token, attribute equality, descendant/direct-child paths, first/all cardinality, attribute projection, and normalized subtree text. Use an inspectable interpreted plan. Do not begin with a full CSS language, generic optimizer, generated IL, SIMD selectors, bitmap rank/select storage, or a universal column framework.

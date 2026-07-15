@@ -20,6 +20,8 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 [MemoryDiagnoser]
 public class QqArticleScraperBenchmark
 {
+    private static readonly Utf8StreamQueryPlan<CompiledArticleState> ArticleQuery =
+        CreateArticleQuery();
     private readonly HtmlParser _angleSharp = new();
     private readonly HtmlParser _readOnlyMinimal = CreateReadOnlyParser(ReadOnlyMetadataProfile.Minimal);
     private readonly HtmlParser _readOnlySourceMapped = CreateReadOnlyParser(ReadOnlyMetadataProfile.SourceMapped);
@@ -40,6 +42,7 @@ public class QqArticleScraperBenchmark
         AssertEqual(nameof(ReadOnlySourceMappedBodyFiltered), ReadOnlySourceMappedBodyFiltered());
         AssertEqual(nameof(CompactFrozenBodyFiltered), CompactFrozenBodyFiltered());
         AssertEqual(nameof(NativeUtf8Fold), NativeUtf8Fold());
+        AssertEqual(nameof(QueryCompiledUtf8Fold), QueryCompiledUtf8Fold());
 
         Console.WriteLine(
             $"QQ scraper fixture: {_utf8.Length:N0} UTF-8 bytes, {_expected.Count:N0} article-link objects."
@@ -129,6 +132,46 @@ public class QqArticleScraperBenchmark
         tokenizer.Write(_utf8);
         tokenizer.Complete();
         return sink.DetachResults();
+    }
+
+    [Benchmark]
+    public List<Article> QueryCompiledUtf8Fold()
+    {
+        var state = ArticleQuery.Execute(_utf8, new CompiledArticleState());
+        return state.DetachResults();
+    }
+
+    private static Utf8StreamQueryPlan<CompiledArticleState> CreateArticleQuery()
+    {
+        var list = Utf8StreamQueryNode<CompiledArticleState>.Root(
+            Utf8StreamSelector.Tag("ul").WithClass("news-list")
+        );
+        var card = list.Descendant(
+                Utf8StreamSelector.Tag("li").WithAttribute("dt-eid", "em_item_article")
+            )
+            .OnStart(
+                static (ref CompiledArticleState state, in Utf8StreamElement element) =>
+                    state.StartCard(element),
+                "dt-params"
+            )
+            .OnEnd(static (ref CompiledArticleState state) => state.EndCard());
+        var link = card.Descendant(Utf8StreamSelector.Tag("a").WithAttribute("href"))
+            .OnStart(
+                static (ref CompiledArticleState state, in Utf8StreamElement element) =>
+                    state.StartLink(element),
+                "href"
+            )
+            .OnText(static (ref CompiledArticleState state, ReadOnlySpan<byte> text) =>
+                state.AppendText(text))
+            .OnEnd(static (ref CompiledArticleState state) => state.EndLink());
+        link.Descendant(Utf8StreamSelector.Tag("img"))
+            .OnStart(
+                static (ref CompiledArticleState state, in Utf8StreamElement element) =>
+                    state.Image(element),
+                "src",
+                "alt"
+            );
+        return list.Compile();
     }
 
     private static List<Article> ScrapeReadOnly(IReadOnlyNode document)
@@ -245,6 +288,67 @@ public class QqArticleScraperBenchmark
         string? ImageAlt,
         string CardMetadata
     );
+
+    private sealed class CompiledArticleState
+    {
+        private readonly StringBuilder _title = new();
+        private List<Article> _results = new(128);
+        private string _cardMetadata = string.Empty;
+        private string? _href;
+        private string? _imageUrl;
+        private string? _imageAlt;
+
+        public void StartCard(in Utf8StreamElement element) =>
+            _cardMetadata = Decode(element, "dt-params") ?? string.Empty;
+
+        public void EndCard() => _cardMetadata = string.Empty;
+
+        public void StartLink(in Utf8StreamElement element)
+        {
+            _href = Decode(element, "href");
+            _imageUrl = null;
+            _imageAlt = null;
+            _title.Clear();
+        }
+
+        public void AppendText(ReadOnlySpan<byte> utf8)
+        {
+            Span<char> chars = stackalloc char[2];
+            while (!utf8.IsEmpty)
+            {
+                Rune.DecodeFromUtf8(utf8, out var rune, out var consumed);
+                var written = rune.EncodeToUtf16(chars);
+                _title.Append(chars[..written]);
+                utf8 = utf8[consumed..];
+            }
+        }
+
+        public void Image(in Utf8StreamElement element)
+        {
+            _imageUrl ??= Decode(element, "src");
+            _imageAlt ??= Decode(element, "alt");
+        }
+
+        public void EndLink()
+        {
+            if (_href is not null)
+                AddArticle(_results, _title.ToString(), _href, _imageUrl, _imageAlt, _cardMetadata);
+            _href = null;
+            _imageUrl = null;
+            _imageAlt = null;
+            _title.Clear();
+        }
+
+        public List<Article> DetachResults()
+        {
+            var results = _results;
+            _results = [];
+            return results;
+        }
+
+        private static string? Decode(in Utf8StreamElement element, string attribute) =>
+            element.TryGetAttribute(attribute, out var value) ? Encoding.UTF8.GetString(value) : null;
+    }
 
     private sealed class NativeArticleSink : IUtf8HtmlTokenSink, IDisposable
     {

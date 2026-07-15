@@ -1,0 +1,161 @@
+#if NET10_0
+using System.Text;
+using System.IO.Pipelines;
+using AngleSharp.Html.Parser;
+using AngleSharp.ReadOnlyDom.Streaming;
+
+namespace AngleSharp.Readonly.Tests;
+
+public sealed class Utf8StreamQueryTests
+{
+    [Test]
+    public async Task ChildAndDescendantRelationsRemainDistinct()
+    {
+        var root = Utf8StreamQueryNode<QueryState>.Root(Utf8StreamSelector.Tag("main"));
+        root.Child(Utf8StreamSelector.Tag("a"))
+            .OnStart(static (ref QueryState state, in Utf8StreamElement _) => state.Events.Add("child"));
+        root.Descendant(Utf8StreamSelector.Tag("a"))
+            .OnStart(static (ref QueryState state, in Utf8StreamElement _) => state.Events.Add("descendant"));
+
+        var state = root.Compile().Execute(
+            "<main><a>direct</a><section><a>nested</a></section></main>"u8,
+            new QueryState()
+        );
+
+        await Assert.That(string.Join('|', state.Events)).IsEqualTo("child|descendant|descendant");
+    }
+
+    [Test]
+    public async Task PredicatesAndProjectedAttributesUseBorrowedUtf8()
+    {
+        var root = Utf8StreamQueryNode<QueryState>.Root(
+                Utf8StreamSelector.Tag("article")
+                    .WithId("story")
+                    .WithClass("featured")
+                    .WithAttribute("data-id")
+                    .WithAttribute("lang", "en")
+            )
+            .OnStart(
+                static (ref QueryState state, in Utf8StreamElement element) =>
+                {
+                    state.Events.Add(Encoding.UTF8.GetString(Get(element, "data-id")));
+                    state.Events.Add(element.HasAttribute("missing") ? "present" : "missing");
+                },
+                "data-id",
+                "missing"
+            );
+
+        var state = root.Compile().Execute(
+            "<article id=story class='lead featured wide' data-id='42' lang=en></article>"u8,
+            new QueryState()
+        );
+
+        await Assert.That(string.Join('|', state.Events)).IsEqualTo("42|missing");
+    }
+
+    [Test]
+    public async Task TextEndAndVoidCallbacksPreserveStructuralOrderAcrossSegments()
+    {
+        var root = Utf8StreamQueryNode<QueryState>.Root(Utf8StreamSelector.Tag("main"));
+        root.Descendant(Utf8StreamSelector.Tag("a"))
+            .OnStart(static (ref QueryState state, in Utf8StreamElement _) => state.Events.Add("a:start"))
+            .OnText(static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                state.Text.Append(Encoding.UTF8.GetString(text)))
+            .OnEnd(static (ref QueryState state) => state.Events.Add("a:end"))
+            .Descendant(Utf8StreamSelector.Tag("img"))
+            .OnStart(static (ref QueryState state, in Utf8StreamElement _) => state.Events.Add("img:start"))
+            .OnEnd(static (ref QueryState state) => state.Events.Add("img:end"));
+
+        var plan = root.Compile();
+        var state = new QueryState();
+        using (var session = plan.CreateSession(state))
+        {
+            var tokenizer = new Utf8HtmlTokenizer(session);
+            var html = "<main><a>hello <b>bold</b><img></a></main>"u8;
+            for (var index = 0; index < html.Length; index++)
+                tokenizer.Write(html.Slice(index, 1));
+            tokenizer.Complete();
+        }
+
+        await Assert.That(string.Join('|', state.Events)).IsEqualTo("a:start|img:start|img:end|a:end");
+        await Assert.That(state.Text.ToString()).IsEqualTo("hello bold");
+    }
+
+    [Test]
+    public async Task PipeReaderFeedsTheSameCompiledPlanIncrementally()
+    {
+        var root = Utf8StreamQueryNode<QueryState>.Root(Utf8StreamSelector.Tag("main"))
+            .OnText(static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                state.Text.Append(Encoding.UTF8.GetString(text)));
+        var pipe = new Pipe(new PipeOptions(minimumSegmentSize: 8, useSynchronizationContext: false));
+        var execute = root.Compile().ExecuteAsync(pipe.Reader, new QueryState()).AsTask();
+
+        await pipe.Writer.WriteAsync("<main>hé"u8.ToArray());
+        await pipe.Writer.WriteAsync("llo</main>"u8.ToArray());
+        await pipe.Writer.CompleteAsync();
+        var state = await execute;
+        await pipe.Reader.CompleteAsync();
+
+        await Assert.That(state.Text.ToString()).IsEqualTo("héllo");
+    }
+
+    [Test]
+    public async Task MalformedTableNestingDocumentsTheLexicalTopologyBoundary()
+    {
+        const string html = "<table><div id=inside>lexically nested</div></table>";
+        var root = Utf8StreamQueryNode<QueryState>.Root(Utf8StreamSelector.Tag("table"));
+        root.Descendant(Utf8StreamSelector.Tag("div").WithId("inside"))
+            .OnStart(static (ref QueryState state, in Utf8StreamElement _) => state.Events.Add("match"));
+        var lexical = root.Compile().Execute(Encoding.UTF8.GetBytes(html), new QueryState());
+
+        using var browserDocument = new HtmlParser().ParseDocument(html);
+
+        await Assert.That(lexical.Events.Count).IsEqualTo(1);
+        await Assert.That(browserDocument.QuerySelector("table #inside")).IsNull();
+    }
+
+    [Test]
+    public async Task ExplanationAndNodeLimitMakeTheExecutionShapeExplicit()
+    {
+        var root = Utf8StreamQueryNode<QueryState>.Root(
+            Utf8StreamSelector.Tag("ul").WithClass("news-list")
+        );
+        root.Descendant(Utf8StreamSelector.Tag("a").WithAttribute("href"))
+            .OnStart(static (ref QueryState _, in Utf8StreamElement _) => { }, "title");
+        var explanation = root.Compile().Explanation;
+
+        await Assert.That(explanation.ExecutionShape).IsEqualTo("StreamingOnly");
+        await Assert.That(explanation.QueryNodes).IsEqualTo(2);
+        await Assert.That(explanation.RequiredTags).IsEquivalentTo(["a", "ul"]);
+        await Assert.That(explanation.RequiredAttributes).IsEquivalentTo(["class", "href", "title"]);
+        await Assert.That(explanation.CanStopAfterRoot).IsFalse();
+
+        var node = root;
+        for (var index = 0; index < 63; index++)
+            node = node.Descendant(Utf8StreamSelector.Tag("div"));
+        var rejected = false;
+        try
+        {
+            root.Compile();
+        }
+        catch (NotSupportedException)
+        {
+            rejected = true;
+        }
+        await Assert.That(rejected).IsTrue();
+    }
+
+    private static ReadOnlySpan<byte> Get(in Utf8StreamElement element, string name)
+    {
+        if (!element.TryGetAttribute(name, out var value))
+            throw new InvalidOperationException($"Missing projected attribute '{name}'.");
+        return value;
+    }
+
+    private sealed class QueryState
+    {
+        public List<string> Events { get; } = [];
+        public StringBuilder Text { get; } = new();
+    }
+}
+#endif
