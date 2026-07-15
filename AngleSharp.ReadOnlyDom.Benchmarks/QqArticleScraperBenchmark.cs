@@ -147,7 +147,7 @@ public class QqArticleScraperBenchmark
         var state = ArticleQuery.Execute(_utf8, new CompiledArticleState());
         return state.DetachResults();
     }
-    
+
     [Benchmark]
     public List<Article> QueryCompletedElementFold()
     {
@@ -160,27 +160,26 @@ public class QqArticleScraperBenchmark
         var list = StreamQuery.For<CompiledArticleState>("ul").WithClass("news-list");
         var card = list.Descendant("li")
             .WithAttribute("dt-eid", "em_item_article")
-            .OnStart(
-                static (ref state, in element) => state.StartCard(element),
-                "dt-params"
-            )
+            .OnStart(static (ref state, in element) => state.StartCard(element), "dt-params")
             .OnEnd(static (ref state) => state.EndCard());
 
         var link = card.Descendant("a")
             .WithAttribute("href")
-            .OnNormalizedText(static (ref state, in element) =>
-            {
-                AddArticle(
-                    state._results,
-                    element.Text,
-                    element.AttributeOrEmpty("href"),
-                    state._imageUrl,
-                    state._imageAlt,
-                    state._cardMetadata
-                );
-                state._imageUrl = null;
-                state._imageAlt = null;
-            });
+            .OnNormalizedText(
+                static (ref state, in element) =>
+                {
+                    AddArticle(
+                        state._results,
+                        element.Text,
+                        element.AttributeOrEmpty("href"),
+                        state._imageUrl,
+                        state._imageAlt,
+                        state._cardMetadata
+                    );
+                    state._imageUrl = null;
+                    state._imageAlt = null;
+                }
+            );
 
         link.Descendant("img")
             .OnClose(

@@ -273,10 +273,8 @@ public sealed class QueryNode<TState>
         return this;
     }
 
-    public QueryNode<TState> OnClose(
-        CompletedElementHandler<TState> handler,
-        params string[] projectedAttributes
-    ) => OnCompleted(CompletedTextMode.None, handler, projectedAttributes);
+    public QueryNode<TState> OnClose(CompletedElementHandler<TState> handler, params string[] projectedAttributes) =>
+        OnCompleted(CompletedTextMode.None, handler, projectedAttributes);
 
     public QueryNode<TState> OnTextContent(
         CompletedElementHandler<TState> handler,
@@ -755,9 +753,8 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
             var index = BitOperations.TrailingZeroCount(completed);
             completed &= completed - 1;
             var node = _plan.Nodes[index];
-            var attributeValues = node.CompletedAttributeIndexes.Length == 0
-                ? []
-                : new string?[node.CompletedAttributeIndexes.Length];
+            var attributeValues =
+                node.CompletedAttributeIndexes.Length == 0 ? [] : new string?[node.CompletedAttributeIndexes.Length];
             for (var attribute = 0; attribute < node.CompletedAttributeIndexes.Length; attribute++)
             {
                 var attributeIndex = node.CompletedAttributeIndexes[attribute];
@@ -802,11 +799,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         var captureIndex = captures.Count - 1;
         var capture = captures[captureIndex];
         captures.RemoveAt(captureIndex);
-        var element = new CompletedElement(
-            capture.GetText(),
-            node.CompletedAttributeNames,
-            capture.AttributeValues
-        );
+        var element = new CompletedElement(capture.GetText(), node.CompletedAttributeNames, capture.AttributeValues);
         node.Completed.Invoke(ref _state, in element);
     }
 

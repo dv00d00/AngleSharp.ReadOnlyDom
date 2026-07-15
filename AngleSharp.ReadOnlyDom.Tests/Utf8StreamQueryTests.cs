@@ -112,14 +112,12 @@ public sealed class QueryTests
         root.Descendant("section")
             .WithAttribute("data-id")
             .OnNormalizedText(
-                static (ref state, in element) =>
-                    state.Events.Add($"{element.Attribute("data-id")}:{element.Text}"),
+                static (ref state, in element) => state.Events.Add($"{element.Attribute("data-id")}:{element.Text}"),
                 "title"
             );
         root.Descendant("img")
             .OnClose(
-                static (ref state, in element) =>
-                    state.Events.Add($"img:{element.AttributeOrEmpty("alt")}"),
+                static (ref state, in element) => state.Events.Add($"img:{element.AttributeOrEmpty("alt")}"),
                 "alt"
             );
 
@@ -129,8 +127,7 @@ public sealed class QueryTests
                 new QueryState()
             );
 
-        await Assert.That(string.Join('|', state.Events))
-            .IsEqualTo("inner:Inner|outer:Outer Inner tail|img:Logo");
+        await Assert.That(string.Join('|', state.Events)).IsEqualTo("inner:Inner|outer:Outer Inner tail|img:Logo");
     }
 
     [Test]
