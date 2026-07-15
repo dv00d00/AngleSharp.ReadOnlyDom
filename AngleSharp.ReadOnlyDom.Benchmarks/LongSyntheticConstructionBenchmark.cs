@@ -3,6 +3,7 @@ using System.Text;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Compact;
 using AngleSharp.ReadOnlyDom.Html;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
 using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
@@ -28,7 +29,10 @@ public class LongSyntheticConstructionBenchmark
         .First(CompactAggregateSelector.Tag("article").WithId("content"))
         .Field("text", CompactAggregateProjection.SelfNormalizedText(), required: true)
         .Compile();
+    private readonly QueryPlan<RawFoldState> _rawUtf8Plan = CreateRawUtf8Plan();
+    private readonly QueryPlan<CompletedFoldState> _completedUtf8Plan = CreateCompletedUtf8Plan();
     private string _html = null!;
+    private byte[] _utf8 = null!;
 
     [Params(5_000)]
     public int NoiseBlocks { get; set; }
@@ -37,13 +41,18 @@ public class LongSyntheticConstructionBenchmark
     public void Setup()
     {
         _html = CreatePage(NoiseBlocks);
+        _utf8 = Encoding.UTF8.GetBytes(_html);
         var readOnly = ReadOnlyParseAndTraverse();
         var compact = CompactParseAndPlan();
         var queryDirected = QueryDirectedConstruction();
         var aggregate = EofAggregateConstruction();
+        var rawUtf8 = NativeUtf8RawFold();
+        var completedUtf8 = NativeUtf8CompletedElementFold();
         AssertEqual("compact", readOnly, compact);
         AssertEqual("query-directed", readOnly, queryDirected);
         AssertEqual("EOF aggregate", readOnly, aggregate);
+        AssertEqual("native UTF-8 raw fold", readOnly, rawUtf8);
+        AssertEqual("native UTF-8 completed-element fold", readOnly, completedUtf8);
 
         var counters = _streamingPlan.Execute(_html).Counters;
         Console.WriteLine(
@@ -78,6 +87,44 @@ public class LongSyntheticConstructionBenchmark
         var result = _aggregatePlan.Execute(_html);
         return result.Rows.Count == 0 ? string.Empty : result.Rows[0]["text"].Own();
     }
+
+    [Benchmark]
+    public string NativeUtf8RawFold()
+    {
+        var state = _rawUtf8Plan.Execute(_utf8, new RawFoldState());
+        return Normalize(state.Text.ToString());
+    }
+
+    [Benchmark]
+    public string NativeUtf8CompletedElementFold()
+    {
+        var state = _completedUtf8Plan.Execute(_utf8, new CompletedFoldState());
+        return state.Text;
+    }
+
+    private static QueryPlan<RawFoldState> CreateRawUtf8Plan() =>
+        QueryNode<RawFoldState>
+            .Root("article")
+            .Id("content")
+            .OnText(static (ref state, text) =>
+            {
+                Span<char> chars = stackalloc char[2];
+                while (!text.IsEmpty)
+                {
+                    Rune.DecodeFromUtf8(text, out var rune, out var consumed);
+                    var written = rune.EncodeToUtf16(chars);
+                    state.Text.Append(chars[..written]);
+                    text = text[consumed..];
+                }
+            })
+            .Compile();
+
+    private static QueryPlan<CompletedFoldState> CreateCompletedUtf8Plan() =>
+        StreamQuery
+            .For<CompletedFoldState>("article")
+            .Id("content")
+            .OnNormalizedText(static (ref state, in element) => state.Text = element.Text)
+            .Compile();
 
     private static string CreatePage(int noiseBlocks)
     {
@@ -148,6 +195,16 @@ public class LongSyntheticConstructionBenchmark
                 + $"expected length {expected.Length}, actual length {actual.Length}; "
                 + $"expected context '{expectedContext}', actual context '{actualContext}'."
         );
+    }
+
+    private sealed class RawFoldState
+    {
+        internal StringBuilder Text { get; } = new();
+    }
+
+    private sealed class CompletedFoldState
+    {
+        internal string Text = string.Empty;
     }
 }
 #endif
