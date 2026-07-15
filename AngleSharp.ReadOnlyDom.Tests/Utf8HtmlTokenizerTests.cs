@@ -117,6 +117,24 @@ public sealed class Utf8HtmlTokenizerTests
         }
     }
 
+    [Test]
+    [Arguments(1)]
+    [Arguments(7)]
+    public async Task CDataDeclarationRequiresForeignContentSignal(int segmentSize)
+    {
+        var utf8 = "<![CDATA[a]]>b"u8.ToArray();
+
+        var foreignSink = new RecordingSink();
+        var foreignTokenizer = new Utf8HtmlTokenizer(foreignSink) { IsAcceptingCharacterData = true };
+        for (var offset = 0; offset < utf8.Length; offset += segmentSize)
+            foreignTokenizer.Write(utf8.AsMemory(offset, Math.Min(segmentSize, utf8.Length - offset)));
+        foreignTokenizer.Complete();
+
+        var html = Tokenize(utf8, segmentSize).Events;
+        await Assert.That(foreignSink.Events).IsEquivalentTo(["text:ab", "eof"]);
+        await Assert.That(html).IsEquivalentTo(["comment:[CDATA[a]]", "text:b", "eof"]);
+    }
+
     private static (IReadOnlyList<string> Events, Utf8HtmlTokenizerCounters Counters) Tokenize(byte[] utf8, int segmentSize)
     {
         var sink = new RecordingSink();
