@@ -15,6 +15,35 @@ namespace AngleSharp.Readonly.Tests;
 public sealed class CompactParserTests
 {
     [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task MeaningfulWhitespaceAfterInlineContentIsPreserved(CompactDocumentLayout layout)
+    {
+        const string html = "<article id=content><p>one <span>two</span> </p><p>three</p></article>";
+        using var document = CompactParser.CreateParser(layout: layout).ParseCompactDocument(html);
+
+        var content = document.Elements("article").WithAttribute("id", "content").First();
+
+        await Assert.That(content.Text()).IsEqualTo("one two three");
+    }
+
+    [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task StructuralWhitespaceBetweenBlockSiblingsRemainsDiscarded(CompactDocumentLayout layout)
+    {
+        const string html = "<body>\n  <div>one</div>\n  <div>two</div>\n</body>";
+        using var document = CompactParser.CreateParser(layout: layout).ParseCompactDocument(html);
+
+        var body = document.Elements("body").First();
+        var childCount = 0;
+        foreach (var _ in body.Children())
+            childCount++;
+
+        await Assert.That(childCount).IsEqualTo(2);
+    }
+
+    [Test]
     public async Task ByteMemoryInputConstructsCompactDocument()
     {
         var source = Encoding.UTF8.GetBytes("<main data-kind=sample>café</main>");

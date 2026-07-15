@@ -106,7 +106,11 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IConst
 
     public void AppendText(StringOrMemory text, bool emitWhiteSpaceOnly = false)
     {
-        if (!emitWhiteSpaceOnly && text.Memory.Span.Trim(WhiteSpace).Length == 0)
+        if (
+            !emitWhiteSpaceOnly
+            && text.Memory.Span.Trim(WhiteSpace).Length == 0
+            && !ShouldRetainWhitespaceAt(_ChildNodes.Length)
+        )
         {
             return;
         }
@@ -116,13 +120,47 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IConst
 
     public void InsertText(int idx, StringOrMemory text, bool emitWhiteSpaceOnly = false)
     {
-        if (!emitWhiteSpaceOnly && text.Memory.Span.Trim(WhiteSpace).Length == 0)
+        if (
+            !emitWhiteSpaceOnly
+            && text.Memory.Span.Trim(WhiteSpace).Length == 0
+            && !ShouldRetainWhitespaceAt(idx)
+        )
         {
             return;
         }
 
         var readOnlyTextNode = new ReadOnlyTextNode(null, text) { Parent = this };
         InsertNode(idx, readOnlyTextNode);
+    }
+
+    private bool ShouldRetainWhitespaceAt(int index)
+    {
+        if (this is ReadOnlyElement && (_flags & NodeFlags.Special) == 0)
+            return true;
+
+        for (var previous = index - 1; previous >= 0; previous--)
+        {
+            switch (_ChildNodes[previous])
+            {
+                case ReadOnlyTextNode:
+                    return true;
+                case ReadOnlyElement element:
+                    return (element.Flags & NodeFlags.Special) == 0;
+            }
+        }
+
+        for (var next = index; next < _ChildNodes.Length; next++)
+        {
+            switch (_ChildNodes[next])
+            {
+                case ReadOnlyTextNode:
+                    return true;
+                case ReadOnlyElement element:
+                    return (element.Flags & NodeFlags.Special) == 0;
+            }
+        }
+
+        return false;
     }
 
     public void AddComment(ref StructHtmlToken token)
