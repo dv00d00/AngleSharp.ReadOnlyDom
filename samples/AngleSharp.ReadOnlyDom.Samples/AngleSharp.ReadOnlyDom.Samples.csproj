@@ -8,8 +8,8 @@
 
   <ItemGroup>
     <PackageReference Include="AngleSharp" />
-    <ProjectReference Include="..\..\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj" />
-    <ProjectReference Include="..\..\AngleSharp.ReadOnlyDom.Compact\AngleSharp.ReadOnlyDom.Compact.csproj" />
-    <ProjectReference Include="..\..\AngleSharp.ReadOnlyDom.Streaming\AngleSharp.ReadOnlyDom.Streaming.csproj" />
+    <ProjectReference Include="..\..\src\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj" />
+    <ProjectReference Include="..\..\src\AngleSharp.ReadOnlyDom.Compact\AngleSharp.ReadOnlyDom.Compact.csproj" />
+    <ProjectReference Include="..\..\src\AngleSharp.ReadOnlyDom.Streaming\AngleSharp.ReadOnlyDom.Streaming.csproj" />
   </ItemGroup>
 </Project>

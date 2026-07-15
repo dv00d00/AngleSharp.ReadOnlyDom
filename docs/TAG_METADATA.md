@@ -1,6 +1,6 @@
 # Canonical tag metadata
 
-`AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs` is deterministic checked-in code generated from the exact AngleSharp
+`src/AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs` is deterministic checked-in code generated from the exact AngleSharp
 package referenced by `Directory.Packages.props`. The generator reflects AngleSharp's internal `HtmlElementFactory`, creates
 every public `TagNames` entry, and records its effective `NodeFlags`. This makes the package's runtime construction behavior
 the canonical source instead of maintaining a second handwritten table.
@@ -8,14 +8,14 @@ the canonical source instead of maintaining a second handwritten table.
 Regenerate after changing the AngleSharp package version:
 
 ```powershell
-dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
-csharpier format AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
+dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- src/AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
+csharpier format src/AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
 ```
 
 Verify that checked-in output is current:
 
 ```powershell
-dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --check AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
+dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --check src/AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
 ```
 
 The output uses a length switch and orders high-frequency corpus tags first within each length. Custom elements retain an

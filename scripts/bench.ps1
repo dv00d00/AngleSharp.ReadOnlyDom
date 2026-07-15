@@ -10,7 +10,7 @@ $commit = (git -C $root rev-parse --short HEAD).Trim()
 $workingTree = if (git -C $root status --porcelain) { "dirty (see git-status.txt)" } else { "clean" }
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $output = Join-Path $root "artifacts/benchmarks/$timestamp-$commit-$Tier"
-$project = Join-Path $root "AngleSharp.ReadOnlyDom.Benchmarks/AngleSharp.ReadOnlyDom.Benchmarks.csproj"
+$project = Join-Path $root "benchmarks/AngleSharp.ReadOnlyDom.Benchmarks/AngleSharp.ReadOnlyDom.Benchmarks.csproj"
 $hardwareCounterNote = if ($HardwareCounters) { "TotalCycles requested; availability is host-dependent" } else { "disabled" }
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 
@@ -24,7 +24,7 @@ $metadata = @(
     "- Runtime: ``$(dotnet --version)``"
     "- GC: Server GC (enforced by the benchmark executable and BenchmarkDotNet job)"
     "- Job: BenchmarkDotNet ShortRun, in-process emit"
-    "- Corpus: checked-in snapshots under AngleSharp.ReadOnlyDom.Tests/temp"
+    "- Corpus: checked-in snapshots under tests/AngleSharp.ReadOnlyDom.Tests/temp"
     "- Hardware counters: $hardwareCounterNote"
     "- Note: ShortRun time results have wide confidence intervals; allocation results are the primary micro gate."
 )

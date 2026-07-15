@@ -17,3 +17,10 @@ the checks. The generic path should use tag identity and flags, or construction 
 
 This is relevant to the opaque-handle construction sink considered by issue #6: a direct indexed DOM cannot match the
 mutable parser on foster-parenting cases until the generic builder removes these concrete-type assumptions.
+
+## Experimental token-source adapter
+
+`src/AngleSharp.ReadOnlyDom.Streaming.AngleSharp` and its matching project under `tests/` target the proposed
+`IHtmlTokenSource` integration seam. The current local AngleSharp checkout does not expose that interface, so these two
+projects intentionally remain outside `AngleSharp.ReadOnlyDom.slnx` until the upstream contract is available again or
+the adapter is retired.

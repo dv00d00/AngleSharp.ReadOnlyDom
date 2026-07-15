@@ -296,7 +296,7 @@ internal static class QueryWorkloadRunner
         report.AppendLine("./scripts/bench.ps1 query");
         report.AppendLine("# Fast correctness and wiring check:");
         report.AppendLine(
-            "dotnet run --project ./AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- --query-workloads --iterations 1"
+            "dotnet run --project ./benchmarks/AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- --query-workloads --iterations 1"
         );
         report.AppendLine("```");
         return report.ToString();
