@@ -22,30 +22,58 @@ public delegate void CompletedElementHandler<TState>(ref TState state, in Comple
 
 public readonly ref struct CompletedElement
 {
+    private readonly ElementCapture _capture;
     private readonly string[] _attributeNames;
-    private readonly string?[] _attributeValues;
+    private readonly byte[][] _attributeNamesUtf8;
+    private readonly int[] _attributeIndexes;
 
-    internal CompletedElement(string text, string[] attributeNames, string?[] attributeValues)
+    internal CompletedElement(
+        ElementCapture capture,
+        string[] attributeNames,
+        byte[][] attributeNamesUtf8,
+        int[] attributeIndexes
+    )
     {
-        Text = text;
+        _capture = capture;
         _attributeNames = attributeNames;
-        _attributeValues = attributeValues;
+        _attributeNamesUtf8 = attributeNamesUtf8;
+        _attributeIndexes = attributeIndexes;
     }
 
-    public string Text { get; }
+    /// <summary>Borrowed normalized or raw UTF-8 text, valid only during the callback.</summary>
+    public ReadOnlySpan<byte> TextUtf8 => _capture.TextUtf8;
 
-    public string? Attribute(string name)
+    /// <summary>Returns an owned UTF-16 string, decoding only when requested.</summary>
+    public string GetText() => _capture.GetText();
+
+    public bool TryGetAttributeUtf8(string name, out ReadOnlySpan<byte> value)
     {
         ArgumentNullException.ThrowIfNull(name);
-        for (var index = 0; index < _attributeNames.Length; index++)
+        for (var index = 0; index < _attributeIndexes.Length; index++)
         {
-            if (_attributeNames[index].Equals(name, StringComparison.OrdinalIgnoreCase))
-                return _attributeValues[index];
+            if (_attributeNames[_attributeIndexes[index]].Equals(name, StringComparison.OrdinalIgnoreCase))
+                return _capture.TryGetAttribute(index, out value);
         }
-        return null;
+        value = default;
+        return false;
     }
 
-    public string AttributeOrEmpty(string name) => Attribute(name) ?? string.Empty;
+    /// <summary>The UTF-8 attribute name must use the normalized lowercase spelling compiled by the query.</summary>
+    public bool TryGetAttributeUtf8(ReadOnlySpan<byte> name, out ReadOnlySpan<byte> value)
+    {
+        for (var index = 0; index < _attributeIndexes.Length; index++)
+        {
+            if (_attributeNamesUtf8[_attributeIndexes[index]].AsSpan().SequenceEqual(name))
+                return _capture.TryGetAttribute(index, out value);
+        }
+        value = default;
+        return false;
+    }
+
+    public string? GetAttribute(string name) =>
+        TryGetAttributeUtf8(name, out var value) ? Encoding.UTF8.GetString(value) : null;
+
+    public string GetAttributeOrEmpty(string name) => GetAttribute(name) ?? string.Empty;
 }
 
 internal enum CompletedTextMode : byte
@@ -405,7 +433,6 @@ internal sealed record CompiledQueryNode<TState>(
     EndHandler<TState>? End,
     CompletedElementHandler<TState>? Completed,
     CompletedTextMode CompletedTextMode,
-    string[] CompletedAttributeNames,
     int[] CompletedAttributeIndexes
 );
 
@@ -477,7 +504,6 @@ internal static class QueryCompiler
                 source.EndHandler,
                 source.CompletedHandler,
                 source.CompletedTextMode,
-                completedAttributeNames,
                 completedAttributeNames.Select(name => attributeIndexes[name]).ToArray()
             );
         }
@@ -539,6 +565,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
     private readonly int[] _attributeStarts;
     private readonly int[] _attributeLengths;
     private readonly List<ElementCapture>?[] _completedCaptures;
+    private readonly Stack<ElementCapture>? _reusableCaptures;
     private TState _state;
     private int _frameCount;
     private int _attributeValueLength;
@@ -561,6 +588,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         _attributeLengths = ArrayPool<int>.Shared.Rent(Math.Max(plan.AttributeNames.Length, 1));
         _attributeLengths.AsSpan(0, plan.AttributeNames.Length).Fill(-1);
         _completedCaptures = plan.CompletedHandlerBits == 0 ? [] : new List<ElementCapture>?[plan.Nodes.Length];
+        _reusableCaptures = plan.CompletedHandlerBits == 0 ? null : new Stack<ElementCapture>();
     }
 
     public TState State => _state;
@@ -694,6 +722,19 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         ArrayPool<byte>.Shared.Return(_attributeValues);
         ArrayPool<int>.Shared.Return(_attributeStarts, clearArray: true);
         ArrayPool<int>.Shared.Return(_attributeLengths, clearArray: true);
+        foreach (var captures in _completedCaptures)
+        {
+            if (captures is null)
+                continue;
+            foreach (var capture in captures)
+                capture.Dispose();
+        }
+        if (_reusableCaptures is not null)
+        {
+            foreach (var capture in _reusableCaptures)
+                capture.Dispose();
+            _reusableCaptures.Clear();
+        }
         Array.Clear(_completedCaptures);
         _frames = [];
         _attributeValues = [];
@@ -753,23 +794,23 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
             var index = BitOperations.TrailingZeroCount(completed);
             completed &= completed - 1;
             var node = _plan.Nodes[index];
-            var attributeValues =
-                node.CompletedAttributeIndexes.Length == 0 ? [] : new string?[node.CompletedAttributeIndexes.Length];
+            var capture = _reusableCaptures!.Count == 0 ? new ElementCapture() : _reusableCaptures.Pop();
+            capture.Reset(node.CompletedTextMode, node.CompletedAttributeIndexes.Length);
             for (var attribute = 0; attribute < node.CompletedAttributeIndexes.Length; attribute++)
             {
                 var attributeIndex = node.CompletedAttributeIndexes[attribute];
                 var length = _attributeLengths[attributeIndex];
                 if (length >= 0)
                 {
-                    attributeValues[attribute] = Encoding.UTF8.GetString(
-                        _attributeValues,
-                        _attributeStarts[attributeIndex],
-                        length
+                    capture.SetAttribute(
+                        attribute,
+                        _attributeValues.AsSpan(_attributeStarts[attributeIndex], length)
                     );
                 }
             }
+            capture.BeginText();
             var captures = _completedCaptures[index] ??= [];
-            captures.Add(new ElementCapture(node.CompletedTextMode, attributeValues));
+            captures.Add(capture);
         }
     }
 
@@ -799,8 +840,20 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         var captureIndex = captures.Count - 1;
         var capture = captures[captureIndex];
         captures.RemoveAt(captureIndex);
-        var element = new CompletedElement(capture.GetText(), node.CompletedAttributeNames, capture.AttributeValues);
-        node.Completed.Invoke(ref _state, in element);
+        try
+        {
+            var element = new CompletedElement(
+                capture,
+                _plan.AttributeNames,
+                _plan.AttributeNameUtf8,
+                node.CompletedAttributeIndexes
+            );
+            node.Completed.Invoke(ref _state, in element);
+        }
+        finally
+        {
+            _reusableCaptures!.Push(capture);
+        }
     }
 
     private void IncrementActive(ulong matches)
@@ -907,44 +960,129 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
 
 internal readonly record struct QueryFrame(ulong TagHash, int TagLength, ulong Matches);
 
-internal sealed class ElementCapture
+internal sealed class ElementCapture : IDisposable
 {
-    private readonly CompletedTextMode _textMode;
-    private readonly StringBuilder? _text;
+    private byte[] _utf8 = ArrayPool<byte>.Shared.Rent(256);
+    private int[] _attributeStarts = ArrayPool<int>.Shared.Rent(1);
+    private int[] _attributeLengths = ArrayPool<int>.Shared.Rent(1);
+    private CompletedTextMode _textMode;
+    private int _length;
+    private int _textStart;
+    private string? _decodedText;
     private bool _pendingSpace;
+    private bool _disposed;
 
-    internal ElementCapture(CompletedTextMode textMode, string?[] attributeValues)
+    internal ReadOnlySpan<byte> TextUtf8 => _utf8.AsSpan(_textStart, _length - _textStart);
+
+    internal void Reset(CompletedTextMode textMode, int attributeCount)
     {
         _textMode = textMode;
-        AttributeValues = attributeValues;
-        _text = textMode == CompletedTextMode.None ? null : new StringBuilder();
+        _length = 0;
+        _textStart = 0;
+        _decodedText = null;
+        _pendingSpace = false;
+        EnsureAttributeCapacity(attributeCount);
+        _attributeLengths.AsSpan(0, attributeCount).Fill(-1);
     }
 
-    internal string?[] AttributeValues { get; }
+    internal void SetAttribute(int index, ReadOnlySpan<byte> value)
+    {
+        EnsureUtf8Capacity(value.Length);
+        _attributeStarts[index] = _length;
+        _attributeLengths[index] = value.Length;
+        value.CopyTo(_utf8.AsSpan(_length));
+        _length += value.Length;
+    }
+
+    internal void BeginText() => _textStart = _length;
+
+    internal bool TryGetAttribute(int index, out ReadOnlySpan<byte> value)
+    {
+        var length = _attributeLengths[index];
+        if (length < 0)
+        {
+            value = default;
+            return false;
+        }
+        value = _utf8.AsSpan(_attributeStarts[index], length);
+        return true;
+    }
 
     internal void Append(ReadOnlySpan<byte> utf8)
     {
-        if (_text is null)
+        if (_textMode == CompletedTextMode.None)
             return;
-        Span<char> chars = stackalloc char[2];
+        if (_textMode == CompletedTextMode.Raw)
+        {
+            AppendBytes(utf8);
+            return;
+        }
         while (!utf8.IsEmpty)
         {
-            Rune.DecodeFromUtf8(utf8, out var rune, out var consumed);
+            var status = Rune.DecodeFromUtf8(utf8, out var rune, out var consumed);
+            if (status != OperationStatus.Done)
+                throw new InvalidOperationException("The tokenizer emitted incomplete UTF-8 text.");
+            var scalar = utf8[..consumed];
             utf8 = utf8[consumed..];
-            if (_textMode == CompletedTextMode.Normalized && Rune.IsWhiteSpace(rune))
+            if (Rune.IsWhiteSpace(rune))
             {
-                _pendingSpace = _text.Length != 0;
+                _pendingSpace = _length != _textStart;
                 continue;
             }
             if (_pendingSpace)
             {
-                _text.Append(' ');
+                AppendByte((byte)' ');
                 _pendingSpace = false;
             }
-            var written = rune.EncodeToUtf16(chars);
-            _text.Append(chars[..written]);
+            AppendBytes(scalar);
         }
     }
 
-    internal string GetText() => _text?.ToString() ?? string.Empty;
+    internal string GetText() => _decodedText ??= Encoding.UTF8.GetString(TextUtf8);
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+        _disposed = true;
+        ArrayPool<byte>.Shared.Return(_utf8);
+        ArrayPool<int>.Shared.Return(_attributeStarts, clearArray: true);
+        ArrayPool<int>.Shared.Return(_attributeLengths, clearArray: true);
+        _utf8 = [];
+        _attributeStarts = [];
+        _attributeLengths = [];
+    }
+
+    private void AppendByte(byte value)
+    {
+        EnsureUtf8Capacity(1);
+        _utf8[_length++] = value;
+    }
+
+    private void AppendBytes(ReadOnlySpan<byte> value)
+    {
+        EnsureUtf8Capacity(value.Length);
+        value.CopyTo(_utf8.AsSpan(_length));
+        _length += value.Length;
+    }
+
+    private void EnsureUtf8Capacity(int additional)
+    {
+        if (_length + additional <= _utf8.Length)
+            return;
+        var replacement = ArrayPool<byte>.Shared.Rent(Math.Max(_utf8.Length * 2, _length + additional));
+        _utf8.AsSpan(0, _length).CopyTo(replacement);
+        ArrayPool<byte>.Shared.Return(_utf8);
+        _utf8 = replacement;
+    }
+
+    private void EnsureAttributeCapacity(int count)
+    {
+        if (count <= _attributeStarts.Length)
+            return;
+        ArrayPool<int>.Shared.Return(_attributeStarts, clearArray: true);
+        ArrayPool<int>.Shared.Return(_attributeLengths, clearArray: true);
+        _attributeStarts = ArrayPool<int>.Shared.Rent(count);
+        _attributeLengths = ArrayPool<int>.Shared.Rent(count);
+    }
 }

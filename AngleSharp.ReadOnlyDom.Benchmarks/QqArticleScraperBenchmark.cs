@@ -170,8 +170,8 @@ public class QqArticleScraperBenchmark
                 {
                     AddArticle(
                         state._results,
-                        element.Text,
-                        element.AttributeOrEmpty("href"),
+                        element.GetText(),
+                        element.GetAttributeOrEmpty("href"),
                         state._imageUrl,
                         state._imageAlt,
                         state._cardMetadata
@@ -185,8 +185,8 @@ public class QqArticleScraperBenchmark
             .OnClose(
                 static (ref state, in element) =>
                 {
-                    state._imageUrl ??= element.Attribute("src");
-                    state._imageAlt ??= element.Attribute("alt");
+                    state._imageUrl ??= element.GetAttribute("src");
+                    state._imageAlt ??= element.GetAttribute("alt");
                 },
                 "src",
                 "alt"

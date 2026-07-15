@@ -125,7 +125,7 @@ public class LongSyntheticConstructionBenchmark
         StreamQuery
             .For<CompletedFoldState>("article")
             .Id("content")
-            .OnNormalizedText(static (ref state, in element) => state.Text = element.Text)
+            .OnNormalizedText(static (ref state, in element) => state.Text = element.GetText())
             .Compile();
 
     private static string CreatePage(int noiseBlocks)

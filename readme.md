@@ -15,6 +15,13 @@ specialized construction-time extraction, and EOF aggregate JSON/text/Markdown A
 dotnet run --project samples/AngleSharp.ReadOnlyDom.Samples -c Release
 ```
 
+The intentionally naive [HTML-to-Markdown proxy](samples/AngleSharp.ReadOnlyDom.MarkdownProxy/README.md) streams upstream
+UTF-8 through the native tokenizer and folds borrowed completed-element spans directly into UTF-8 Markdown:
+
+```powershell
+dotnet run --project samples/AngleSharp.ReadOnlyDom.MarkdownProxy -c Release
+```
+
 ```
 
 BenchmarkDotNet v0.13.7, Windows 11 (10.0.22631.4890)

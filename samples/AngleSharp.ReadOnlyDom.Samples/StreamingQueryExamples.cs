@@ -35,21 +35,15 @@ internal static class StreamingQueryExamples
                 static (ref state, in element) =>
                 {
                     state.Products.Add(
-                        new Product(element.AttributeOrEmpty("data-sku"), state.Name, state.Price, state.Url)
+                        new Product(element.GetAttributeOrEmpty("data-sku"), state.Name, state.Price, state.Url)
                     );
                     state.Name = state.Price = state.Url = string.Empty;
                 }
             );
 
-        product
-            .Descendant("a")
-            .Attribute("href")
-            .OnClose(static (ref state, in element) => state.Url = element.AttributeOrEmpty("href"));
-        product.Descendant("h2").OnNormalizedText(static (ref state, in element) => state.Name = element.Text);
-        product
-            .Descendant("span")
-            .Class("price")
-            .OnNormalizedText(static (ref state, in element) => state.Price = element.Text);
+        product.Descendant("a").Attribute("href").OnClose(static (ref fold, in el) => fold.Url = el.GetAttributeOrEmpty("href"));
+        product.Descendant("h2").OnNormalizedText(static (ref fold, in el) => fold.Name = el.GetText());
+        product.Descendant("span").Class("price").OnNormalizedText(static (ref fold, in el) => fold.Price = el.GetText());
 
         var result = products.Compile().Execute(Html, new ProductFold());
         Console.WriteLine($"typed rows       : {string.Join(", ", result.Products)}");
@@ -60,7 +54,7 @@ internal static class StreamingQueryExamples
         var article = StreamQuery
             .For<List<string>>("article")
             .Id("intro")
-            .OnNormalizedText(static (ref output, in element) => output.Add(element.Text));
+            .OnNormalizedText(static (ref output, in element) => output.Add(element.GetText()));
 
         var output = article.Compile().Execute(Html, []);
         Console.WriteLine($"subtree text     : {output[0]}");
@@ -75,15 +69,15 @@ internal static class StreamingQueryExamples
                 static (ref summary, in element) =>
                 {
                     summary.Links++;
-                    if (element.AttributeOrEmpty("href").StartsWith("http", StringComparison.Ordinal))
+                    if (element.TryGetAttributeUtf8("href"u8, out var href) && href.StartsWith("http"u8))
                         summary.ExternalLinks++;
-                    summary.LinkTextCharacters += element.Text.Length;
+                    summary.LinkTextCharacters += System.Text.Encoding.UTF8.GetCharCount(element.TextUtf8);
                 }
             );
         page.Descendant("p")
             .OnNormalizedText(
                 static (ref summary, in element) =>
-                    summary.ParagraphWords += element.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length
+                    summary.ParagraphWords += CountNormalizedWords(element.TextUtf8)
             );
 
         var summary = page.Compile().Execute(Html, new PageSummary());
@@ -98,6 +92,19 @@ internal static class StreamingQueryExamples
         Console.WriteLine();
         Console.WriteLine(title);
         Console.WriteLine(new string('-', title.Length));
+    }
+
+    private static int CountNormalizedWords(ReadOnlySpan<byte> text)
+    {
+        if (text.IsEmpty)
+            return 0;
+        var count = 1;
+        foreach (var value in text)
+        {
+            if (value == (byte)' ')
+                count++;
+        }
+        return count;
     }
 
     private sealed class ProductFold
