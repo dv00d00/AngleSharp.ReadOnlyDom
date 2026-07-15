@@ -1,0 +1,98 @@
+using System.Buffers;
+
+namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
+
+/// <summary>
+/// A reusable UTF-8 buffer whose committed prefix can be flushed and consumed without moving
+/// the uncommitted suffix.
+/// </summary>
+public sealed class CommittedUtf8Buffer : IBufferWriter<byte>, ICommittedUtf8Output
+{
+    private byte[] _buffer;
+    private int _start;
+    private int _committedEnd;
+    private int _end;
+
+    public CommittedUtf8Buffer(int initialCapacity = 4 * 1024)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(initialCapacity);
+        _buffer = new byte[initialCapacity];
+    }
+
+    /// <summary>Gets all buffered bytes which have not been consumed.</summary>
+    public ReadOnlyMemory<byte> WrittenUtf8 => _buffer.AsMemory(_start, _end - _start);
+
+    /// <inheritdoc />
+    public ReadOnlyMemory<byte> CommittedUtf8 => _buffer.AsMemory(_start, _committedEnd - _start);
+
+    public void Advance(int count)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        if (_end > _buffer.Length - count)
+            throw new InvalidOperationException("Cannot advance past the available buffer.");
+        _end += count;
+    }
+
+    public Memory<byte> GetMemory(int sizeHint = 0)
+    {
+        EnsureCapacity(sizeHint);
+        return _buffer.AsMemory(_end);
+    }
+
+    public Span<byte> GetSpan(int sizeHint = 0)
+    {
+        EnsureCapacity(sizeHint);
+        return _buffer.AsSpan(_end);
+    }
+
+    /// <summary>Appends bytes to the uncommitted suffix.</summary>
+    public void Write(ReadOnlySpan<byte> value)
+    {
+        value.CopyTo(GetSpan(value.Length));
+        Advance(value.Length);
+    }
+
+    /// <summary>Marks every currently written byte as irrevocable.</summary>
+    public void Commit() => _committedEnd = _end;
+
+    /// <inheritdoc />
+    public void AdvanceCommitted(int bytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(bytes);
+        if (bytes > _committedEnd - _start)
+            throw new ArgumentOutOfRangeException(nameof(bytes));
+        _start += bytes;
+        if (_start == _end)
+            _start = _committedEnd = _end = 0;
+    }
+
+    /// <summary>Discards all buffered bytes.</summary>
+    public void Clear() => _start = _committedEnd = _end = 0;
+
+    private void EnsureCapacity(int sizeHint)
+    {
+        if (sizeHint < 0)
+            throw new ArgumentOutOfRangeException(nameof(sizeHint));
+        sizeHint = Math.Max(sizeHint, 1);
+        if (sizeHint <= _buffer.Length - _end)
+            return;
+
+        var liveLength = _end - _start;
+        if (sizeHint <= _buffer.Length - liveLength)
+        {
+            _buffer.AsSpan(_start, liveLength).CopyTo(_buffer);
+            _committedEnd -= _start;
+            _end = liveLength;
+            _start = 0;
+            return;
+        }
+
+        var newLength = Math.Max(_buffer.Length * 2, checked(liveLength + sizeHint));
+        var replacement = new byte[newLength];
+        _buffer.AsSpan(_start, liveLength).CopyTo(replacement);
+        _committedEnd -= _start;
+        _end = liveLength;
+        _start = 0;
+        _buffer = replacement;
+    }
+}

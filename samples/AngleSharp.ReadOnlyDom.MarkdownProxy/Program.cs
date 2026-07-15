@@ -39,7 +39,7 @@ app.MapGet(
 
 app.MapGet(
     "/markdown",
-    async Task (HttpContext context, IHttpClientFactory clients, string url, bool stream = false) =>
+    async Task (HttpContext context, IHttpClientFactory clients, string url, bool stream = true) =>
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
         {
@@ -114,6 +114,74 @@ app.MapPost(
 );
 
 app.MapGet(
+    "/text",
+    async Task (HttpContext context, IHttpClientFactory clients, string url, bool stream = true) =>
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await context.Response.WriteAsync("url must be an absolute http or https URI", context.RequestAborted);
+            return;
+        }
+
+        using var upstream = await GetFollowingRedirectsAsync(
+            clients.CreateClient("html"),
+            uri,
+            context.RequestAborted
+        );
+        upstream.EnsureSuccessStatusCode();
+        context.Response.Headers["X-Source-Url"] = upstream.RequestMessage?.RequestUri?.AbsoluteUri ?? uri.AbsoluteUri;
+
+        await using var source = await upstream.Content.ReadAsStreamAsync(context.RequestAborted);
+        var reader = PipeReader.Create(source);
+        try
+        {
+            if (stream)
+            {
+                context.Response.ContentType = "text/plain; charset=utf-8";
+                await HtmlTextExtractor.Default.ExtractAsync(
+                    reader,
+                    context.Response.BodyWriter,
+                    cancellationToken: context.RequestAborted
+                );
+            }
+            else
+            {
+                var text = new ArrayBufferWriter<byte>();
+                await HtmlTextExtractor.Default.ExtractAsync(reader, text, context.RequestAborted);
+                await WriteUtf8(context, text.WrittenMemory, "text/plain; charset=utf-8");
+            }
+        }
+        finally
+        {
+            await reader.CompleteAsync();
+        }
+    }
+);
+
+app.MapPost(
+    "/text",
+    async Task (HttpContext context, bool stream = true) =>
+    {
+        if (stream)
+        {
+            context.Response.ContentType = "text/plain; charset=utf-8";
+            await HtmlTextExtractor.Default.ExtractAsync(
+                context.Request.BodyReader,
+                context.Response.BodyWriter,
+                cancellationToken: context.RequestAborted
+            );
+        }
+        else
+        {
+            var text = new ArrayBufferWriter<byte>();
+            await HtmlTextExtractor.Default.ExtractAsync(context.Request.BodyReader, text, context.RequestAborted);
+            await WriteUtf8(context, text.WrittenMemory, "text/plain; charset=utf-8");
+        }
+    }
+);
+
+app.MapGet(
     "/asset",
     async Task (HttpContext context, IHttpClientFactory clients, string url) =>
     {
@@ -153,9 +221,14 @@ app.Run();
 
 static async ValueTask WriteMarkdown(HttpContext context, ReadOnlyMemory<byte> markdown)
 {
-    context.Response.ContentType = "text/markdown; charset=utf-8";
-    context.Response.ContentLength = markdown.Length;
-    await context.Response.BodyWriter.WriteAsync(markdown, context.RequestAborted);
+    await WriteUtf8(context, markdown, "text/markdown; charset=utf-8");
+}
+
+static async ValueTask WriteUtf8(HttpContext context, ReadOnlyMemory<byte> value, string contentType)
+{
+    context.Response.ContentType = contentType;
+    context.Response.ContentLength = value.Length;
+    await context.Response.BodyWriter.WriteAsync(value, context.RequestAborted);
 }
 
 static async ValueTask<HttpResponseMessage> GetFollowingRedirectsAsync(
@@ -288,7 +361,7 @@ internal static class MarkdownQueryExtensions
 
 internal sealed class MarkdownBuffer : ICommittedUtf8Output
 {
-    private readonly SlidingByteBuffer _output = new(4 * 1024);
+    private readonly CommittedUtf8Buffer _output = new(4 * 1024);
     private readonly ArrayBufferWriter<byte> _row = new(256);
     private readonly ArrayBufferWriter<byte> _linkTarget = new(128);
     private readonly ArrayBufferWriter<byte> _documentTitle = new(128);
@@ -307,9 +380,9 @@ internal sealed class MarkdownBuffer : ICommittedUtf8Output
     private bool _preferredArticleFound;
     private bool _preferredArticleComplete;
 
-    internal ReadOnlyMemory<byte> WrittenMemory => _output.WrittenMemory;
+    internal ReadOnlyMemory<byte> WrittenMemory => _output.WrittenUtf8;
 
-    public ReadOnlyMemory<byte> CommittedUtf8 => _output.CommittedMemory;
+    public ReadOnlyMemory<byte> CommittedUtf8 => _output.CommittedUtf8;
 
     public void AdvanceCommitted(int bytes) => _output.AdvanceCommitted(bytes);
 
@@ -594,78 +667,5 @@ internal sealed class MarkdownBuffer : ICommittedUtf8Output
         var destination = output.GetSpan(value.Length);
         value.CopyTo(destination);
         output.Advance(value.Length);
-    }
-}
-
-internal sealed class SlidingByteBuffer(int initialCapacity) : IBufferWriter<byte>
-{
-    private byte[] _buffer = new byte[initialCapacity];
-    private int _start;
-    private int _committedEnd;
-    private int _end;
-
-    internal ReadOnlyMemory<byte> WrittenMemory => _buffer.AsMemory(_start, _end - _start);
-
-    internal ReadOnlyMemory<byte> CommittedMemory => _buffer.AsMemory(_start, _committedEnd - _start);
-
-    public void Advance(int count)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(count);
-        if (_end > _buffer.Length - count)
-            throw new InvalidOperationException("Cannot advance past the available buffer.");
-        _end += count;
-    }
-
-    public Memory<byte> GetMemory(int sizeHint = 0)
-    {
-        EnsureCapacity(sizeHint);
-        return _buffer.AsMemory(_end);
-    }
-
-    public Span<byte> GetSpan(int sizeHint = 0)
-    {
-        EnsureCapacity(sizeHint);
-        return _buffer.AsSpan(_end);
-    }
-
-    internal void Commit() => _committedEnd = _end;
-
-    internal void AdvanceCommitted(int bytes)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(bytes);
-        if (bytes > _committedEnd - _start)
-            throw new ArgumentOutOfRangeException(nameof(bytes));
-        _start += bytes;
-        if (_start == _end)
-            _start = _committedEnd = _end = 0;
-    }
-
-    internal void Clear() => _start = _committedEnd = _end = 0;
-
-    private void EnsureCapacity(int sizeHint)
-    {
-        if (sizeHint < 0)
-            throw new ArgumentOutOfRangeException(nameof(sizeHint));
-        sizeHint = Math.Max(sizeHint, 1);
-        if (sizeHint <= _buffer.Length - _end)
-            return;
-
-        var liveLength = _end - _start;
-        if (sizeHint <= _buffer.Length - liveLength)
-        {
-            _buffer.AsSpan(_start, liveLength).CopyTo(_buffer);
-            _committedEnd -= _start;
-            _end = liveLength;
-            _start = 0;
-            return;
-        }
-
-        var newLength = Math.Max(_buffer.Length * 2, checked(liveLength + sizeHint));
-        var replacement = new byte[newLength];
-        _buffer.AsSpan(_start, liveLength).CopyTo(replacement);
-        _committedEnd -= _start;
-        _end = liveLength;
-        _start = 0;
-        _buffer = replacement;
     }
 }

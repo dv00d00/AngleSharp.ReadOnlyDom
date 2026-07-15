@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RODOM HTML → Markdown</title>
+  <title>RODOM HTML fold</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <header>
     <div class="eyebrow">UTF-8 streaming fold</div>
-    <h1>HTML → Markdown, absurdly little machinery</h1>
-    <p>Fetch a page, fold completed elements into UTF-8 Markdown, then render it here.</p>
+    <h1>HTML → useful output, absurdly little machinery</h1>
+    <p>Fetch a page and fold completed elements directly into UTF-8 Markdown or plain text.</p>
   </header>
 
   <main>
@@ -19,6 +19,10 @@
         <label for="url">Public HTML URL</label>
         <div class="url-row">
           <input id="url" name="url" type="url" value="https://example.com/" required>
+          <select id="format" aria-label="Output format">
+            <option value="markdown">Markdown</option>
+            <option value="text">Plain text</option>
+          </select>
           <button type="submit">Convert</button>
         </div>
       </form>
@@ -36,7 +40,7 @@
     <section class="workspace">
       <article id="preview" class="pane preview"></article>
       <div class="pane source-pane">
-        <div class="pane-title">Markdown <button id="render" type="button">Render</button></div>
+        <div class="pane-title"><span id="source-title">Markdown</span> <button id="render" type="button">Render</button></div>
         <textarea id="markdown" spellcheck="false"># Ready
 
 Choose a page above or paste Markdown here.</textarea>
