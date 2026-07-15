@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RODOM HTML → Markdown</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="eyebrow">UTF-8 streaming fold</div>
+    <h1>HTML → Markdown, absurdly little machinery</h1>
+    <p>Fetch a page, fold completed elements into UTF-8 Markdown, then render it here.</p>
+  </header>
+
+  <main>
+    <section class="controls">
+      <form id="fetch-form">
+        <label for="url">Public HTML URL</label>
+        <div class="url-row">
+          <input id="url" name="url" type="url" value="https://example.com/" required>
+          <button type="submit">Convert</button>
+        </div>
+      </form>
+      <div class="presets" aria-label="Example pages">
+        <button data-url="https://example.com/">Example Domain</button>
+        <button data-url="https://en.wikipedia.org/wiki/List_of_HTTP_status_codes">Wikipedia tables</button>
+        <button data-url="https://news.ycombinator.com/">Hacker News table layout</button>
+        <button data-url="https://devblogs.microsoft.com/dotnet/">.NET Blog</button>
+        <button data-url="/demo.html">Local demo</button>
+      </div>
+      <p id="status" role="status">Ready.</p>
+    </section>
+
+    <section class="workspace">
+      <div class="pane source-pane">
+        <div class="pane-title">Markdown <button id="render" type="button">Render</button></div>
+        <textarea id="markdown" spellcheck="false"># Ready
+
+Choose a page above or paste Markdown here.</textarea>
+      </div>
+      <article id="preview" class="pane preview"></article>
+    </section>
+  </main>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

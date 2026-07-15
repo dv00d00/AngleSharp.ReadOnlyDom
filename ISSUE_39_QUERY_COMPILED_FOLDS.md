@@ -88,8 +88,36 @@ On the QQ extraction workload, the ergonomic completed-element lane returned the
 
 | Lane | Mean | Allocated |
 |---|---:|---:|
-| Low-level compiled fold | 1.217 ms | 16.30 KB |
-| Completed-element fold | 1.237 ms | 20.71 KB |
+| Low-level compiled fold | 1.222 ms | 16.26 KB |
+| Completed-element fold | 1.393 ms | 16.18 KB |
 
-The ShortRun mean difference was 1.6%. The additional 4.4 KB owns per-match normalized text and decoded attributes until
-the element closes. Plans that do not use completed-element callbacks do not allocate capture storage.
+Completed captures now normalize and retain UTF-8 in reusable pooled buffers. `TextUtf8` and `TryGetAttributeUtf8` expose
+callback-scoped borrowed spans; `GetText` and `GetAttribute` decode owned strings only when requested. This removed the
+previous 4.4 KB ownership premium. The ShortRun timing difference is about 14% on this small-result workload and remains
+the cost of completed-capture bookkeeping rather than string allocation.
+
+On the 1.96 MB target-near-EOF workload, completed-element allocation fell from 5.49 KB to 3.05 KB versus 8.01 KB for the
+raw fold. The measured means were 18.60 ms completed versus 18.01 ms raw, a noise-sized difference for ShortRun.
+
+## Possible lexical session view
+
+`IUtf8HtmlTokenSink` already permits arbitrary user folds, but callers must maintain their own parent stack. The query
+session has a reusable lexical frame stack, although each frame currently stores only tag hash, tag length, and query
+match bits. It is not a read-only DOM arena: it has no retained tag spelling, attributes, sibling state, or browser-corrected
+tree topology.
+
+A future public seam should therefore be an explicitly lexical callback-scoped path or cursor, not exposure of
+`QuerySession` internals. Before adding it, measure the cost of retaining a stable tag ID or tag bytes for every open frame.
+Do not imply sibling lookup or HTML tree-builder semantics unless a separate construction layer provides them.
+
+## Backpressured output prototype
+
+`ExecuteBackpressuredAsync` now keeps the parser hot path synchronous while placing `FlushAsync` in the outer pump. Query
+state implements `ICommittedUtf8Output` to expose only an irrevocable contiguous prefix. The pump tokenizes bounded input
+slices, copies committed bytes to a `PipeWriter`, advances the state prefix, awaits downstream capacity, and resumes the
+same tokenizer and query session.
+
+The state, rather than the pump, owns semantic commit decisions. Token-ordered rewrites may commit immediately;
+completed-subtree folds commit at close; queries depending on future structure may retain a tentative tail. A slow-reader
+test with a 32-byte flush threshold and 64-byte pipe pause threshold verifies that parsing stops under downstream pressure,
+resumes without changing output, and keeps producer-side committed bytes bounded.

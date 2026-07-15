@@ -112,12 +112,17 @@ public sealed class QueryTests
         root.Descendant("section")
             .WithAttribute("data-id")
             .OnNormalizedText(
-                static (ref state, in element) => state.Events.Add($"{element.Attribute("data-id")}:{element.Text}"),
+                static (ref state, in element) =>
+                {
+                    if (!element.TryGetAttributeUtf8("data-id", out var id))
+                        throw new InvalidOperationException("Projected data-id is missing.");
+                    state.Events.Add($"{Encoding.UTF8.GetString(id)}:{element.GetText()}");
+                },
                 "title"
             );
         root.Descendant("img")
             .OnClose(
-                static (ref state, in element) => state.Events.Add($"img:{element.AttributeOrEmpty("alt")}"),
+                static (ref state, in element) => state.Events.Add($"img:{element.GetAttributeOrEmpty("alt")}"),
                 "alt"
             );
 
@@ -128,6 +133,33 @@ public sealed class QueryTests
             );
 
         await Assert.That(string.Join('|', state.Events)).IsEqualTo("inner:Inner|outer:Outer Inner tail|img:Logo");
+    }
+
+    [Test]
+    public async Task CompletedElementBorrowsUtf8AndDecodesOnlyOnRequest()
+    {
+        var query = StreamQuery
+            .For<QueryState>("p")
+            .Attribute("data-label")
+            .OnNormalizedText(
+                static (ref state, in element) =>
+                {
+                    if (!element.TextUtf8.SequenceEqual("hé llo"u8))
+                        throw new InvalidOperationException("Normalized UTF-8 text disagrees.");
+                    if (
+                        !element.TryGetAttributeUtf8("data-label"u8, out var label)
+                        || !label.SequenceEqual("café"u8)
+                    )
+                        throw new InvalidOperationException("Borrowed UTF-8 attribute disagrees.");
+                    if (element.TryGetAttributeUtf8("missing"u8, out _))
+                        throw new InvalidOperationException("Missing attribute was reported as present.");
+                    state.Events.Add($"{element.GetAttribute("data-label")}:{element.GetText()}");
+                }
+            );
+
+        var state = query.Compile().Execute("<p data-label='café'> hé\u00a0llo </p>"u8, new QueryState());
+
+        await Assert.That(state.Events).IsEquivalentTo(["café:hé llo"]);
     }
 
     [Test]

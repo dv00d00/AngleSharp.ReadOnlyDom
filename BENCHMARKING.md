@@ -60,6 +60,10 @@ The .NET 10 ShortRun measured while introducing the native folds was:
 ShortRun timing differences between the two native folds are noise-sized. Their allocation difference is structural: the
 raw benchmark normalizes a captured string after parsing, while the completed-element handler normalizes as bytes arrive.
 
+After completed-element captures moved to reusable pooled UTF-8 buffers, an isolated rerun measured 18.01 ms / 8.01 KB
+for the raw fold and 18.60 ms / 3.05 KB for the completed-element fold. The returned normalized string is included in both
+allocation totals; UTF-8-only aggregate callbacks can avoid that final ownership cost as well.
+
 `utf8-tokenizer` is an exploratory wire-byte benchmark. It compares complete UTF-8-to-string decoding followed by the
 AngleSharp tokenizer against the monotonic UTF-8 tokenizer kernel and a borrowed-span counting sink. Run
 `dotnet run --project AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- --utf8-token-smoke` first to write both

@@ -14,7 +14,7 @@ uses a small catalogue fixture to demonstrate several result shapes.
 | RODOM | Read-only object graph | Values belong to the document | Navigation, metadata profiles, diagnostics and familiar node APIs |
 | COMPACT | Columnar compact document | Attribute slices may borrow from the document; normalized text is owned | Repeated known queries with lower retained cost |
 | COMPACT STREAMING | No escaping DOM; temporary construction topology only | Returned text/aggregate fields are owned | One compiled extraction shape per input |
-| UTF-8 STREAM QUERY | No DOM; bounded lexical stack plus query captures | Completed-element text and projected attributes are owned | Typed rows, subtree text, and arbitrary aggregates directly from UTF-8 |
+| UTF-8 STREAM QUERY | No DOM; bounded lexical stack plus query captures | Callback spans borrow UTF-8; strings are decoded only when explicitly requested | Typed rows, subtree text, and arbitrary aggregates directly from UTF-8 |
 
 “COMPACT STREAMING” is the existing API family name. The current implementation is construction-time projection, not
 bounded-memory input streaming: it consumes a rooted string, runs the complete AngleSharp tokenizer and HTML tree builder,
@@ -30,4 +30,5 @@ The sample demonstrates:
 - `CompactAggregate` for owned JSON, normalized text, and minimal structural Markdown.
 - `StreamQuery` for fluent tag/attribute paths and one completed-element callback instead of manual start/text/end plumbing;
 - automatic projection of predicate attributes and explicit projection of optional attributes;
+- borrowed `TextUtf8` / `TryGetAttributeUtf8` values and explicit `GetText` / `GetAttribute` ownership;
 - typed product rows, normalized subtree text, and a custom page summary using caller-owned state.
