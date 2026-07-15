@@ -67,25 +67,11 @@ Compare:
 
 Measure total time, allocation, retained/peak memory, bytes consumed before termination, tokens processed, values decoded, nodes materialized, and output allocation. This establishes whether materialization avoidance is worth the much larger architecture.
 
-The compact-tree portion now has a minimal interpreted implementation. Its API, ownership rules, execution counters, and
-Server-GC comparison against read-only traversal and hand-written compact scans are recorded in
-[ISSUE_15_EXTRACTION_PLAN.md](ISSUE_15_EXTRACTION_PLAN.md). It remains a compact execution experiment, not the future
-query language or the tree-builder-integrated engine.
-
-The first tree-builder-integrated concrete view is recorded in
-[ISSUE_17_STREAMING_EXTRACTION.md](ISSUE_17_STREAMING_EXTRACTION.md). It preserves AngleSharp tree construction, retains
-no escaping DOM, and beat the compact plan by 47.1% allocation and 19.8% mean time on its purpose-built fixture. This is
-evidence for a small construction-time view kernel, not evidence for pushing arbitrary result shapes into the tokenizer.
-
-The EOF aggregate follow-up is recorded in [ISSUE_31_EOF_AGGREGATES.md](ISSUE_31_EOF_AGGREGATES.md). It generalizes the
-same construction seam to C#-configured object rows, normalized text, and deliberately minimal Markdown without adding a
-query language or incremental result emission. AngleSharp's current stream-backed `TextSource` reads incrementally but
-retains the decoded input, so bounded-memory input remains a separate tokenizer/source-substrate problem.
-
-The first tokenizer-native compiled query prototype is recorded in
-[ISSUE_39_QUERY_COMPILED_FOLDS.md](ISSUE_39_QUERY_COMPILED_FOLDS.md). It compiles a constrained C# object model into
-structural match and attribute-projection bitsets, delivers borrowed UTF-8 events to arbitrary caller state, and keeps
-lexical streaming semantics explicitly separate from browser-equivalent malformed tree construction.
+The repository now contains all three measured execution shapes: interpreted compact-tree plans, tree-construction-time
+extraction, and tokenizer-native compiled UTF-8 folds. The compiled streaming path turns the constrained C# query model
+into structural-match and attribute-projection bitsets, delivers borrowed UTF-8 events to arbitrary caller state, and
+supports bounded encoded input and backpressured output. Compact materialization remains the fallback when a query cannot
+be expressed safely within the streaming contract.
 
 ## Scope discipline
 

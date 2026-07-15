@@ -109,10 +109,9 @@ than unsafe token dropping.
 
 ## Next optimization boundary
 
-The final node core now replaces its construction-time next-sibling link with an exclusive preorder subtree boundary.
+The final node core replaces its construction-time next-sibling link with an exclusive preorder subtree boundary.
 This supports constant-time subtree skipping, interval descendant checks, direct-child jumps, and bounded forward/SIMD
-tag scans without widening the core. The Server-GC before/after measurements and default-versus-opt-in decision are
-recorded in [ISSUE_14_SUBTREE_BOUNDARIES.md](ISSUE_14_SUBTREE_BOUNDARIES.md).
+tag scans without widening the core.
 
 The default path no longer performs reachable preorder/remapping, text copying, standard-name string allocation, a text
 length scan, or a publication-time name-ID pass. Removing the per-document name lookup cache would require a pooled
