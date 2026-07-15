@@ -1,7 +1,6 @@
 #if NET10_0
 using System.Buffers;
 using System.Text;
-using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.ReadOnlyDom.Compact;
@@ -10,6 +9,8 @@ using AngleSharp.ReadOnlyDom.Compact.Experimental;
 using AngleSharp.ReadOnlyDom.Filters;
 using AngleSharp.ReadOnlyDom.Html;
 using BenchmarkDotNet.Attributes;
+
+using Element = AngleSharp.ReadOnlyDom.Streaming.Element;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
@@ -20,7 +21,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 [MemoryDiagnoser]
 public class QqArticleScraperBenchmark
 {
-    private static readonly Utf8StreamQueryPlan<CompiledArticleState> ArticleQuery =
+    private static readonly QueryPlan<CompiledArticleState> ArticleQuery =
         CreateArticleQuery();
     private readonly HtmlParser _angleSharp = new();
     private readonly HtmlParser _readOnlyMinimal = CreateReadOnlyParser(ReadOnlyMetadataProfile.Minimal);
@@ -141,32 +142,32 @@ public class QqArticleScraperBenchmark
         return state.DetachResults();
     }
 
-    private static Utf8StreamQueryPlan<CompiledArticleState> CreateArticleQuery()
+    private static QueryPlan<CompiledArticleState> CreateArticleQuery()
     {
-        var list = Utf8StreamQueryNode<CompiledArticleState>.Root(
-            Utf8StreamSelector.Tag("ul").WithClass("news-list")
+        var list = QueryNode<CompiledArticleState>.Root(
+            Selector.Tag("ul").WithClass("news-list")
         );
         var card = list.Descendant(
-                Utf8StreamSelector.Tag("li").WithAttribute("dt-eid", "em_item_article")
+                Selector.Tag("li").WithAttribute("dt-eid", "em_item_article")
             )
             .OnStart(
-                static (ref CompiledArticleState state, in Utf8StreamElement element) =>
+                static (ref CompiledArticleState state, in Element element) =>
                     state.StartCard(element),
                 "dt-params"
             )
             .OnEnd(static (ref CompiledArticleState state) => state.EndCard());
-        var link = card.Descendant(Utf8StreamSelector.Tag("a").WithAttribute("href"))
+        var link = card.Descendant(Selector.Tag("a").WithAttribute("href"))
             .OnStart(
-                static (ref CompiledArticleState state, in Utf8StreamElement element) =>
+                static (ref CompiledArticleState state, in Element element) =>
                     state.StartLink(element),
                 "href"
             )
             .OnText(static (ref CompiledArticleState state, ReadOnlySpan<byte> text) =>
                 state.AppendText(text))
             .OnEnd(static (ref CompiledArticleState state) => state.EndLink());
-        link.Descendant(Utf8StreamSelector.Tag("img"))
+        link.Descendant(Selector.Tag("img"))
             .OnStart(
-                static (ref CompiledArticleState state, in Utf8StreamElement element) =>
+                static (ref CompiledArticleState state, in Element element) =>
                     state.Image(element),
                 "src",
                 "alt"
@@ -298,12 +299,12 @@ public class QqArticleScraperBenchmark
         private string? _imageUrl;
         private string? _imageAlt;
 
-        public void StartCard(in Utf8StreamElement element) =>
+        public void StartCard(in Element element) =>
             _cardMetadata = Decode(element, "dt-params") ?? string.Empty;
 
         public void EndCard() => _cardMetadata = string.Empty;
 
-        public void StartLink(in Utf8StreamElement element)
+        public void StartLink(in Element element)
         {
             _href = Decode(element, "href");
             _imageUrl = null;
@@ -323,7 +324,7 @@ public class QqArticleScraperBenchmark
             }
         }
 
-        public void Image(in Utf8StreamElement element)
+        public void Image(in Element element)
         {
             _imageUrl ??= Decode(element, "src");
             _imageAlt ??= Decode(element, "alt");
@@ -346,7 +347,7 @@ public class QqArticleScraperBenchmark
             return results;
         }
 
-        private static string? Decode(in Utf8StreamElement element, string attribute) =>
+        private static string? Decode(in Element element, string attribute) =>
             element.TryGetAttribute(attribute, out var value) ? Encoding.UTF8.GetString(value) : null;
     }
 

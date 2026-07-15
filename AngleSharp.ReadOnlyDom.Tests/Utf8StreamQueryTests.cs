@@ -6,16 +6,16 @@ using AngleSharp.ReadOnlyDom.Streaming;
 
 namespace AngleSharp.Readonly.Tests;
 
-public sealed class Utf8StreamQueryTests
+public sealed class QueryTests
 {
     [Test]
     public async Task ChildAndDescendantRelationsRemainDistinct()
     {
-        var root = Utf8StreamQueryNode<QueryState>.Root(Utf8StreamSelector.Tag("main"));
-        root.Child(Utf8StreamSelector.Tag("a"))
-            .OnStart(static (ref QueryState state, in Utf8StreamElement _) => state.Events.Add("child"));
-        root.Descendant(Utf8StreamSelector.Tag("a"))
-            .OnStart(static (ref QueryState state, in Utf8StreamElement _) => state.Events.Add("descendant"));
+        var root = QueryNode<QueryState>.Root(Selector.Tag("main"));
+        root.Child(Selector.Tag("a"))
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("child"));
+        root.Descendant(Selector.Tag("a"))
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("descendant"));
 
         var state = root.Compile().Execute(
             "<main><a>direct</a><section><a>nested</a></section></main>"u8,
@@ -28,15 +28,15 @@ public sealed class Utf8StreamQueryTests
     [Test]
     public async Task PredicatesAndProjectedAttributesUseBorrowedUtf8()
     {
-        var root = Utf8StreamQueryNode<QueryState>.Root(
-                Utf8StreamSelector.Tag("article")
+        var root = QueryNode<QueryState>.Root(
+                Selector.Tag("article")
                     .WithId("story")
                     .WithClass("featured")
                     .WithAttribute("data-id")
                     .WithAttribute("lang", "en")
             )
             .OnStart(
-                static (ref QueryState state, in Utf8StreamElement element) =>
+                static (ref QueryState state, in Element element) =>
                 {
                     state.Events.Add(Encoding.UTF8.GetString(Get(element, "data-id")));
                     state.Events.Add(element.HasAttribute("missing") ? "present" : "missing");
@@ -56,14 +56,14 @@ public sealed class Utf8StreamQueryTests
     [Test]
     public async Task TextEndAndVoidCallbacksPreserveStructuralOrderAcrossSegments()
     {
-        var root = Utf8StreamQueryNode<QueryState>.Root(Utf8StreamSelector.Tag("main"));
-        root.Descendant(Utf8StreamSelector.Tag("a"))
-            .OnStart(static (ref QueryState state, in Utf8StreamElement _) => state.Events.Add("a:start"))
+        var root = QueryNode<QueryState>.Root(Selector.Tag("main"));
+        root.Descendant(Selector.Tag("a"))
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("a:start"))
             .OnText(static (ref QueryState state, ReadOnlySpan<byte> text) =>
                 state.Text.Append(Encoding.UTF8.GetString(text)))
             .OnEnd(static (ref QueryState state) => state.Events.Add("a:end"))
-            .Descendant(Utf8StreamSelector.Tag("img"))
-            .OnStart(static (ref QueryState state, in Utf8StreamElement _) => state.Events.Add("img:start"))
+            .Descendant(Selector.Tag("img"))
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("img:start"))
             .OnEnd(static (ref QueryState state) => state.Events.Add("img:end"));
 
         var plan = root.Compile();
@@ -84,7 +84,7 @@ public sealed class Utf8StreamQueryTests
     [Test]
     public async Task PipeReaderFeedsTheSameCompiledPlanIncrementally()
     {
-        var root = Utf8StreamQueryNode<QueryState>.Root(Utf8StreamSelector.Tag("main"))
+        var root = QueryNode<QueryState>.Root(Selector.Tag("main"))
             .OnText(static (ref QueryState state, ReadOnlySpan<byte> text) =>
                 state.Text.Append(Encoding.UTF8.GetString(text)));
         var pipe = new Pipe(new PipeOptions(minimumSegmentSize: 8, useSynchronizationContext: false));
@@ -103,9 +103,9 @@ public sealed class Utf8StreamQueryTests
     public async Task MalformedTableNestingDocumentsTheLexicalTopologyBoundary()
     {
         const string html = "<table><div id=inside>lexically nested</div></table>";
-        var root = Utf8StreamQueryNode<QueryState>.Root(Utf8StreamSelector.Tag("table"));
-        root.Descendant(Utf8StreamSelector.Tag("div").WithId("inside"))
-            .OnStart(static (ref QueryState state, in Utf8StreamElement _) => state.Events.Add("match"));
+        var root = QueryNode<QueryState>.Root(Selector.Tag("table"));
+        root.Descendant(Selector.Tag("div").WithId("inside"))
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("match"));
         var lexical = root.Compile().Execute(Encoding.UTF8.GetBytes(html), new QueryState());
 
         using var browserDocument = new HtmlParser().ParseDocument(html);
@@ -117,11 +117,11 @@ public sealed class Utf8StreamQueryTests
     [Test]
     public async Task ExplanationAndNodeLimitMakeTheExecutionShapeExplicit()
     {
-        var root = Utf8StreamQueryNode<QueryState>.Root(
-            Utf8StreamSelector.Tag("ul").WithClass("news-list")
+        var root = QueryNode<QueryState>.Root(
+            Selector.Tag("ul").WithClass("news-list")
         );
-        root.Descendant(Utf8StreamSelector.Tag("a").WithAttribute("href"))
-            .OnStart(static (ref QueryState _, in Utf8StreamElement _) => { }, "title");
+        root.Descendant(Selector.Tag("a").WithAttribute("href"))
+            .OnStart(static (ref QueryState _, in Element _) => { }, "title");
         var explanation = root.Compile().Explanation;
 
         await Assert.That(explanation.ExecutionShape).IsEqualTo("StreamingOnly");
@@ -132,7 +132,7 @@ public sealed class Utf8StreamQueryTests
 
         var node = root;
         for (var index = 0; index < 63; index++)
-            node = node.Descendant(Utf8StreamSelector.Tag("div"));
+            node = node.Descendant(Selector.Tag("div"));
         var rejected = false;
         try
         {
@@ -145,7 +145,7 @@ public sealed class Utf8StreamQueryTests
         await Assert.That(rejected).IsTrue();
     }
 
-    private static ReadOnlySpan<byte> Get(in Utf8StreamElement element, string name)
+    private static ReadOnlySpan<byte> Get(in Element element, string name)
     {
         if (!element.TryGetAttribute(name, out var value))
             throw new InvalidOperationException($"Missing projected attribute '{name}'.");
