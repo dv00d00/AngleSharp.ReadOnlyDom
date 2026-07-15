@@ -52,19 +52,22 @@ string, queue, or interface costs.
 - invalid UTF-8 maximal parts are replaced before any borrowed callback;
 - script escaped/double-escaped, plaintext, structured DOCTYPE, longest-prefix entities, attribute exceptions,
   duplicate-attribute first-wins, CRLF normalization, and numeric-reference overflow/remapping have differential tests;
+- 19,716 executions from the pinned html5lib tokenizer corpus match exact token shapes across contiguous, one-byte, and
+  seven-byte segmentation, including Data, RCDATA, RAWTEXT, Script, PLAINTEXT, and CDATA initial states; the four
+  abstract-Unicode inputs containing lone surrogates are not representable on a UTF-8 byte API, and `xmlViolation.test`
+  requires the upstream XML-compatible coercion mode;
 - all 47 checked-in HTML documents (28,368,912 UTF-8 bytes) match AngleSharp's lexical event stream when contiguous and
   segmented at 1, 7, and 4096 bytes;
-- the existing net10.0 suite remains green (179,221 tests on the latest run).
+- the existing net10.0 suite remains green (179,224 tests on the latest run).
 
 This is not yet a production replacement. Remaining gates are:
 
-1. exhaust the html5lib tokenizer vectors, especially malformed script EOF and DOCTYPE recovery states;
-2. report duplicate attributes and other tokenizer parse errors with source positions compatible with the existing
+1. report duplicate attributes and other tokenizer parse errors with source positions compatible with the existing
    parser;
-3. differential-test mutable DOM observables for tables/foster parenting, adoption agency, templates, SVG/MathML,
+2. differential-test mutable DOM observables for tables/foster parenting, adoption agency, templates, SVG/MathML,
    foreign content, and malformed nesting;
-4. add cancellation, backpressure, maximum-token/resource policy, fuzzing, and adversarial segment-boundary gates;
-5. measure the integrated raw-network `PipeReader` path and eliminate avoidable per-document workspace churn.
+3. add cancellation, backpressure, maximum-token/resource policy, fuzzing, and adversarial segment-boundary gates;
+4. measure the integrated raw-network `PipeReader` path and eliminate avoidable per-document workspace churn.
 
 Mutable browser behavior such as events, script execution, and `document.write` remains out of scope.
 
@@ -82,11 +85,11 @@ sink.
 
 | Method | Mean | Allocated |
 | --- | ---: | ---: |
-| Decode then AngleSharp tokenize | 20.35 ms | 18,332.67 KB |
-| Validated UTF-8 monotonic tokenize | 16.13 ms | 17.58 KB |
+| Decode then AngleSharp tokenize | 20.06 ms | 18,332.10 KB |
+| Validated UTF-8 monotonic tokenize | 15.90 ms | 17.59 KB |
 
 Latest direct BenchmarkDotNet report:
-`artifacts/benchmarks/20260714-213111-8db73d3-utf8-tokenizer/utf8-tokenizer/results/AngleSharp.ReadOnlyDom.Benchmarks.Utf8TokenizerBenchmark-report-github.md`
+`artifacts/benchmarks/20260714-231435-f9895fa-utf8-tokenizer/utf8-tokenizer/results/AngleSharp.ReadOnlyDom.Benchmarks.Utf8TokenizerBenchmark-report-github.md`
 
 The semantically hardened tokenizer is about 21% faster and allocates about 99.9% less in this short run. Its maximum
 simultaneously buffered token data was 6,754 bytes on the fixture. A temporary regression to 109.88 KB was traced to
