@@ -67,17 +67,21 @@ label, .pane-title {
     margin-top: 8px;
 }
 
-input, textarea, button {
+input, textarea, button, select {
     font: inherit;
 }
 
-input {
+input, select {
     flex: 1;
     min-width: 0;
     padding: 12px 14px;
     border: 1px solid #adb8b0;
     border-radius: 10px;
     background: white;
+}
+
+select {
+    flex: 0 0 auto;
 }
 
 button {
@@ -260,4 +264,11 @@ tr:nth-child(even) td {
     .preview {
         min-height: 42vh;
     }
+}
+
+#preview.plain-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    line-height: 1.55;
 }

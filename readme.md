@@ -15,11 +15,19 @@ specialized construction-time extraction, and EOF aggregate JSON/text/Markdown A
 dotnet run --project samples/AngleSharp.ReadOnlyDom.Samples -c Release
 ```
 
-The intentionally naive [HTML-to-Markdown proxy](samples/AngleSharp.ReadOnlyDom.MarkdownProxy/README.md) streams upstream
-UTF-8 through the native tokenizer and folds borrowed completed-element spans directly into UTF-8 Markdown:
+The intentionally naive [HTML folding proxy](samples/AngleSharp.ReadOnlyDom.MarkdownProxy/README.md) streams upstream
+UTF-8 through the native tokenizer and folds borrowed spans directly into UTF-8 Markdown or plain text:
 
 ```powershell
 dotnet run --project samples/AngleSharp.ReadOnlyDom.MarkdownProxy -c Release
+```
+
+The streaming package also exposes the plain-text view directly. Its options customize the content root, ignored and
+semantic elements, separators, and image alternative text; arbitrary result shapes remain the job of `StreamQuery`.
+
+```csharp
+var text = HtmlTextExtractor.Default.Extract(htmlUtf8);
+await HtmlTextExtractor.Default.ExtractAsync(inputPipe, outputPipe, cancellationToken: cancel);
 ```
 
 ```

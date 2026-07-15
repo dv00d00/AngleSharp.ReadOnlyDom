@@ -4,10 +4,18 @@ const markdown = document.querySelector("#markdown");
 const preview = document.querySelector("#preview");
 const status = document.querySelector("#status");
 const backButton = document.querySelector("#back");
+const format = document.querySelector("#format");
+const sourceTitle = document.querySelector("#source-title");
+const renderButton = document.querySelector("#render");
 const navigationHistory = [];
 let currentDocumentUrl = null;
 
-document.querySelector("#render").addEventListener("click", render);
+renderButton.addEventListener("click", render);
+format.addEventListener("change", () => {
+  updateFormatUi();
+  if (currentDocumentUrl) form.requestSubmit();
+  else render();
+});
 document.querySelectorAll("[data-url]").forEach(button => {
   button.addEventListener("click", () => {
     navigationHistory.length = 0;
@@ -24,13 +32,14 @@ form.addEventListener("submit", async event => {
   status.textContent = `Folding ${url} …`;
   form.querySelector("button[type=submit]").disabled = true;
   try {
-    const response = await fetch(`/markdown?url=${encodeURIComponent(url)}`);
+    const response = await fetch(`/${format.value}?url=${encodeURIComponent(url)}`);
     if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
     markdown.value = await response.text();
     currentDocumentUrl = response.headers.get("X-Source-Url") ?? url;
     urlInput.value = currentDocumentUrl;
     render();
-    status.textContent = `${markdown.value.length.toLocaleString()} Markdown characters.`;
+    const label = format.value === "markdown" ? "Markdown" : "plain-text";
+    status.textContent = `${markdown.value.length.toLocaleString()} ${label} characters.`;
   } catch (error) {
     status.textContent = `Conversion failed: ${error.message}`;
   } finally {
@@ -70,6 +79,13 @@ preview.addEventListener("click", event => {
 });
 
 function render() {
+  if (format.value === "text") {
+    preview.classList.add("plain-text");
+    preview.textContent = markdown.value;
+    return;
+  }
+
+  preview.classList.remove("plain-text");
   preview.innerHTML = renderMarkdown(markdown.value);
   preview.querySelectorAll("img[src]").forEach(image => {
     let target;
@@ -81,6 +97,12 @@ function render() {
     if (target.protocol === "http:" || target.protocol === "https:")
       image.src = `/asset?url=${encodeURIComponent(target.href)}`;
   });
+}
+
+function updateFormatUi() {
+  const isMarkdown = format.value === "markdown";
+  sourceTitle.textContent = isMarkdown ? "Markdown" : "Plain text";
+  renderButton.hidden = !isMarkdown;
 }
 
 function updateBackButton() {
@@ -185,4 +207,5 @@ function escapeHtml(value) {
   })[character]);
 }
 
+updateFormatUi();
 render();
