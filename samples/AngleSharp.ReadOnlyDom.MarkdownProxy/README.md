@@ -19,14 +19,21 @@ curl.exe -X POST "http://localhost:5000/markdown?stream=true" `
   --data-binary "<html><body><article><p>Committed at block close.</p></article></body></html>"
 ```
 
-The UI includes presets for Example Domain, Wikipedia's HTTP status-code tables, Hacker News' table layout, the .NET
-Blog, and a local deterministic demo. The tiny dependency-free browser renderer handles headings, paragraphs, lists,
-quotes, fenced code, images, and GitHub-style Markdown tables.
+The UI includes presets for Example Domain, Wikipedia's HTTP status-code tables, Hacker News, the .NET Blog, and a local
+deterministic demo. The tiny dependency-free browser renderer handles headings, paragraphs, lists, quotes, fenced code,
+proxied images, links, and GitHub-style Markdown tables. Preview links stay inside the converter, and the Back button
+returns through viewer history. Redirects are followed explicitly for at most ten HTTP(S) hops; the final URL is returned
+to the UI so relative links and images resolve against the landing page.
+
+Hacker News demonstrates a query-directed layout profile: `table#hnmain` is not treated as a data table, while
+`tr.athing` and `span.subline` become linked story blocks. Actual tables with cells continue through the GFM table fold.
+Images are streamed through `/asset`, limited to `image/*` responses and known content lengths up to 20 MB. YARP would be
+unnecessary machinery for this single read-only proxy route.
 
 This is intentionally not a correct general HTML-to-Markdown converter. It assumes explicit `html` markup and UTF-8,
 extracts a handful of block elements, loses most inline formatting, may duplicate nested block text, ignores nested
-tables and embedded data-URI images, and permits arbitrary
-HTTP(S) upstream URLs. Keep it bound to localhost.
+tables and embedded data-URI images, and permits arbitrary HTTP(S) upstream URLs. The asset length limit cannot bound a
+chunked upstream response. Keep it bound to localhost.
 
 The default endpoint buffers the usually small Markdown result and sends it with one write. Add `stream=true` to use the
 backpressured lane: synchronous tokenizer/query work produces irrevocable UTF-8 prefixes, and the outer async pump flushes

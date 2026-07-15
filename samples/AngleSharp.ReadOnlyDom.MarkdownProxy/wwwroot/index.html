@@ -23,6 +23,7 @@
         </div>
       </form>
       <div class="presets" aria-label="Example pages">
+        <button id="back" type="button" disabled>← Back</button>
         <button data-url="https://example.com/">Example Domain</button>
         <button data-url="https://en.wikipedia.org/wiki/List_of_HTTP_status_codes">Wikipedia tables</button>
         <button data-url="https://news.ycombinator.com/">Hacker News table layout</button>
@@ -33,13 +34,14 @@
     </section>
 
     <section class="workspace">
+      <article id="preview" class="pane preview"></article>
       <div class="pane source-pane">
         <div class="pane-title">Markdown <button id="render" type="button">Render</button></div>
         <textarea id="markdown" spellcheck="false"># Ready
 
 Choose a page above or paste Markdown here.</textarea>
       </div>
-      <article id="preview" class="pane preview"></article>
+      
     </section>
   </main>
 

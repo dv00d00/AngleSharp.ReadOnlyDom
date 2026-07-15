@@ -3,11 +3,15 @@ const urlInput = document.querySelector("#url");
 const markdown = document.querySelector("#markdown");
 const preview = document.querySelector("#preview");
 const status = document.querySelector("#status");
+const backButton = document.querySelector("#back");
+const navigationHistory = [];
 let currentDocumentUrl = null;
 
 document.querySelector("#render").addEventListener("click", render);
 document.querySelectorAll("[data-url]").forEach(button => {
   button.addEventListener("click", () => {
+    navigationHistory.length = 0;
+    updateBackButton();
     const value = button.dataset.url;
     urlInput.value = value.startsWith("/") ? new URL(value, location.href) : value;
     form.requestSubmit();
@@ -23,7 +27,8 @@ form.addEventListener("submit", async event => {
     const response = await fetch(`/markdown?url=${encodeURIComponent(url)}`);
     if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
     markdown.value = await response.text();
-    currentDocumentUrl = url;
+    currentDocumentUrl = response.headers.get("X-Source-Url") ?? url;
+    urlInput.value = currentDocumentUrl;
     render();
     status.textContent = `${markdown.value.length.toLocaleString()} Markdown characters.`;
   } catch (error) {
@@ -31,6 +36,14 @@ form.addEventListener("submit", async event => {
   } finally {
     form.querySelector("button[type=submit]").disabled = false;
   }
+});
+
+backButton.addEventListener("click", () => {
+  const previous = navigationHistory.pop();
+  updateBackButton();
+  if (!previous) return;
+  urlInput.value = previous;
+  form.requestSubmit();
 });
 
 preview.addEventListener("click", event => {
@@ -48,12 +61,30 @@ preview.addEventListener("click", event => {
     return;
 
   event.preventDefault();
+  if (currentDocumentUrl) {
+    navigationHistory.push(currentDocumentUrl);
+    updateBackButton();
+  }
   urlInput.value = target.href;
   form.requestSubmit();
 });
 
 function render() {
   preview.innerHTML = renderMarkdown(markdown.value);
+  preview.querySelectorAll("img[src]").forEach(image => {
+    let target;
+    try {
+      target = new URL(image.getAttribute("src"), currentDocumentUrl ?? location.href);
+    } catch {
+      return;
+    }
+    if (target.protocol === "http:" || target.protocol === "https:")
+      image.src = `/asset?url=${encodeURIComponent(target.href)}`;
+  });
+}
+
+function updateBackButton() {
+  backButton.disabled = navigationHistory.length === 0;
 }
 
 function renderMarkdown(source) {
