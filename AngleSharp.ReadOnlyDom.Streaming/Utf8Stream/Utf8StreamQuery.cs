@@ -802,10 +802,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
                 var length = _attributeLengths[attributeIndex];
                 if (length >= 0)
                 {
-                    capture.SetAttribute(
-                        attribute,
-                        _attributeValues.AsSpan(_attributeStarts[attributeIndex], length)
-                    );
+                    capture.SetAttribute(attribute, _attributeValues.AsSpan(_attributeStarts[attributeIndex], length));
                 }
             }
             capture.BeginText();

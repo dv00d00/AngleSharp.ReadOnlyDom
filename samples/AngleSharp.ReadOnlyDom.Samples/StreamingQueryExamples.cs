@@ -41,9 +41,15 @@ internal static class StreamingQueryExamples
                 }
             );
 
-        product.Descendant("a").Attribute("href").OnClose(static (ref fold, in el) => fold.Url = el.GetAttributeOrEmpty("href"));
+        product
+            .Descendant("a")
+            .Attribute("href")
+            .OnClose(static (ref fold, in el) => fold.Url = el.GetAttributeOrEmpty("href"));
         product.Descendant("h2").OnNormalizedText(static (ref fold, in el) => fold.Name = el.GetText());
-        product.Descendant("span").Class("price").OnNormalizedText(static (ref fold, in el) => fold.Price = el.GetText());
+        product
+            .Descendant("span")
+            .Class("price")
+            .OnNormalizedText(static (ref fold, in el) => fold.Price = el.GetText());
 
         var result = products.Compile().Execute(Html, new ProductFold());
         Console.WriteLine($"typed rows       : {string.Join(", ", result.Products)}");
@@ -76,8 +82,7 @@ internal static class StreamingQueryExamples
             );
         page.Descendant("p")
             .OnNormalizedText(
-                static (ref summary, in element) =>
-                    summary.ParagraphWords += CountNormalizedWords(element.TextUtf8)
+                static (ref summary, in element) => summary.ParagraphWords += CountNormalizedWords(element.TextUtf8)
             );
 
         var summary = page.Compile().Execute(Html, new PageSummary());
