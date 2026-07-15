@@ -43,7 +43,10 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
 
             if (args.Length > 0 && args[0].Equals("--qq-scraper-check", StringComparison.OrdinalIgnoreCase))
             {
-                new QqArticleScraperBenchmark().Setup();
+                var benchmark = new QqArticleScraperBenchmark();
+                if (args.Length > 1)
+                    benchmark.File = args[1];
+                benchmark.Setup();
                 return 0;
             }
 
