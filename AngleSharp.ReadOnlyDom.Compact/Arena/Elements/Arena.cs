@@ -244,11 +244,58 @@ internal sealed class Arena : IDisposable
 
     public void AddText(int parent, StringOrMemory text, bool emitWhiteSpaceOnly, int? index = null)
     {
-        if (_constructionView is null && !emitWhiteSpaceOnly && text.Memory.Span.Trim(WhiteSpace).Length == 0)
+        if (
+            _constructionView is null
+            && !emitWhiteSpaceOnly
+            && text.Memory.Span.Trim(WhiteSpace).Length == 0
+            && !ShouldRetainWhitespaceAt(parent, index)
+        )
             return;
         var retained = _constructionView?.SelectTextValue(text) ?? text;
         AddChild(parent, AddLeaf("#text", retained, CompactNodeKind.Text), index);
     }
+
+    private bool ShouldRetainWhitespaceAt(int parent, int? index)
+    {
+        if (
+            _columns.Kinds[parent] == CompactNodeKind.Element
+            && (_columns.Flags[parent] & NodeFlags.Special) == 0
+        )
+        {
+            return true;
+        }
+
+        var previous = index is > 0 ? ChildAt(parent, index.Value - 1) : _columns.LastChildren[parent];
+        while (previous >= 0)
+        {
+            var isPhrasing = IsPhrasingContent(previous);
+            if (isPhrasing.HasValue)
+                return isPhrasing.Value;
+            previous = _columns.PreviousSiblings[previous];
+        }
+
+        var next = index is { } position && position < _columns.ChildCounts[parent]
+            ? ChildAt(parent, position)
+            : -1;
+        while (next >= 0)
+        {
+            var isPhrasing = IsPhrasingContent(next);
+            if (isPhrasing.HasValue)
+                return isPhrasing.Value;
+            next = _columns.NextSiblings[next];
+        }
+
+        return false;
+    }
+
+    private bool? IsPhrasingContent(int handle) =>
+        _columns.Kinds[handle] switch
+        {
+            CompactNodeKind.Text => true,
+            CompactNodeKind.Element => (_columns.Flags[handle] & NodeFlags.Special) == 0,
+            CompactNodeKind.Comment or CompactNodeKind.ProcessingInstruction => null,
+            _ => false,
+        };
 
     public void AddComment(int parent, ref StructHtmlToken token)
     {

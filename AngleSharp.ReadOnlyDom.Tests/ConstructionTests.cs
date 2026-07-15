@@ -7,6 +7,35 @@ namespace AngleSharp.Readonly.Tests;
 public class ConstructionTests
 {
     [Test]
+    public async Task MeaningfulWhitespaceAfterInlineContentIsPreserved()
+    {
+        const string html = "<article id=content><p>one <span>two</span> </p><p>three</p></article>";
+        var mutableParser = new HtmlParser();
+        var readOnlyParser = new HtmlParser(default, ReadOnlyParser.DefaultContext);
+
+        using var mutable = mutableParser.ParseDocument(html);
+        using var readOnly = readOnlyParser.ParseReadOnlyDocument(html);
+        var expected = mutable.QuerySelector("#content")!.TextContent;
+        var actual = readOnly.QueryOne(node => node.TagId("article", "content"))!.GetTextContent();
+
+        await Assert.That(expected).IsEqualTo("one two three");
+        await Assert.That(actual).IsEqualTo(expected);
+    }
+
+    [Test]
+    public async Task StructuralWhitespaceBetweenBlockSiblingsRemainsDiscarded()
+    {
+        const string html = "<body>\n  <div>one</div>\n  <div>two</div>\n</body>";
+        var parser = new HtmlParser(default, ReadOnlyParser.DefaultContext);
+
+        using var document = parser.ParseReadOnlyDocument(html);
+        var body = document.QueryOne(node => node.Tag("body"))!;
+
+        await Assert.That(body.ChildNodes.Length).IsEqualTo(2);
+        await Assert.That(body.ChildNodes.All(node => node is IReadOnlyElement)).IsTrue();
+    }
+
+    [Test]
     public async Task CompactCollectionsPreserveConstructionResults()
     {
         string[] samples =
