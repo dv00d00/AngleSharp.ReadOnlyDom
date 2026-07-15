@@ -76,9 +76,33 @@ string decode, the resident byte text source, and the bounded AngleSharp streami
 against the native UTF-8 tokenizer folding directly into the same fingerprint. Setup requires exact equality with the
 ordinary DOM on the 2 MB fixture. This validates that concrete view and corpus, not all HTML tree-construction behavior.
 
+## Real HttpClient streaming fold
+
+`HttpClientStreamingQueryBenchmark` serves deterministic HTML from a loopback TCP HTTP/1.1 server. Every operation uses
+a real `HttpClient` request and socket; it compares `GetByteArrayAsync` plus a fold against
+`ResponseHeadersRead -> response stream -> PipeReader -> query`. This keeps DNS, TLS, CDN state, and public-network jitter
+out of the parser measurement.
+
+```powershell
+dotnet run --project AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- `
+  --filter "*HttpClientStreamingQueryBenchmark*"
+```
+
+ShortRun, Server GC, .NET 10.0.10:
+
+| HTML | Lane | Mean | Allocated |
+| ---: | --- | ---: | ---: |
+| 128 KB | Materialize then fold | 999.7 us | 147.14 KB |
+| 128 KB | Response stream fold | 897.5 us | 19.80 KB |
+| 2 MB | Materialize then fold | 8.225 ms | 2,067.58 KB |
+| 2 MB | Response stream fold | 6.368 ms | 19.92 KB |
+
+The 2 MB response-stream lane was about 22% faster and used about 99% less managed memory. The generated report is
+`BenchmarkDotNet.Artifacts/results/AngleSharp.ReadOnlyDom.Benchmarks.HttpClientStreamingQueryBenchmark-report-github.md`.
+
 ## Inventory
 
-The project currently contains 15 BenchmarkDotNet classes and 59 benchmark methods. The curated script deliberately does
+The project currently contains 16 BenchmarkDotNet classes and 61 benchmark methods. The curated script deliberately does
 not run every historical or diagnostic probe under `all`; network-dependent and narrowly focused experiments should be
 selected explicitly.
 
@@ -97,6 +121,7 @@ selected explicitly.
 | Query diagnostics | `CompactQueryWorkloadBenchmark`, `QueryBenchmark`, `SelectivityBenchmark` | direct filter | Isolated selector and selectivity mechanics |
 | Construction diagnostics | `FatDocumentParsingBenchmark`, `FullFlowBenchmark` | direct filter | Large-page feature profiles and full object projection |
 | Storage diagnostics | `OptionalNodeStorageLookupBenchmark` | direct filter | Dense versus sparse optional-node lookup |
+| I/O diagnostics | `HttpClientStreamingQueryBenchmark` | direct filter | Deterministic real-socket materialization versus response-stream fold |
 | I/O diagnostics | `HttpParsingBenchmark` | direct filter | Live HTTP parsing; intentionally excluded from deterministic suites |
 
 The remaining manual runners are `CollectionShapeRunner`, `CompactCorpusRunner`, and `CompactTraceRunner`. They are

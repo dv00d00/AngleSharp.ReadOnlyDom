@@ -11,7 +11,11 @@ builder
         client => client.DefaultRequestHeaders.UserAgent.ParseAdd("RODOM-Markdown-Proxy/0.1")
     )
     .ConfigurePrimaryHttpMessageHandler(() =>
-        new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All }
+        new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            AutomaticDecompression = DecompressionMethods.All,
+        }
     );
 
 var app = builder.Build();
@@ -35,7 +39,7 @@ app.MapGet(
 
 app.MapGet(
     "/markdown",
-    async (HttpContext context, IHttpClientFactory clients, string url, bool stream = false) =>
+    async Task (HttpContext context, IHttpClientFactory clients, string url, bool stream = false) =>
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
         {
@@ -44,10 +48,13 @@ app.MapGet(
             return;
         }
 
-        using var upstream = await clients
-            .CreateClient("html")
-            .GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+        using var upstream = await GetFollowingRedirectsAsync(
+            clients.CreateClient("html"),
+            uri,
+            context.RequestAborted
+        );
         upstream.EnsureSuccessStatusCode();
+        context.Response.Headers["X-Source-Url"] = upstream.RequestMessage?.RequestUri?.AbsoluteUri ?? uri.AbsoluteUri;
 
         await using var source = await upstream.Content.ReadAsStreamAsync(context.RequestAborted);
         var reader = PipeReader.Create(source);
@@ -82,7 +89,7 @@ app.MapGet(
 
 app.MapPost(
     "/markdown",
-    async (HttpContext context, bool stream = false) =>
+    async Task (HttpContext context, bool stream = true) =>
     {
         if (stream)
         {
@@ -106,6 +113,42 @@ app.MapPost(
     }
 );
 
+app.MapGet(
+    "/asset",
+    async Task (HttpContext context, IHttpClientFactory clients, string url) =>
+    {
+        const long maximumKnownLength = 20 * 1024 * 1024;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
+        using var upstream = await GetFollowingRedirectsAsync(
+            clients.CreateClient("html"),
+            uri,
+            context.RequestAborted
+        );
+        upstream.EnsureSuccessStatusCode();
+        var mediaType = upstream.Content.Headers.ContentType?.MediaType;
+        if (mediaType is null || !mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = StatusCodes.Status415UnsupportedMediaType;
+            return;
+        }
+        if (upstream.Content.Headers.ContentLength is > maximumKnownLength)
+        {
+            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            return;
+        }
+
+        context.Response.ContentType = upstream.Content.Headers.ContentType!.ToString();
+        context.Response.Headers.CacheControl = "public, max-age=300";
+        context.Response.Headers.XContentTypeOptions = "nosniff";
+        await upstream.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
+    }
+);
+
 app.Run();
 
 static async ValueTask WriteMarkdown(HttpContext context, ReadOnlyMemory<byte> markdown)
@@ -114,6 +157,46 @@ static async ValueTask WriteMarkdown(HttpContext context, ReadOnlyMemory<byte> m
     context.Response.ContentLength = markdown.Length;
     await context.Response.BodyWriter.WriteAsync(markdown, context.RequestAborted);
 }
+
+static async ValueTask<HttpResponseMessage> GetFollowingRedirectsAsync(
+    HttpClient client,
+    Uri initialUri,
+    CancellationToken cancellationToken
+)
+{
+    const int maximumRedirects = 10;
+    var uri = initialUri;
+    for (var redirect = 0; redirect <= maximumRedirects; redirect++)
+    {
+        var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!IsRedirect(response.StatusCode))
+            return response;
+
+        var location = response.Headers.Location;
+        if (location is null)
+            return response;
+        if (redirect == maximumRedirects)
+        {
+            response.Dispose();
+            throw new HttpRequestException($"The response exceeded {maximumRedirects} redirects.");
+        }
+
+        var next = location.IsAbsoluteUri ? location : new Uri(uri, location);
+        response.Dispose();
+        if (next.Scheme is not ("http" or "https"))
+            throw new HttpRequestException($"Redirected to unsupported URI scheme '{next.Scheme}'.");
+        uri = next;
+    }
+
+    throw new InvalidOperationException("Unreachable redirect loop.");
+}
+
+static bool IsRedirect(HttpStatusCode statusCode) =>
+    statusCode is HttpStatusCode.Moved
+        or HttpStatusCode.Redirect
+        or HttpStatusCode.RedirectMethod
+        or HttpStatusCode.TemporaryRedirect
+        or HttpStatusCode.PermanentRedirect;
 
 internal static class MarkdownPlan
 {
@@ -157,6 +240,13 @@ internal static class MarkdownPlan
                 "src",
                 "alt"
             );
+
+        html.Descendant("table")
+            .WithId("hnmain")
+            .OnStart(static (ref output, in _) => output.StartLayoutTable())
+            .OnEnd(static (ref output) => output.EndLayoutTable());
+        html.Descendant("tr").WithClass("athing").AsInlineBlock("- "u8);
+        html.Descendant("span").WithClass("subline").AsInlineBlock("  "u8);
 
         var table = html.Descendant("table")
             .OnStart(static (ref output, in _) => output.StartTable())
@@ -207,9 +297,12 @@ internal sealed class MarkdownBuffer : ICommittedUtf8Output
     private int _rowCells;
     private int _inlineBlockDepth;
     private int _preferredArticleDepth;
+    private int _layoutTableDepth;
     private bool _firstTableRow;
     private bool _inlineLink;
+    private bool _inlineLinkHasContent;
     private bool _inlineBlockHasContent;
+    private bool _spaceBeforeInlineLink;
     private bool _pendingInlineSpace;
     private bool _preferredArticleFound;
     private bool _preferredArticleComplete;
@@ -308,6 +401,7 @@ internal sealed class MarkdownBuffer : ICommittedUtf8Output
                 continue;
             }
             EnsureInlineBlockStarted();
+            EnsureInlineLinkStarted();
             FlushInlineSpace();
             Write(scalar);
         }
@@ -330,18 +424,24 @@ internal sealed class MarkdownBuffer : ICommittedUtf8Output
     {
         if (_inlineBlockDepth == 0 || _tableDepth != 0 || _inlineLink)
             return;
-        EnsureInlineBlockStarted();
-        FlushInlineSpace();
         _linkTarget.Clear();
         Write(_linkTarget, href);
-        Write("["u8);
+        _spaceBeforeInlineLink = _pendingInlineSpace;
+        _pendingInlineSpace = false;
         _inlineLink = true;
+        _inlineLinkHasContent = false;
     }
 
     internal void EndInlineLink()
     {
         if (!_inlineLink)
             return;
+        if (!_inlineLinkHasContent)
+        {
+            _pendingInlineSpace |= _spaceBeforeInlineLink;
+            _inlineLink = false;
+            return;
+        }
         _pendingInlineSpace = false;
         Write("]("u8);
         Write(_linkTarget.WrittenSpan);
@@ -373,9 +473,23 @@ internal sealed class MarkdownBuffer : ICommittedUtf8Output
         CommitIfSafe();
     }
 
+    internal void StartLayoutTable()
+    {
+        _layoutTableDepth++;
+        _tableDepth = 0;
+        _row.Clear();
+        _rowCells = 0;
+    }
+
+    internal void EndLayoutTable()
+    {
+        if (_layoutTableDepth != 0)
+            _layoutTableDepth--;
+    }
+
     internal void StartTable()
     {
-        if (!AcceptsContent)
+        if (!AcceptsContent || _layoutTableDepth != 0)
             return;
         _tableDepth++;
         if (_tableDepth == 1)
@@ -384,7 +498,7 @@ internal sealed class MarkdownBuffer : ICommittedUtf8Output
 
     internal void EndTable()
     {
-        if (_tableDepth == 0)
+        if (_layoutTableDepth != 0 || _tableDepth == 0)
             return;
         _tableDepth--;
         if (_tableDepth == 0)
@@ -457,6 +571,16 @@ internal sealed class MarkdownBuffer : ICommittedUtf8Output
             return;
         Write(_inlinePrefix.WrittenSpan);
         _inlineBlockHasContent = true;
+    }
+
+    private void EnsureInlineLinkStarted()
+    {
+        if (!_inlineLink || _inlineLinkHasContent)
+            return;
+        _pendingInlineSpace = _spaceBeforeInlineLink;
+        FlushInlineSpace();
+        Write("["u8);
+        _inlineLinkHasContent = true;
     }
 
     private void CommitIfSafe()
