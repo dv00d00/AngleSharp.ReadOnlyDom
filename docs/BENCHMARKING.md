@@ -222,7 +222,7 @@ The 2 MB response-stream lane was about 22% faster and used about 99% less manag
 
 ## Inventory
 
-The project currently contains 16 BenchmarkDotNet classes and 61 benchmark methods. The curated script deliberately does
+The project currently contains 18 BenchmarkDotNet classes and 80 benchmark methods. The curated script deliberately does
 not run every historical or diagnostic probe under `all`; network-dependent and narrowly focused experiments should be
 selected explicitly.
 
@@ -232,7 +232,7 @@ selected explicitly.
 | Compact construction | `CompactBuildBenchmark` | `compact` | RODOM versus frozen compact construction and parser reuse |
 | Extraction | `CompactExtractionPlanBenchmark` | `extraction` | Traversal versus handwritten and interpreted compact plans |
 | Extraction | `LongSyntheticConstructionBenchmark` | `extraction`, `scraping` | Same comparison on a 1.96 MB target-near-EOF document |
-| Scraping | `QqArticleScraperBenchmark` | `extraction`, `scraping` | Exact `List<Article>` projection across DOM, compact, and native UTF-8 paths |
+| Scraping | `QqArticleScraperBenchmark` | `extraction`, `scraping` | Exact `List<Article>` projection across AngleSharp input/query baselines, RODOM, compact, and native UTF-8 paths |
 | UTF-8 | `Utf8TokenizerBenchmark` | `utf8` | Decode plus AngleSharp tokenization versus native UTF-8 tokenization |
 | UTF-8 | `Utf8TokenizerBaselineBenchmark` | `utf8-baseline` | Frozen state/pathology matrix over memory and segmented pipe input |
 | UTF-8 | `Utf8RodomBenchmark` | `utf8` | Decode, resident bytes, and bounded stream into compact RODOM |
@@ -247,6 +247,70 @@ selected explicitly.
 
 The remaining manual runners are `CollectionShapeRunner`, `CompactCorpusRunner`, and `CompactTraceRunner`. They are
 diagnostic tools rather than throughput gates and are invoked through their dedicated `Program` switches.
+
+### AngleSharp scraper baselines
+
+`QqArticleScraperBenchmark` exposes two named file parameters. `qq.html` is the checked-in 124,794-byte page and produces
+16 owned `Article` objects. `qq-x4.html` retains one document head and repeats the body workload four times, producing a
+492,711-byte page and 64 articles. This keeps selector shape and result density constant. Every lane must return the same
+objects for each parameter. The mutable AngleSharp matrix covers the useful axes without generating every redundant
+cross-product:
+
+- string input with the default parser, queried through CSS selectors, native DOM collection APIs, and a manual tree walk;
+- string input with scraper-specific parser options, queried through those APIs plus precompiled CSS selectors;
+- UTF-16 memory plus auto-detected and explicit UTF-8 memory sources, queried through CSS selectors;
+- legacy synchronous, buffered asynchronous, and bounded-streaming `MemoryStream` input queried through CSS selectors.
+
+The remaining methods compare those baselines with the read-only DOM, filtered/source-mapped DOM, frozen compact DOM,
+handwritten native UTF-8 fold, compiled callback query, and completed-element query. `GlobalSetup` fails on the first
+result mismatch, so a faster method cannot silently benchmark a weaker projection.
+
+Run the complete 40-case matrix with:
+
+```powershell
+dotnet run --project benchmarks/AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- `
+  --filter "*QqArticleScraperBenchmark*" --join
+```
+
+The final .NET 10 ShortRun on an i9-9900K produced the following `qq.html` AngleSharp baselines:
+
+| AngleSharp lane | Mean | Allocated |
+| --- | ---: | ---: |
+| Default parser + CSS | 3.284 ms | 1,248.91 KB |
+| Default parser + DOM collections | 3.244 ms | 1,458.87 KB |
+| Default parser + manual tree walk | 3.291 ms | 1,317.57 KB |
+| Scraper options + CSS | 2.526 ms | 938.00 KB |
+| Scraper options + precompiled CSS | 2.486 ms | 925.55 KB |
+| Scraper options + DOM collections | 2.678 ms | 1,147.95 KB |
+| Scraper options + manual tree walk | 2.553 ms | 1,006.66 KB |
+| UTF-16 memory + CSS | 2.530 ms | 938.00 KB |
+| Auto-detected UTF-8 memory + CSS | 2.473 ms | 938.02 KB |
+| Explicit UTF-8 memory + CSS | 2.562 ms | 937.99 KB |
+| Legacy synchronous stream + CSS | 3.002 ms | 1,714.95 KB |
+| Buffered asynchronous stream + CSS | 3.066 ms | 1,463.05 KB |
+| Bounded streaming source + CSS | 2.637 ms | 982.50 KB |
+
+The main baseline lesson is parser configuration rather than traversal cleverness: dropping unneeded parser features and
+attributes saved roughly 23% time and 25% allocation. Precompiling selectors saved another 12.5 KB; collection and
+manual-walk variants did not produce a repeatable time win on this fixture.
+
+The x4 parameter shows near-linear CPU scaling across every lane, but a different allocation slope for direct queries:
+
+| Representative lane | 1x mean | x4 mean | Time growth | 1x allocated | x4 allocated | Allocation growth |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Default AngleSharp | 3.284 ms | 12.792 ms | 3.90x | 1,248.91 KB | 4,881.94 KB | 3.91x |
+| Configured precompiled CSS | 2.486 ms | 9.912 ms | 3.99x | 925.55 KB | 3,633.07 KB | 3.93x |
+| Legacy AngleSharp stream | 3.002 ms | 11.992 ms | 4.00x | 1,714.95 KB | 6,716.05 KB | 3.92x |
+| Bounded AngleSharp stream | 2.637 ms | 10.582 ms | 4.01x | 982.50 KB | 3,833.84 KB | 3.90x |
+| Minimal RODOM | 1.565 ms | 6.252 ms | 4.00x | 227.73 KB | 894.13 KB | 3.93x |
+| Compact DOM | 1.697 ms | 6.834 ms | 4.03x | 93.95 KB | 358.87 KB | 3.82x |
+| Compiled UTF-8 query | 866.9 us | 3.530 ms | 4.07x | 15.80 KB | 51.59 KB | 3.27x |
+| Completed-element query | 938.0 us | 3.676 ms | 3.92x | 15.72 KB | 51.30 KB | 3.26x |
+
+BenchmarkDotNet's `Allocated` column is total managed allocation, not peak process working set. The direct-query result is
+still informative: input and owned output both grow fourfold while allocation grows only 3.26x, from about 16 KB to 51 KB.
+The parser stack and buffers therefore do not contribute an input-sized allocation; most growth is the additional 48
+returned `Article` objects and their owned strings. DOM construction remains input-sized.
 
 
 ## Retained-memory method
