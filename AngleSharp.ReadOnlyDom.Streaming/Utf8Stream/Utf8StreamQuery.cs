@@ -5,23 +5,23 @@ using System.Text;
 
 namespace AngleSharp.ReadOnlyDom.Streaming;
 
-public enum Utf8StreamQueryRelation : byte
+public enum QueryRelation : byte
 {
     Root,
     Descendant,
     Child,
 }
 
-public delegate void Utf8StreamStartHandler<TState>(
+public delegate void StartHandler<TState>(
     ref TState state,
-    in Utf8StreamElement element
+    in Element element
 );
 
-public delegate void Utf8StreamTextHandler<TState>(ref TState state, ReadOnlySpan<byte> utf8);
+public delegate void TextHandler<TState>(ref TState state, ReadOnlySpan<byte> utf8);
 
-public delegate void Utf8StreamEndHandler<TState>(ref TState state);
+public delegate void EndHandler<TState>(ref TState state);
 
-public readonly ref struct Utf8StreamElement
+public readonly ref struct Element
 {
     private readonly string[] _attributeNames;
     private readonly byte[][] _attributeNameUtf8;
@@ -29,7 +29,7 @@ public readonly ref struct Utf8StreamElement
     private readonly int[] _starts;
     private readonly int[] _lengths;
 
-    internal Utf8StreamElement(
+    internal Element(
         string[] attributeNames,
         byte[][] attributeNameUtf8,
         byte[] values,
@@ -82,54 +82,54 @@ public readonly ref struct Utf8StreamElement
     }
 }
 
-public sealed class Utf8StreamSelector
+public sealed class Selector
 {
-    private readonly List<Utf8StreamAttributePredicate> _attributes = [];
+    private readonly List<AttributePredicate> _attributes = [];
 
-    private Utf8StreamSelector(string tagName) => TagName = NormalizeName(tagName, nameof(tagName));
+    private Selector(string tagName) => TagName = NormalizeName(tagName, nameof(tagName));
 
     public string TagName { get; }
 
-    internal IReadOnlyList<Utf8StreamAttributePredicate> Attributes => _attributes;
+    internal IReadOnlyList<AttributePredicate> Attributes => _attributes;
 
-    public static Utf8StreamSelector Tag(string tagName) => new(tagName);
+    public static Selector Tag(string tagName) => new(tagName);
 
-    public Utf8StreamSelector WithId(string value) => WithAttribute("id", value);
+    public Selector WithId(string value) => WithAttribute("id", value);
 
-    public Utf8StreamSelector WithClass(string token)
+    public Selector WithClass(string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
         if (token.Any(IsHtmlSpace))
             throw new ArgumentException("A class-token predicate must contain exactly one token.", nameof(token));
         _attributes.Add(
-            new Utf8StreamAttributePredicate(
+            new AttributePredicate(
                 NormalizeName("class", "name"),
-                Utf8StreamAttributePredicateKind.ContainsToken,
+                AttributePredicateKind.ContainsToken,
                 token
             )
         );
         return this;
     }
 
-    public Utf8StreamSelector WithAttribute(string name)
+    public Selector WithAttribute(string name)
     {
         _attributes.Add(
-            new Utf8StreamAttributePredicate(
+            new AttributePredicate(
                 NormalizeName(name, nameof(name)),
-                Utf8StreamAttributePredicateKind.Exists,
+                AttributePredicateKind.Exists,
                 null
             )
         );
         return this;
     }
 
-    public Utf8StreamSelector WithAttribute(string name, string value)
+    public Selector WithAttribute(string name, string value)
     {
         ArgumentNullException.ThrowIfNull(value);
         _attributes.Add(
-            new Utf8StreamAttributePredicate(
+            new AttributePredicate(
                 NormalizeName(name, nameof(name)),
-                Utf8StreamAttributePredicateKind.Equals,
+                AttributePredicateKind.Equals,
                 value
             )
         );
@@ -150,32 +150,32 @@ public sealed class Utf8StreamSelector
     private static bool IsHtmlSpace(char value) => value is ' ' or '\t' or '\n' or '\r' or '\f';
 }
 
-internal enum Utf8StreamAttributePredicateKind : byte
+internal enum AttributePredicateKind : byte
 {
     Exists,
     Equals,
     ContainsToken,
 }
 
-internal sealed record Utf8StreamAttributePredicate(
+internal sealed record AttributePredicate(
     string Name,
-    Utf8StreamAttributePredicateKind Kind,
+    AttributePredicateKind Kind,
     string? Value
 );
 
-public sealed class Utf8StreamQueryNode<TState>
+public sealed class QueryNode<TState>
 {
-    private readonly Utf8StreamQueryNode<TState> _root;
-    private readonly List<Utf8StreamQueryNode<TState>> _children = [];
+    private readonly QueryNode<TState> _root;
+    private readonly List<QueryNode<TState>> _children = [];
     private readonly HashSet<string> _projectedAttributes = new(StringComparer.Ordinal);
-    private Utf8StreamStartHandler<TState>? _start;
-    private Utf8StreamTextHandler<TState>? _text;
-    private Utf8StreamEndHandler<TState>? _end;
+    private StartHandler<TState>? _start;
+    private TextHandler<TState>? _text;
+    private EndHandler<TState>? _end;
 
-    private Utf8StreamQueryNode(
-        Utf8StreamSelector selector,
-        Utf8StreamQueryRelation relation,
-        Utf8StreamQueryNode<TState>? parent
+    private QueryNode(
+        Selector selector,
+        QueryRelation relation,
+        QueryNode<TState>? parent
     )
     {
         Selector = selector ?? throw new ArgumentNullException(nameof(selector));
@@ -184,62 +184,62 @@ public sealed class Utf8StreamQueryNode<TState>
         _root = parent?._root ?? this;
     }
 
-    public Utf8StreamSelector Selector { get; }
-    public Utf8StreamQueryRelation Relation { get; }
-    public Utf8StreamQueryNode<TState>? Parent { get; }
+    public Selector Selector { get; }
+    public QueryRelation Relation { get; }
+    public QueryNode<TState>? Parent { get; }
 
-    internal IReadOnlyList<Utf8StreamQueryNode<TState>> Children => _children;
+    internal IReadOnlyList<QueryNode<TState>> Children => _children;
     internal IReadOnlyCollection<string> ProjectedAttributes => _projectedAttributes;
-    internal Utf8StreamStartHandler<TState>? StartHandler => _start;
-    internal Utf8StreamTextHandler<TState>? TextHandler => _text;
-    internal Utf8StreamEndHandler<TState>? EndHandler => _end;
+    internal StartHandler<TState>? StartHandler => _start;
+    internal TextHandler<TState>? TextHandler => _text;
+    internal EndHandler<TState>? EndHandler => _end;
 
-    public static Utf8StreamQueryNode<TState> Root(Utf8StreamSelector selector) =>
-        new(selector, Utf8StreamQueryRelation.Root, null);
+    public static QueryNode<TState> Root(Selector selector) =>
+        new(selector, QueryRelation.Root, null);
 
-    public Utf8StreamQueryNode<TState> Descendant(Utf8StreamSelector selector) =>
-        AddChild(selector, Utf8StreamQueryRelation.Descendant);
+    public QueryNode<TState> Descendant(Selector selector) =>
+        AddChild(selector, QueryRelation.Descendant);
 
-    public Utf8StreamQueryNode<TState> Child(Utf8StreamSelector selector) =>
-        AddChild(selector, Utf8StreamQueryRelation.Child);
+    public QueryNode<TState> Child(Selector selector) =>
+        AddChild(selector, QueryRelation.Child);
 
-    public Utf8StreamQueryNode<TState> OnStart(
-        Utf8StreamStartHandler<TState> handler,
+    public QueryNode<TState> OnStart(
+        StartHandler<TState> handler,
         params string[] projectedAttributes
     )
     {
         _start = handler ?? throw new ArgumentNullException(nameof(handler));
         foreach (var attribute in projectedAttributes)
-            _projectedAttributes.Add(Utf8StreamSelector.NormalizeName(attribute, nameof(projectedAttributes)));
+            _projectedAttributes.Add(Selector.NormalizeName(attribute, nameof(projectedAttributes)));
         return this;
     }
 
-    public Utf8StreamQueryNode<TState> OnText(Utf8StreamTextHandler<TState> handler)
+    public QueryNode<TState> OnText(TextHandler<TState> handler)
     {
         _text = handler ?? throw new ArgumentNullException(nameof(handler));
         return this;
     }
 
-    public Utf8StreamQueryNode<TState> OnEnd(Utf8StreamEndHandler<TState> handler)
+    public QueryNode<TState> OnEnd(EndHandler<TState> handler)
     {
         _end = handler ?? throw new ArgumentNullException(nameof(handler));
         return this;
     }
 
-    public Utf8StreamQueryPlan<TState> Compile() => Utf8StreamQueryCompiler.Compile(_root);
+    public QueryPlan<TState> Compile() => QueryCompiler.Compile(_root);
 
-    private Utf8StreamQueryNode<TState> AddChild(
-        Utf8StreamSelector selector,
-        Utf8StreamQueryRelation relation
+    private QueryNode<TState> AddChild(
+        Selector selector,
+        QueryRelation relation
     )
     {
-        var child = new Utf8StreamQueryNode<TState>(selector, relation, this);
+        var child = new QueryNode<TState>(selector, relation, this);
         _children.Add(child);
         return child;
     }
 }
 
-public sealed record Utf8StreamQueryExplanation(
+public sealed record QueryExplanation(
     string ExecutionShape,
     IReadOnlyList<string> RequiredTags,
     IReadOnlyList<string> RequiredAttributes,
@@ -249,13 +249,13 @@ public sealed record Utf8StreamQueryExplanation(
     string? FailureReason
 );
 
-public sealed class Utf8StreamQueryPlan<TState>
+public sealed class QueryPlan<TState>
 {
-    internal Utf8StreamQueryPlan(
-        CompiledUtf8StreamQueryNode<TState>[] nodes,
+    internal QueryPlan(
+        CompiledQueryNode<TState>[] nodes,
         string[] attributeNames,
         byte[][] attributeNameUtf8,
-        Utf8StreamQueryExplanation explanation
+        QueryExplanation explanation
     )
     {
         Nodes = nodes;
@@ -268,14 +268,14 @@ public sealed class Utf8StreamQueryPlan<TState>
         Explanation = explanation;
     }
 
-    internal CompiledUtf8StreamQueryNode<TState>[] Nodes { get; }
+    internal CompiledQueryNode<TState>[] Nodes { get; }
     internal string[] AttributeNames { get; }
     internal byte[][] AttributeNameUtf8 { get; }
     internal ulong TextHandlerBits { get; }
 
-    public Utf8StreamQueryExplanation Explanation { get; }
+    public QueryExplanation Explanation { get; }
 
-    public Utf8StreamQuerySession<TState> CreateSession(TState state) => new(this, state);
+    public QuerySession<TState> CreateSession(TState state) => new(this, state);
 
     public TState Execute(ReadOnlySpan<byte> utf8, TState state)
     {
@@ -300,30 +300,30 @@ public sealed class Utf8StreamQueryPlan<TState>
     }
 }
 
-internal sealed record CompiledUtf8StreamQueryNode<TState>(
+internal sealed record CompiledQueryNode<TState>(
     int Index,
     int ParentIndex,
-    Utf8StreamQueryRelation Relation,
+    QueryRelation Relation,
     byte[] TagName,
     ulong TagHash,
     ulong RequiredAttributeBits,
-    CompiledUtf8StreamAttributePredicate[] Predicates,
-    Utf8StreamStartHandler<TState>? Start,
-    Utf8StreamTextHandler<TState>? Text,
-    Utf8StreamEndHandler<TState>? End
+    CompiledAttributePredicate[] Predicates,
+    StartHandler<TState>? Start,
+    TextHandler<TState>? Text,
+    EndHandler<TState>? End
 );
 
-internal readonly record struct CompiledUtf8StreamAttributePredicate(
+internal readonly record struct CompiledAttributePredicate(
     int AttributeIndex,
-    Utf8StreamAttributePredicateKind Kind,
+    AttributePredicateKind Kind,
     byte[]? Value
 );
 
-internal static class Utf8StreamQueryCompiler
+internal static class QueryCompiler
 {
-    public static Utf8StreamQueryPlan<TState> Compile<TState>(Utf8StreamQueryNode<TState> root)
+    public static QueryPlan<TState> Compile<TState>(QueryNode<TState> root)
     {
-        var sourceNodes = new List<Utf8StreamQueryNode<TState>>();
+        var sourceNodes = new List<QueryNode<TState>>();
         AddPreorder(root, sourceNodes);
         if (sourceNodes.Count > 64)
             throw new NotSupportedException("StreamingOnly plans support at most 64 query nodes.");
@@ -344,13 +344,13 @@ internal static class Utf8StreamQueryCompiler
             .Select(static (node, index) => (node, index))
             .ToDictionary(static pair => pair.node, static pair => pair.index);
 
-        var nodes = new CompiledUtf8StreamQueryNode<TState>[sourceNodes.Count];
+        var nodes = new CompiledQueryNode<TState>[sourceNodes.Count];
         for (var index = 0; index < sourceNodes.Count; index++)
         {
             var source = sourceNodes[index];
             var tagName = Encoding.UTF8.GetBytes(source.Selector.TagName);
             var predicates = source.Selector.Attributes
-                .Select(predicate => new CompiledUtf8StreamAttributePredicate(
+                .Select(predicate => new CompiledAttributePredicate(
                     attributeIndexes[predicate.Name],
                     predicate.Kind,
                     predicate.Value is null ? null : Encoding.UTF8.GetBytes(predicate.Value)
@@ -363,7 +363,7 @@ internal static class Utf8StreamQueryCompiler
                     0UL,
                     (bits, name) => bits | (1UL << attributeIndexes[name])
                 );
-            nodes[index] = new CompiledUtf8StreamQueryNode<TState>(
+            nodes[index] = new CompiledQueryNode<TState>(
                 index,
                 source.Parent is null ? -1 : sourceIndexes[source.Parent],
                 source.Relation,
@@ -381,7 +381,7 @@ internal static class Utf8StreamQueryCompiler
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToArray();
-        var explanation = new Utf8StreamQueryExplanation(
+        var explanation = new QueryExplanation(
             "StreamingOnly",
             tags,
             attributeNames,
@@ -390,12 +390,12 @@ internal static class Utf8StreamQueryCompiler
             false,
             null
         );
-        return new Utf8StreamQueryPlan<TState>(nodes, attributeNames, attributeNameUtf8, explanation);
+        return new QueryPlan<TState>(nodes, attributeNames, attributeNameUtf8, explanation);
     }
 
     private static void AddPreorder<TState>(
-        Utf8StreamQueryNode<TState> node,
-        List<Utf8StreamQueryNode<TState>> nodes
+        QueryNode<TState> node,
+        List<QueryNode<TState>> nodes
     )
     {
         nodes.Add(node);
@@ -419,28 +419,27 @@ internal static class Utf8StreamQueryCompiler
 
 internal static class VoidElementHashes
 {
-    internal static readonly ulong AreaHash = Utf8StreamQueryCompiler.Hash("area"u8);
-    internal static readonly ulong BaseHash = Utf8StreamQueryCompiler.Hash("base"u8);
-    internal static readonly ulong BrHash = Utf8StreamQueryCompiler.Hash("br"u8);
-    internal static readonly ulong ColHash = Utf8StreamQueryCompiler.Hash("col"u8);
-    internal static readonly ulong EmbedHash = Utf8StreamQueryCompiler.Hash("embed"u8);
-    internal static readonly ulong HrHash = Utf8StreamQueryCompiler.Hash("hr"u8);
-    internal static readonly ulong ImgHash = Utf8StreamQueryCompiler.Hash("img"u8);
-    internal static readonly ulong InputHash = Utf8StreamQueryCompiler.Hash("input"u8);
-    internal static readonly ulong LinkHash = Utf8StreamQueryCompiler.Hash("link"u8);
-    internal static readonly ulong MetaHash = Utf8StreamQueryCompiler.Hash("meta"u8);
-    internal static readonly ulong ParamHash = Utf8StreamQueryCompiler.Hash("param"u8);
-    internal static readonly ulong SourceHash = Utf8StreamQueryCompiler.Hash("source"u8);
-    internal static readonly ulong TrackHash = Utf8StreamQueryCompiler.Hash("track"u8);
-    internal static readonly ulong WbrHash = Utf8StreamQueryCompiler.Hash("wbr"u8);
+    internal static readonly ulong AreaHash = QueryCompiler.Hash("area"u8);
+    internal static readonly ulong BaseHash = QueryCompiler.Hash("base"u8);
+    internal static readonly ulong BrHash = QueryCompiler.Hash("br"u8);
+    internal static readonly ulong ColHash = QueryCompiler.Hash("col"u8);
+    internal static readonly ulong EmbedHash = QueryCompiler.Hash("embed"u8);
+    internal static readonly ulong HrHash = QueryCompiler.Hash("hr"u8);
+    internal static readonly ulong ImgHash = QueryCompiler.Hash("img"u8);
+    internal static readonly ulong InputHash = QueryCompiler.Hash("input"u8);
+    internal static readonly ulong LinkHash = QueryCompiler.Hash("link"u8);
+    internal static readonly ulong MetaHash = QueryCompiler.Hash("meta"u8);
+    internal static readonly ulong ParamHash = QueryCompiler.Hash("param"u8);
+    internal static readonly ulong SourceHash = QueryCompiler.Hash("source"u8);
+    internal static readonly ulong TrackHash = QueryCompiler.Hash("track"u8);
+    internal static readonly ulong WbrHash = QueryCompiler.Hash("wbr"u8);
 }
 
-public sealed class Utf8StreamQuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
+public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
 {
-    
-    private readonly Utf8StreamQueryPlan<TState> _plan;
+    private readonly QueryPlan<TState> _plan;
     private readonly int[] _activeCounts;
-    private Utf8StreamQueryFrame[] _frames;
+    private QueryFrame[] _frames;
     private byte[] _attributeValues;
     private readonly int[] _attributeStarts;
     private readonly int[] _attributeLengths;
@@ -454,13 +453,13 @@ public sealed class Utf8StreamQuerySession<TState> : IUtf8HtmlTokenSink, IDispos
     private ulong _seenAttributeBits;
     private bool _disposed;
 
-    internal Utf8StreamQuerySession(Utf8StreamQueryPlan<TState> plan, TState state)
+    internal QuerySession(QueryPlan<TState> plan, TState state)
     {
         _plan = plan;
         _state = state;
         _activeCounts = ArrayPool<int>.Shared.Rent(Math.Max(plan.Nodes.Length, 1));
         _activeCounts.AsSpan(0, plan.Nodes.Length).Clear();
-        _frames = ArrayPool<Utf8StreamQueryFrame>.Shared.Rent(64);
+        _frames = ArrayPool<QueryFrame>.Shared.Rent(64);
         _attributeValues = ArrayPool<byte>.Shared.Rent(256);
         _attributeStarts = ArrayPool<int>.Shared.Rent(Math.Max(plan.AttributeNames.Length, 1));
         _attributeLengths = ArrayPool<int>.Shared.Rent(Math.Max(plan.AttributeNames.Length, 1));
@@ -471,7 +470,7 @@ public sealed class Utf8StreamQuerySession<TState> : IUtf8HtmlTokenSink, IDispos
 
     public void StartTag(ReadOnlySpan<byte> name)
     {
-        _pendingTagHash = Utf8StreamQueryCompiler.Hash(name);
+        _pendingTagHash = QueryCompiler.Hash(name);
         _pendingTagLength = name.Length;
         _pendingCandidateBits = 0;
         _pendingAttributeBits = 0;
@@ -525,7 +524,7 @@ public sealed class Utf8StreamQuerySession<TState> : IUtf8HtmlTokenSink, IDispos
             matches |= 1UL << node.Index;
         }
 
-        var element = new Utf8StreamElement(
+        var element = new Element(
             _plan.AttributeNames,
             _plan.AttributeNameUtf8,
             _attributeValues,
@@ -548,7 +547,7 @@ public sealed class Utf8StreamQuerySession<TState> : IUtf8HtmlTokenSink, IDispos
         }
 
         EnsureFrameCapacity();
-        _frames[_frameCount++] = new Utf8StreamQueryFrame(
+        _frames[_frameCount++] = new QueryFrame(
             _pendingTagHash,
             _pendingTagLength,
             matches
@@ -571,7 +570,7 @@ public sealed class Utf8StreamQuerySession<TState> : IUtf8HtmlTokenSink, IDispos
 
     public void EndTag(ReadOnlySpan<byte> name)
     {
-        var hash = Utf8StreamQueryCompiler.Hash(name);
+        var hash = QueryCompiler.Hash(name);
         for (var index = _frameCount - 1; index >= 0; index--)
         {
             if (_frames[index].TagHash != hash || _frames[index].TagLength != name.Length)
@@ -596,7 +595,7 @@ public sealed class Utf8StreamQuerySession<TState> : IUtf8HtmlTokenSink, IDispos
             return;
         _disposed = true;
         ArrayPool<int>.Shared.Return(_activeCounts, clearArray: true);
-        ArrayPool<Utf8StreamQueryFrame>.Shared.Return(_frames, clearArray: true);
+        ArrayPool<QueryFrame>.Shared.Return(_frames, clearArray: true);
         ArrayPool<byte>.Shared.Return(_attributeValues);
         ArrayPool<int>.Shared.Return(_attributeStarts, clearArray: true);
         ArrayPool<int>.Shared.Return(_attributeLengths, clearArray: true);
@@ -604,21 +603,21 @@ public sealed class Utf8StreamQuerySession<TState> : IUtf8HtmlTokenSink, IDispos
         _attributeValues = [];
     }
 
-    private bool ParentMatches(CompiledUtf8StreamQueryNode<TState> node)
+    private bool ParentMatches(CompiledQueryNode<TState> node)
     {
         if (node.ParentIndex < 0)
             return true;
         return node.Relation switch
         {
-            Utf8StreamQueryRelation.Descendant => _activeCounts[node.ParentIndex] != 0,
-            Utf8StreamQueryRelation.Child =>
+            QueryRelation.Descendant => _activeCounts[node.ParentIndex] != 0,
+            QueryRelation.Child =>
                 _frameCount != 0
                 && (_frames[_frameCount - 1].Matches & (1UL << node.ParentIndex)) != 0,
             _ => false,
         };
     }
 
-    private bool PredicatesMatch(ReadOnlySpan<CompiledUtf8StreamAttributePredicate> predicates)
+    private bool PredicatesMatch(ReadOnlySpan<CompiledAttributePredicate> predicates)
     {
         foreach (var predicate in predicates)
         {
@@ -627,12 +626,12 @@ public sealed class Utf8StreamQuerySession<TState> : IUtf8HtmlTokenSink, IDispos
                 return false;
             var value = _attributeValues.AsSpan(_attributeStarts[predicate.AttributeIndex], length);
             if (
-                predicate.Kind == Utf8StreamAttributePredicateKind.Equals
+                predicate.Kind == AttributePredicateKind.Equals
                 && !value.SequenceEqual(predicate.Value)
             )
                 return false;
             if (
-                predicate.Kind == Utf8StreamAttributePredicateKind.ContainsToken
+                predicate.Kind == AttributePredicateKind.ContainsToken
                 && !ContainsToken(value, predicate.Value!)
             )
                 return false;
@@ -640,7 +639,7 @@ public sealed class Utf8StreamQuerySession<TState> : IUtf8HtmlTokenSink, IDispos
         return true;
     }
 
-    private void CloseFrame(Utf8StreamQueryFrame frame)
+    private void CloseFrame(QueryFrame frame)
     {
         CloseMatches(frame.Matches);
         DecrementActive(frame.Matches);
@@ -703,9 +702,9 @@ public sealed class Utf8StreamQuerySession<TState> : IUtf8HtmlTokenSink, IDispos
     {
         if (_frameCount < _frames.Length)
             return;
-        var replacement = ArrayPool<Utf8StreamQueryFrame>.Shared.Rent(_frames.Length * 2);
+        var replacement = ArrayPool<QueryFrame>.Shared.Rent(_frames.Length * 2);
         _frames.AsSpan(0, _frameCount).CopyTo(replacement);
-        ArrayPool<Utf8StreamQueryFrame>.Shared.Return(_frames, clearArray: true);
+        ArrayPool<QueryFrame>.Shared.Return(_frames, clearArray: true);
         _frames = replacement;
     }
 
@@ -736,7 +735,7 @@ public sealed class Utf8StreamQuerySession<TState> : IUtf8HtmlTokenSink, IDispos
         || (length == 6 && hash == VoidElementHashes.SourceHash);
 }
 
-internal readonly record struct Utf8StreamQueryFrame(
+internal readonly record struct QueryFrame(
     ulong TagHash,
     int TagLength,
     ulong Matches
