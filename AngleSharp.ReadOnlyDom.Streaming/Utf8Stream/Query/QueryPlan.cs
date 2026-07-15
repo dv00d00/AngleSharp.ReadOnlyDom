@@ -8,12 +8,14 @@ public sealed class QueryPlan<TState>
         CompiledQueryNode<TState>[] nodes,
         string[] attributeNames,
         byte[][] attributeNameUtf8,
+        CompiledTagDispatch[] tagDispatch,
         QueryExplanation explanation
     )
     {
         Nodes = nodes;
         AttributeNames = attributeNames;
         AttributeNameUtf8 = attributeNameUtf8;
+        TagDispatch = tagDispatch;
         TextHandlerBits = nodes.Aggregate(
             0UL,
             static (bits, node) => node.Text is null ? bits : bits | (1UL << node.Index)
@@ -28,6 +30,7 @@ public sealed class QueryPlan<TState>
     internal CompiledQueryNode<TState>[] Nodes { get; }
     internal string[] AttributeNames { get; }
     internal byte[][] AttributeNameUtf8 { get; }
+    internal CompiledTagDispatch[] TagDispatch { get; }
     internal ulong TextHandlerBits { get; }
     internal ulong CompletedHandlerBits { get; }
 

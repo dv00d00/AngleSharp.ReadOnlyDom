@@ -54,6 +54,110 @@ public sealed class Utf8HtmlTokenizerTests
     }
 
     [Test]
+    public async Task OptionalStateMetricsCaptureBulkAndScalarRuns()
+    {
+        var sink = new RecordingSink();
+        var metrics = new Utf8HtmlTokenizerStateMetrics(Utf8HtmlTokenizer.StateCount);
+        var tokenizer = new Utf8HtmlTokenizer(sink, metrics);
+
+        tokenizer.Write("ordinary text<p title='value'>tail</p>"u8);
+        tokenizer.Complete();
+
+        var states = tokenizer.GetStateMetrics();
+        var data = states.Single(metric => metric.State == "Data");
+        await Assert.That(data.ByteVisits).IsGreaterThanOrEqualTo(17);
+        await Assert.That(data.MaximumRunLength).IsGreaterThanOrEqualTo(13);
+        await Assert.That(states.Any(metric => metric.State == "TagName")).IsTrue();
+        await Assert.That(states.Any(metric => metric.State == "AttributeValueSingleQuoted")).IsTrue();
+    }
+
+    [Test]
+    public async Task ScriptDataBulkRunPreservesUtf8AndScalarBoundaries()
+    {
+        const string html = "<script>ordinary café text\r\nnext\0tail < marker</script><p>after</p>";
+        var utf8 = Encoding.UTF8.GetBytes(html);
+        var expected = TokenizeWithAngleSharp(html);
+
+        foreach (var segmentSize in new[] { 1, 7, utf8.Length })
+            await Assert.That(Tokenize(utf8, segmentSize).Events).IsEquivalentTo(expected);
+
+        var sink = new RecordingSink();
+        var metrics = new Utf8HtmlTokenizerStateMetrics(Utf8HtmlTokenizer.StateCount);
+        var tokenizer = new Utf8HtmlTokenizer(sink, metrics);
+        tokenizer.Write(utf8);
+        tokenizer.Complete();
+
+        var scriptData = tokenizer.GetStateMetrics().Single(metric => metric.State == "ScriptData");
+        await Assert.That(scriptData.MaximumRunLength).IsGreaterThanOrEqualTo(13);
+    }
+
+    [Test]
+    public async Task LowercaseTagNameBulkRunPreservesScalarBoundaries()
+    {
+        const string html = "<ArTiCle><custom-element2></CUSTOM-ELEMENT2><bad\0name/>";
+        var utf8 = Encoding.UTF8.GetBytes(html);
+        string[] expected =
+        [
+            "start:article",
+            "start-end",
+            "start:custom-element2",
+            "start-end",
+            "end:custom-element2",
+            // RecordingSink renders the three UTF-8 replacement bytes through ASCII.
+            "start:bad???name",
+            "start-end:/",
+            "eof",
+        ];
+
+        foreach (var segmentSize in new[] { 1, 7, utf8.Length })
+            await Assert.That(Tokenize(utf8, segmentSize).Events).IsEquivalentTo(expected);
+
+        var sink = new RecordingSink();
+        var metrics = new Utf8HtmlTokenizerStateMetrics(Utf8HtmlTokenizer.StateCount);
+        var tokenizer = new Utf8HtmlTokenizer(sink, metrics);
+        tokenizer.Write(utf8);
+        tokenizer.Complete();
+
+        var tagName = tokenizer.GetStateMetrics().Single(metric => metric.State == "TagName");
+        await Assert.That(tagName.MaximumRunLength).IsGreaterThanOrEqualTo(6);
+    }
+
+    [Test]
+    public async Task QuotedAttributeBulkRunsPreserveScalarBoundaries()
+    {
+        const string html = "<div a=\"ordinary café &amp; x\r\nnul\0tail\" b='single &copy; café\rz\0'>text</div>";
+        var utf8 = Encoding.UTF8.GetBytes(html);
+        var expected = TokenizeWithAngleSharp(html);
+
+        foreach (var segmentSize in new[] { 1, 7, utf8.Length })
+            await Assert.That(Tokenize(utf8, segmentSize).Events).IsEquivalentTo(expected);
+    }
+
+    [Test]
+    public async Task UnquotedAttributeBulkRunsPreserveScalarBoundaries()
+    {
+        const string html =
+            "<div data-url=https://example.test/a/long/path?x=1&amp;y=2 class=wide-card\r\n"
+            + " data-null=ab\0cd data-weird=a\"b'c<d=e`f data-title=café>x</div>";
+        var utf8 = Encoding.UTF8.GetBytes(html);
+        var expected = TokenizeWithAngleSharp(html);
+
+        foreach (var segmentSize in new[] { 1, 7, utf8.Length })
+            await Assert.That(Tokenize(utf8, segmentSize).Events).IsEquivalentTo(expected);
+    }
+
+    [Test]
+    public async Task CommentBulkRunsPreserveScalarBoundaries()
+    {
+        const string html = "<!--ordinary long café comment <nested - dash \0 nul\r\nnext\rlast--><p>after</p>";
+        var utf8 = Encoding.UTF8.GetBytes(html);
+        var expected = TokenizeWithAngleSharp(html);
+
+        foreach (var segmentSize in new[] { 1, 7, utf8.Length })
+            await Assert.That(Tokenize(utf8, segmentSize).Events).IsEquivalentTo(expected);
+    }
+
+    [Test]
     [Arguments("<main data-x='a&amp;b'>hé &amp; <b>bold</b></main>")]
     [Arguments("<textarea>a&amp;b</textarea><style>a>b{color:red}</style>")]
     [Arguments("<div a=1 disabled><span>x</span></div><!--tail-->")]

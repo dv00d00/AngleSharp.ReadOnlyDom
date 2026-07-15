@@ -14,6 +14,7 @@ Run a tier from the repository root:
 ./scripts/bench.ps1 extraction
 ./scripts/bench.ps1 scraping
 ./scripts/bench.ps1 utf8
+./scripts/bench.ps1 utf8-baseline
 ./scripts/bench.ps1 query
 ./scripts/bench.ps1 retained
 ./scripts/bench.ps1 full
@@ -45,6 +46,125 @@ forced-GC retained-memory measurement without running BenchmarkDotNet.
 near EOF. It compares read-only DOM traversal, compact materialization plus plan, specialized AngleSharp construction-time
 extraction, the EOF aggregate, raw native UTF-8 fold, and completed-element native UTF-8 fold. The generated fixture is
 1.96 MB and puts the target near EOF, so every lane consumes the entire input; it does not claim early termination.
+
+`utf8-baseline` freezes five equal 256 KiB tokenizer workloads: typical markup, malformed markup, raw-text/script data,
+entity-heavy markup, and one pathological attribute token spanning almost the entire input. Every workload runs from both
+contiguous memory and a 4 KiB segmented `PipeReader`; setup requires the two lanes to consume the same bytes and emit the
+same chunk-insensitive token fingerprint. The tier also writes `utf8-baseline-diagnostics.md`, containing maximum buffered
+token bytes and per-state byte visits, run counts, mean runs, and maximum runs. Reconsumed bytes count once for every state
+that processes them, so diagnostic byte visits can exceed source length.
+
+Use `./scripts/bench.ps1 utf8-baseline -HardwareCounters` to request BenchmarkDotNet's `TotalCycles` counter. Hardware
+counters are deliberately opt-in because host support and stability vary. Each workload is exactly 262,144 bytes, so
+multiply the reported `Op/s` by 0.25 for MiB/s and divide cycles per operation by 262,144 for cycles per byte. If
+BenchmarkDotNet reports that the diagnoser is unavailable, retain time and throughput as the portable gate and record
+cycles per byte as unavailable for that host.
+
+The initial portable ShortRun capture on .NET 10.0.10 was written to
+`artifacts/benchmarks/20260715-170602-6738aa4-utf8-baseline/`. Throughput below is `Op/s * 0.25 MiB`.
+
+| Workload | Input | Mean | Throughput | Allocated | Maximum buffered token |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Typical | Memory | 9.210 ms | 27.15 MiB/s | 1.18 KB | 16 B |
+| Typical | PipeReader | 9.692 ms | 25.80 MiB/s | 8.88 KB | 16 B |
+| Malformed | Memory | 10.185 ms | 24.55 MiB/s | 513.34 KB | 262,032 B |
+| Malformed | PipeReader | 10.874 ms | 22.99 MiB/s | 521.03 KB | 262,032 B |
+| Raw text | Memory | 11.793 ms | 21.20 MiB/s | 88.30 KB | 14 B |
+| Raw text | PipeReader | 11.552 ms | 21.64 MiB/s | 96.00 KB | 14 B |
+| Entity-heavy | Memory | 17.877 ms | 13.99 MiB/s | 1.18 KB | 22 B |
+| Entity-heavy | PipeReader | 18.475 ms | 13.53 MiB/s | 8.88 KB | 22 B |
+| Long token | Memory | 10.103 ms | 24.75 MiB/s | 513.19 KB | 262,128 B |
+| Long token | PipeReader | 10.423 ms | 23.99 MiB/s | 520.88 KB | 262,128 B |
+
+The final cumulative rerun after the accepted tokenizer and query-handoff work is under
+`artifacts/benchmarks/20260715-190244-6738aa4-utf8-baseline/`:
+
+| Workload | Input | Initial | Final | Change |
+| --- | --- | ---: | ---: | ---: |
+| Typical | Memory | 9.210 ms | 6.579 ms | 28.6% faster |
+| Typical | PipeReader | 9.692 ms | 9.340 ms | 3.6% faster |
+| Malformed | Memory | 10.185 ms | 4.357 ms | 57.2% faster |
+| Malformed | PipeReader | 10.874 ms | 7.293 ms | 32.9% faster |
+| Raw text | Memory | 11.793 ms | 5.726 ms | 51.4% faster |
+| Raw text | PipeReader | 11.552 ms | 8.724 ms | 24.5% faster |
+| Entity-heavy | Memory | 17.877 ms | 17.991 ms | 0.6% slower |
+| Entity-heavy | PipeReader | 18.475 ms | 19.733 ms | 6.8% slower |
+| Long token | Memory | 10.103 ms | 1.169 ms | 8.64x faster |
+| Long token | PipeReader | 10.423 ms | 2.054 ms | 5.07x faster |
+
+Allocation is unchanged across this tokenizer matrix. The entity-heavy regression is retained as an explicit tradeoff:
+the accepted ordinary-span paths produce much larger wins on typical, malformed, raw-text, and long-token inputs, while
+entities remain a scalar slow path. Relative to the original 1.96 MB read-only DOM extraction lane, the final native
+completed-element fold moved from 39.09 ms / 11,474.97 KB to 14.93 ms / 3.07 KB: 2.62x faster with approximately 3,738x
+less managed allocation.
+
+The first Windows ETW `TotalCycles` capture resolved and emitted counters, but it was not stable enough to promote to a
+gate: one malformed lane reported an impossible value and the other reported `NA`. Keep the opt-in counter lane for longer
+confirmatory runs; do not infer cycles per byte from this ShortRun.
+
+### Accepted tokenizer bulk scans
+
+The initial three state-specific experiments were retained after isolated paired ShortRuns. Each reuses the existing
+scalar state machine at semantic boundaries and leaves allocation unchanged.
+
+| Experiment | Representative before | Confirmed after | Decision |
+| --- | ---: | ---: | --- |
+| Ordinary `ScriptData` spans, memory | 10.842 ms | 7.770 / 8.428 ms | Keep; 22–28% faster |
+| Ordinary `ScriptData` spans, pipe | 11.552 ms frozen baseline | 8.057 / 8.027 ms | Keep; about 30% faster |
+| Lowercase tag-name runs, memory | 9.230 ms | 6.906 / 6.908 ms | Keep; 25% faster |
+| Lowercase tag-name runs, pipe | 9.567 ms | 9.078 / 9.122 ms | Keep; about 5% faster |
+| Quoted values, Typical memory | 6.976–7.191 ms | 6.202 / 6.396 ms | Keep amended dispatch; 9–11% faster |
+| Quoted values, Typical pipe | 9.018–9.062 ms | 9.109 / 8.947 ms | Neutral |
+| Quoted values, LongToken memory | 10.383–10.757 ms | 1.219 / 1.162 ms | Keep; 88–89% faster |
+| Quoted values, LongToken pipe | 10.833–10.871 ms | 2.039 / 1.972 ms | Keep; 81–82% faster |
+
+The quoted-value experiment was amended after its first layout repeatedly cost about 2.5% on the Typical pipe lane. The
+accepted `if / else if / else if` dispatch removes that extra branch from ordinary text execution while preserving the
+large-value win. Artifacts are under `artifacts/benchmarks/experiment-script-bulk-*`,
+`experiment-tagname-bulk-*`, and `experiment-quoted-attribute-bulk-*`.
+
+A second mechanical pass attempted four more ideas. Rejected experiments were restored completely but their artifacts
+remain useful evidence.
+
+| Experiment | Representative before | Confirmed after | Decision |
+| --- | ---: | ---: | --- |
+| BCL vectorized text terminators, Typical memory | 6.235 ms | 6.332 / 6.493 ms | Reject; repeatable 1.6–4.1% regression |
+| BCL vectorized text terminators, RawText memory | 6.042 ms | 5.822 / 5.696 ms | Reject; isolated win did not offset other lanes |
+| Lowercase attribute names, Typical memory | 6.292 ms | 6.225 / 5.887 / 6.303 ms | Reject; wins did not repeat |
+| Lowercase attribute names, Typical pipe | 9.102 ms | 8.777 / 8.966 / 9.530 ms | Reject; no stable win |
+| Unquoted values, dedicated memory workload | 13.143 ms | 6.820 / 7.469 ms | Keep; 43–48% faster |
+| Unquoted values, dedicated pipe workload | 14.373 ms | 9.598 / 9.820 ms | Keep; 32–33% faster |
+| Comments, Malformed memory | 10.050 ms | 5.107 / 4.400 / 5.017 ms | Keep; 50–56% faster |
+| Comments, Malformed pipe | 11.309 ms | 7.120 / 7.182 / 7.308 ms | Keep; 35–37% faster |
+
+The temporary 256 KiB unquoted-value fixture used to establish signal was removed after measurement, leaving the frozen
+benchmark inventory unchanged. Typical lanes stayed within the 1% regression gate for both retained changes. Artifacts
+are under `experiment-vector-text-scan-*`, `experiment-attribute-name-bulk-*`,
+`experiment-unquoted-value-bulk-*`, and `experiment-comment-bulk-*`.
+
+### Query-directed tokenizer handoff
+
+The compiled query path now reuses the tag hash accumulated while tokenizing, dispatches a hash/length pair directly to
+the query-node candidate bitset, and asks the query session whether each attribute value is required before copying it.
+Ordinary token sinks retain the original callback contract and still receive every attribute.
+
+A temporary cumulative 1.4 MB / five-node diagnostic fixture compared the old linear path with each optimization. Two
+ShortRuns were sensitive to Tiered PGO and code layout, but the complete path improved from 9.353 ms to 9.198 ms in the
+first run and from 9.151 ms to 8.717 ms in the repeat. Managed allocation was unchanged; the apparent 32-byte difference
+was the legacy benchmark adapter. The attribute-heavy correctness fixture also bounds an ignored 8 KiB attribute below
+256 bytes of tokenizer-owned buffering.
+
+Real-workload confirmation on .NET 10 Server GC:
+
+| Workload | Result | Allocated |
+| --- | ---: | ---: |
+| 1.96 MB synthetic, native raw fold | 14.80 ms | 8.03 KB |
+| 1.96 MB synthetic, completed-element fold | 14.93 ms | 3.07 KB |
+| 125 KB QQ scraper, compiled callbacks | 930.0 us | 15.76 KB |
+| 125 KB QQ scraper, completed elements | 923.9 us | 15.68 KB |
+
+These are confirmation numbers for the cumulative tokenizer state, not isolated attribution: the synthetic workload's
+earlier documented 18 ms checkpoint predates the accepted bulk-scanning changes above.
 
 The .NET 10 ShortRun measured while introducing the native folds was:
 
@@ -114,6 +234,7 @@ selected explicitly.
 | Extraction | `LongSyntheticConstructionBenchmark` | `extraction`, `scraping` | Same comparison on a 1.96 MB target-near-EOF document |
 | Scraping | `QqArticleScraperBenchmark` | `extraction`, `scraping` | Exact `List<Article>` projection across DOM, compact, and native UTF-8 paths |
 | UTF-8 | `Utf8TokenizerBenchmark` | `utf8` | Decode plus AngleSharp tokenization versus native UTF-8 tokenization |
+| UTF-8 | `Utf8TokenizerBaselineBenchmark` | `utf8-baseline` | Frozen state/pathology matrix over memory and segmented pipe input |
 | UTF-8 | `Utf8RodomBenchmark` | `utf8` | Decode, resident bytes, and bounded stream into compact RODOM |
 | UTF-8 | `Utf8DomProjectionBenchmark` | `utf8` | Mutable DOM projection versus direct native UTF-8 fold |
 | Query workloads | `QueryWorkloadRunner` | `query` | Repeated end-to-end query workload report with controlled iterations |
