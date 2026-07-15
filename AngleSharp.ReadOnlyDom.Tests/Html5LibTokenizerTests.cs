@@ -65,8 +65,8 @@ public sealed class Html5LibTokenizerTests
                         failuresByDescription[descriptionGroup] = failuresForDescription + 1;
                         var failure =
                             $"{Path.GetFileName(file)} | {description} | {state} | segment={segmentSize}\n"
-                                + $"  expected: {Format(expected)}\n"
-                                + $"  actual:   {Format(actual)}";
+                            + $"  expected: {Format(expected)}\n"
+                            + $"  actual:   {Format(actual)}";
                         firstFailureByFixture.TryAdd(Path.GetFileName(file), failure);
                         if (failures.Count < MaximumReportedFailures)
                         {
@@ -79,24 +79,27 @@ public sealed class Html5LibTokenizerTests
 
         await Assert.That(executed).IsEqualTo(19_716);
         await Assert.That(skippedNonScalarInputs).IsEqualTo(4);
-        await Assert.That(failureCount)
+        await Assert
+            .That(failureCount)
             .IsEqualTo(0)
             .Because(
                 $"Executed {executed:N0} cases; skipped {skippedNonScalarInputs:N0} inputs not representable as UTF-8.\n"
                     + "Failure groups:\n"
                     + String.Join(
                         "\n",
-                        failuresByFixtureAndState.OrderByDescending(static pair => pair.Value)
+                        failuresByFixtureAndState
+                            .OrderByDescending(static pair => pair.Value)
                             .ThenBy(static pair => pair.Key, StringComparer.Ordinal)
-                            .Select(static pair => $"  {pair.Value,4}  {pair.Key}")
+                            .Select(static pair => $"  {pair.Value, 4}  {pair.Key}")
                     )
                     + "\nTop failing vectors:\n"
                     + String.Join(
                         "\n",
-                        failuresByDescription.OrderByDescending(static pair => pair.Value)
+                        failuresByDescription
+                            .OrderByDescending(static pair => pair.Value)
                             .ThenBy(static pair => pair.Key, StringComparer.Ordinal)
                             .Take(40)
-                            .Select(static pair => $"  {pair.Value,4}  {pair.Key}")
+                            .Select(static pair => $"  {pair.Value, 4}  {pair.Key}")
                     )
                     + "\nFirst mismatch per failing fixture:\n"
                     + String.Join("\n", firstFailureByFixture.Values)
@@ -191,7 +194,11 @@ public sealed class Html5LibTokenizerTests
                     throw new InvalidDataException($"Unknown html5lib token kind: {kind}");
             }
 
-            if (token.Kind == "Character" && tokens.Count != 0 && tokens[^1].StartsWith("Character:", StringComparison.Ordinal))
+            if (
+                token.Kind == "Character"
+                && tokens.Count != 0
+                && tokens[^1].StartsWith("Character:", StringComparison.Ordinal)
+            )
             {
                 var previous = JsonSerializer.Deserialize<string>(tokens[^1]["Character:".Length..])!;
                 tokens[^1] = SpecToken.Text(previous + token.Data).Canonical();
@@ -238,8 +245,7 @@ public sealed class Html5LibTokenizerTests
         return result.ToString();
     }
 
-    private static string DecodeRequired(string value, bool doubleEscaped) =>
-        Decode(value, doubleEscaped)!;
+    private static string DecodeRequired(string value, bool doubleEscaped) => Decode(value, doubleEscaped)!;
 
     private static bool ContainsUnpairedSurrogate(string value)
     {
@@ -291,11 +297,9 @@ public sealed class Html5LibTokenizerTests
             _startTag = null;
         }
 
-        public void EndTag(ReadOnlySpan<byte> name) =>
-            _tokens.Add(SpecToken.EndTag(Encoding.UTF8.GetString(name)));
+        public void EndTag(ReadOnlySpan<byte> name) => _tokens.Add(SpecToken.EndTag(Encoding.UTF8.GetString(name)));
 
-        public void Comment(ReadOnlySpan<byte> utf8) =>
-            _tokens.Add(SpecToken.Comment(Encoding.UTF8.GetString(utf8)));
+        public void Comment(ReadOnlySpan<byte> utf8) => _tokens.Add(SpecToken.Comment(Encoding.UTF8.GetString(utf8)));
 
         public void Doctype(in Utf8DoctypeToken token) =>
             _tokens.Add(
@@ -326,10 +330,19 @@ public sealed class Html5LibTokenizerTests
         public bool Quirks { get; init; }
 
         public static SpecToken Text(string value) => new("Character") { Data = value };
+
         public static SpecToken Comment(string value) => new("Comment") { Data = value };
+
         public static SpecToken EndTag(string name) => new("EndTag") { Name = name };
+
         public static SpecToken StartTag(string name, Dictionary<string, string> attributes, bool selfClosing) =>
-            new("StartTag") { Name = name, Attributes = attributes, SelfClosing = selfClosing };
+            new("StartTag")
+            {
+                Name = name,
+                Attributes = attributes,
+                SelfClosing = selfClosing,
+            };
+
         public static SpecToken Doctype(
             string? name,
             string? publicIdentifier,
@@ -353,17 +366,19 @@ public sealed class Html5LibTokenizerTests
             {
                 "Character" or "Comment" => $"{Kind}:{JsonSerializer.Serialize(Data)}",
                 "EndTag" => $"EndTag:{JsonSerializer.Serialize(Name)}",
-                "StartTag" =>
-                    $"StartTag:{JsonSerializer.Serialize(Name)}:{SelfClosing.ToString().ToLowerInvariant()}:"
+                "StartTag" => $"StartTag:{JsonSerializer.Serialize(Name)}:{SelfClosing.ToString().ToLowerInvariant()}:"
                     + String.Join(
                         ",",
-                        Attributes!.OrderBy(static pair => pair.Key, StringComparer.Ordinal)
-                            .Select(static pair => $"{JsonSerializer.Serialize(pair.Key)}={JsonSerializer.Serialize(pair.Value)}")
+                        Attributes!
+                            .OrderBy(static pair => pair.Key, StringComparer.Ordinal)
+                            .Select(static pair =>
+                                $"{JsonSerializer.Serialize(pair.Key)}={JsonSerializer.Serialize(pair.Value)}"
+                            )
                     ),
                 "DOCTYPE" =>
                     $"DOCTYPE:{JsonSerializer.Serialize(Name)}:{PublicIdentifierMissing.ToString().ToLowerInvariant()}:"
-                    + $"{JsonSerializer.Serialize(PublicIdentifier)}:{SystemIdentifierMissing.ToString().ToLowerInvariant()}:"
-                    + $"{JsonSerializer.Serialize(SystemIdentifier)}:{Quirks.ToString().ToLowerInvariant()}",
+                        + $"{JsonSerializer.Serialize(PublicIdentifier)}:{SystemIdentifierMissing.ToString().ToLowerInvariant()}:"
+                        + $"{JsonSerializer.Serialize(SystemIdentifier)}:{Quirks.ToString().ToLowerInvariant()}",
                 _ => throw new InvalidOperationException($"Unknown token kind: {Kind}"),
             };
     }

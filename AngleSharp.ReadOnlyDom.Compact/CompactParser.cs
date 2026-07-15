@@ -1,21 +1,20 @@
+using System.Text;
 using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.ReadOnlyDom.Compact.Arena;
 using AngleSharp.Text;
-using System.Text;
 
 namespace AngleSharp.ReadOnlyDom.Compact;
 
 public static class CompactParser
 {
     private static readonly Func<IBrowsingContext, ArenaConstructionFactory> Service =
-        _ =>
-            new ArenaConstructionFactory(
-                new CompactParserHints(),
-                trackSourceReferences: false,
-                CompactMetadataOptions.None,
-                CompactDocumentLayout.FrozenColumns
-            );
+        _ => new ArenaConstructionFactory(
+            new CompactParserHints(),
+            trackSourceReferences: false,
+            CompactMetadataOptions.None,
+            CompactDocumentLayout.FrozenColumns
+        );
 
     public static readonly IConfiguration DefaultConfig = Configuration.Default.With(Service);
     public static readonly IBrowsingContext DefaultContext = BrowsingContext.New(DefaultConfig);
@@ -143,9 +142,7 @@ public static class CompactParser
         Parse(
             parser,
             new TextSource(
-                encoding is null
-                    ? new ReadOnlyByteTextSource(source)
-                    : new ReadOnlyByteTextSource(source, encoding)
+                encoding is null ? new ReadOnlyByteTextSource(source) : new ReadOnlyByteTextSource(source, encoding)
             ),
             middleware
         );
@@ -160,13 +157,7 @@ public static class CompactParser
     )
     {
         var document = await parser
-            .ParseDocumentAsync<ArenaDocument, ArenaElement>(
-                source,
-                sourceMode,
-                encoding,
-                middleware,
-                cancel
-            )
+            .ParseDocumentAsync<ArenaDocument, ArenaElement>(source, sourceMode, encoding, middleware, cancel)
             .ConfigureAwait(false);
         try
         {
@@ -196,11 +187,7 @@ public static class CompactParser
                 attributeFilter(ref token, name);
     }
 
-    private static CompactDocument Parse(
-        IHtmlParser parser,
-        TextSource source,
-        TokenizerMiddleware? middleware
-    )
+    private static CompactDocument Parse(IHtmlParser parser, TextSource source, TokenizerMiddleware? middleware)
     {
         var document = parser.ParseDocument<ArenaDocument, ArenaElement>(source, middleware);
         try

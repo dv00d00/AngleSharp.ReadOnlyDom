@@ -135,7 +135,10 @@ public sealed class Utf8HtmlTokenizerTests
         await Assert.That(html).IsEquivalentTo(["comment:[CDATA[a]]", "text:b", "eof"]);
     }
 
-    private static (IReadOnlyList<string> Events, Utf8HtmlTokenizerCounters Counters) Tokenize(byte[] utf8, int segmentSize)
+    private static (IReadOnlyList<string> Events, Utf8HtmlTokenizerCounters Counters) Tokenize(
+        byte[] utf8,
+        int segmentSize
+    )
     {
         var sink = new RecordingSink();
         var tokenizer = new Utf8HtmlTokenizer(sink);

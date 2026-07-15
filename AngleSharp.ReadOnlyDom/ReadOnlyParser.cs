@@ -118,9 +118,7 @@ public static class ReadOnlyParser
         ParseReadOnlyDocument(
             parser,
             new TextSource(
-                encoding is null
-                    ? new ReadOnlyByteTextSource(source)
-                    : new ReadOnlyByteTextSource(source, encoding)
+                encoding is null ? new ReadOnlyByteTextSource(source) : new ReadOnlyByteTextSource(source, encoding)
             ),
             middleware
         );

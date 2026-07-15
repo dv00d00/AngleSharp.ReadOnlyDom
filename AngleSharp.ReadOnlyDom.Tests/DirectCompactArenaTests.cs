@@ -194,7 +194,9 @@ public sealed class CompactParserTests
         var actual = CompactStreamingExtractor.ExtractFirstNormalizedText(html);
 
         await Assert.That(actual.Found).IsEqualTo(expected is not null);
-        await Assert.That(actual.Value.ToString()).IsEqualTo(NormalizeWhitespace(expected?.TextContent ?? string.Empty));
+        await Assert
+            .That(actual.Value.ToString())
+            .IsEqualTo(NormalizeWhitespace(expected?.TextContent ?? string.Empty));
         if (actual.Found)
             await Assert.That(actual.Value.Ownership).IsEqualTo(CompactValueOwnership.Owned);
         await Assert.That(actual.Counters.TokensProcessed).IsGreaterThan(0);
@@ -231,12 +233,7 @@ public sealed class CompactParserTests
         var article = CompactAggregateSelector.Tag("article").WithId("content");
         var plan = CompactAggregate
             .First(article)
-            .Field(
-                "title",
-                CompactAggregateProjection.FirstNormalizedText(
-                    CompactAggregateSelector.Tag("h1")
-                )
-            )
+            .Field("title", CompactAggregateProjection.FirstNormalizedText(CompactAggregateSelector.Tag("h1")))
             .Field("text", CompactAggregateProjection.SelfNormalizedText())
             .Field("markdown", CompactAggregateProjection.SelfMarkdown())
             .Compile();
@@ -247,9 +244,7 @@ public sealed class CompactParserTests
         await Assert.That(result.Rows[0]["title"].ToString()).IsEqualTo("Parsing real HTML");
         await Assert
             .That(result.Rows[0]["text"].ToString())
-            .IsEqualTo(
-                "Parsing real HTML Use the HTML parser, not regex. Correct tablesMalformed markup"
-            );
+            .IsEqualTo("Parsing real HTML Use the HTML parser, not regex. Correct tablesMalformed markup");
         await Assert
             .That(result.Rows[0]["markdown"].ToString())
             .IsEqualTo(
@@ -273,25 +268,15 @@ public sealed class CompactParserTests
             """;
         var plan = CompactAggregate
             .ForEach(CompactAggregateSelector.Tag("article").WithClass("result"))
-            .Field(
-                "title",
-                CompactAggregateProjection.FirstNormalizedText(
-                    CompactAggregateSelector.Tag("h2")
-                )
-            )
+            .Field("title", CompactAggregateProjection.FirstNormalizedText(CompactAggregateSelector.Tag("h2")))
             .Field(
                 "url",
-                CompactAggregateProjection.FirstAttribute(
-                    CompactAggregateSelector.Tag("a"),
-                    "href"
-                ),
+                CompactAggregateProjection.FirstAttribute(CompactAggregateSelector.Tag("a"), "href"),
                 required: true
             )
             .Field(
                 "snippet",
-                CompactAggregateProjection.FirstNormalizedText(
-                    CompactAggregateSelector.Tag("p").WithClass("snippet")
-                )
+                CompactAggregateProjection.FirstNormalizedText(CompactAggregateSelector.Tag("p").WithClass("snippet"))
             )
             .Compile();
 
@@ -308,7 +293,8 @@ public sealed class CompactParserTests
     [Test]
     public async Task EofAggregateRequiredAttributeDistinguishesEmptyFromMissing()
     {
-        const string Html = "<article class=result><a href=''>empty</a></article><article class=result><a>missing</a></article>";
+        const string Html =
+            "<article class=result><a href=''>empty</a></article><article class=result><a>missing</a></article>";
         var plan = CompactAggregate
             .ForEach(CompactAggregateSelector.Tag("article").WithClass("result"))
             .Field(
@@ -549,9 +535,7 @@ public sealed class CompactParserTests
     {
         using var minimal = CompactParser.CreateParser().ParseCompactDocument("<main><p>x</p></main>");
         using var navigable = CompactParser
-            .CreateParser(
-            CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations
-            )
+            .CreateParser(CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations)
             .ParseCompactDocument("<main><p>x</p></main>");
         await Assert.That(minimal.HasParentLinks).IsFalse();
         await Assert.That(minimal.HasSourceLocations).IsFalse();
@@ -662,9 +646,7 @@ public sealed class CompactParserTests
             );
             using var expected = expectedParser.ParseDocument(html);
             using var actual = CompactParser
-                .CreateParser(
-                attributeFilter: static (ref StructHtmlToken _, ReadOnlyMemory<char> _) => false
-                )
+                .CreateParser(attributeFilter: static (ref StructHtmlToken _, ReadOnlyMemory<char> _) => false)
                 .ParseCompactDocument(html);
 
             await Assert.That(actual.AttributeCount).IsEqualTo(0);

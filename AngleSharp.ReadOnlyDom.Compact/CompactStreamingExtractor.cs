@@ -22,10 +22,7 @@ public readonly record struct CompactStreamingExtractionCounters(
 
 public sealed class CompactStreamingExtractionResult
 {
-    internal CompactStreamingExtractionResult(
-        CompactExtractionValue value,
-        CompactStreamingExtractionCounters counters
-    )
+    internal CompactStreamingExtractionResult(CompactExtractionValue value, CompactStreamingExtractionCounters counters)
     {
         Value = value;
         Counters = counters;
@@ -113,7 +110,6 @@ public sealed class CompactStreamingExtractionPlan
             return true;
         return CompactConstructionAttributePolicy.IsRequiredByTreeBuilder(ref token, attribute);
     }
-
 }
 
 internal readonly record struct CompactStreamingExtractionDefinition(string Tag, string Id)
@@ -185,11 +181,7 @@ internal sealed class CompactStreamingExtractionState : ICompactConstructionView
         return value;
     }
 
-    public CompactStreamingExtractionResult CreateResult(
-        ConstructionArena arena,
-        int root,
-        int inputBytesConsumed
-    )
+    public CompactStreamingExtractionResult CreateResult(ConstructionArena arena, int root, int inputBytesConsumed)
     {
         var target = FindFirstCandidate(arena, root);
         var value = target < 0 ? default : new CompactExtractionValue(NormalizeText(arena, target));
@@ -255,7 +247,10 @@ internal sealed class CompactStreamingExtractionState : ICompactConstructionView
 
     private void ObserveDecoded(StringOrMemory value)
     {
-        if (!MemoryMarshal.TryGetString(value.Memory, out var backing, out _, out _) || !ReferenceEquals(backing, _source))
+        if (
+            !MemoryMarshal.TryGetString(value.Memory, out var backing, out _, out _)
+            || !ReferenceEquals(backing, _source)
+        )
         {
             _valuesDecoded++;
         }

@@ -66,16 +66,12 @@ static void RunConstructionTimeViews()
 {
     Heading("COMPACT STREAMING — construction-time results, no escaping DOM");
 
-    var specialized = CompactStreamingExtractor.ExtractFirstNormalizedText(
-        Html,
-        tag: "article",
-        id: "content"
-    );
+    var specialized = CompactStreamingExtractor.ExtractFirstNormalizedText(Html, tag: "article", id: "content");
     Console.WriteLine($"specialized text : {specialized.Value}");
     Console.WriteLine(
         $"specialized work : {specialized.Counters.TokensProcessed} tokens, "
-        + $"{specialized.Counters.NodesMaterialized} topology nodes, "
-        + $"{specialized.Counters.AttributesRetained} retained attributes"
+            + $"{specialized.Counters.NodesMaterialized} topology nodes, "
+            + $"{specialized.Counters.AttributesRetained} retained attributes"
     );
 
     var aggregatePlan = CompactAggregate
@@ -95,8 +91,8 @@ static void RunConstructionTimeViews()
     Console.WriteLine($"aggregate mode   : {aggregate.ExecutionMode}");
     Console.WriteLine(
         $"aggregate work   : {aggregate.Counters.TokensProcessed} tokens, "
-        + $"{aggregate.Counters.NodesMaterialized} topology nodes, "
-        + $"{aggregate.Counters.RowsProduced} owned row"
+            + $"{aggregate.Counters.NodesMaterialized} topology nodes, "
+            + $"{aggregate.Counters.RowsProduced} owned row"
     );
     Console.WriteLine("lifetime         : returned values are owned; the construction arena is already disposed");
     Console.WriteLine("input boundary   : current APIs still consume a rooted string and parse through EOF");

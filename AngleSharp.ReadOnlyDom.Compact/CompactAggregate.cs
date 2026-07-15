@@ -103,13 +103,10 @@ public sealed class CompactAggregateProjection
     public static CompactAggregateProjection FirstNormalizedText(CompactAggregateSelector selector) =>
         new(CompactAggregateProjectionKind.NormalizedText, selector, null, []);
 
-    public static CompactAggregateProjection SelfAttribute(string attribute) =>
-        AttributeProjection(null, attribute);
+    public static CompactAggregateProjection SelfAttribute(string attribute) => AttributeProjection(null, attribute);
 
-    public static CompactAggregateProjection FirstAttribute(
-        CompactAggregateSelector selector,
-        string attribute
-    ) => AttributeProjection(selector, attribute);
+    public static CompactAggregateProjection FirstAttribute(CompactAggregateSelector selector, string attribute) =>
+        AttributeProjection(selector, attribute);
 
     public static CompactAggregateProjection SelfMarkdown(params CompactAggregateSelector[] exclusions) =>
         MarkdownProjection(null, exclusions);
@@ -119,10 +116,7 @@ public sealed class CompactAggregateProjection
         params CompactAggregateSelector[] exclusions
     ) => MarkdownProjection(selector, exclusions);
 
-    private static CompactAggregateProjection AttributeProjection(
-        CompactAggregateSelector? selector,
-        string attribute
-    )
+    private static CompactAggregateProjection AttributeProjection(CompactAggregateSelector? selector, string attribute)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(attribute);
         return new CompactAggregateProjection(CompactAggregateProjectionKind.Attribute, selector, attribute, []);
@@ -260,21 +254,14 @@ public sealed class CompactAggregatePlanBuilder
     private readonly CompactAggregateCardinality _cardinality;
     private readonly List<CompactAggregateFieldDefinition> _fields = [];
 
-    internal CompactAggregatePlanBuilder(
-        CompactAggregateSelector selector,
-        CompactAggregateCardinality cardinality
-    )
+    internal CompactAggregatePlanBuilder(CompactAggregateSelector selector, CompactAggregateCardinality cardinality)
     {
         ArgumentNullException.ThrowIfNull(selector);
         _scope = selector;
         _cardinality = cardinality;
     }
 
-    public CompactAggregatePlanBuilder Field(
-        string name,
-        CompactAggregateProjection projection,
-        bool required = false
-    )
+    public CompactAggregatePlanBuilder Field(string name, CompactAggregateProjection projection, bool required = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(projection);
@@ -410,9 +397,7 @@ public sealed class CompactAggregatePlan
         {
             var field = _fields[index];
             var projection = field.Projection;
-            var target = projection.Selector is null
-                ? scope
-                : FindFirst(arena, scope, projection.Selector, state);
+            var target = projection.Selector is null ? scope : FindFirst(arena, scope, projection.Selector, state);
             CompactExtractionValue value = default;
             if (target >= 0)
             {
@@ -653,8 +638,7 @@ internal readonly record struct CompactAggregateFieldDefinition(
     bool Required
 );
 
-internal sealed class CompactAggregateDefinition(CompactAggregatePlan plan)
-    : ICompactConstructionViewDefinition
+internal sealed class CompactAggregateDefinition(CompactAggregatePlan plan) : ICompactConstructionViewDefinition
 {
     public ICompactConstructionViewState CreateState(TextSource source) =>
         new CompactAggregateExecutionState(SourceIdentity(source), plan);
@@ -685,11 +669,17 @@ internal sealed class CompactAggregateExecutionState : ICompactConstructionViewS
     }
 
     public void SetTokensProcessed(int count) => _tokensProcessed = count;
+
     public void NodeMaterialized() => _nodesMaterialized++;
+
     public void CandidateNode() => _candidateNodes++;
+
     public void MatchedScope() => _matchedScopes++;
+
     public void AttributeInspected() => _attributesInspected++;
+
     public void RowProduced() => _rowsProduced++;
+
     public void RowRejected() => _rowsRejected++;
 
     public void AttributeRetained(StringOrMemory value)
@@ -707,11 +697,8 @@ internal sealed class CompactAggregateExecutionState : ICompactConstructionViewS
         return value;
     }
 
-    public CompactAggregateResult CreateResult(
-        ConstructionArena arena,
-        int root,
-        int inputBytesConsumed
-    ) => _plan.Evaluate(arena, root, this, inputBytesConsumed);
+    public CompactAggregateResult CreateResult(ConstructionArena arena, int root, int inputBytesConsumed) =>
+        _plan.Evaluate(arena, root, this, inputBytesConsumed);
 
     public CompactAggregateCounters Snapshot(int inputBytesConsumed) =>
         new(
@@ -730,7 +717,10 @@ internal sealed class CompactAggregateExecutionState : ICompactConstructionViewS
 
     private void ObserveDecoded(StringOrMemory value)
     {
-        if (!MemoryMarshal.TryGetString(value.Memory, out var backing, out _, out _) || !ReferenceEquals(backing, _source))
+        if (
+            !MemoryMarshal.TryGetString(value.Memory, out var backing, out _, out _)
+            || !ReferenceEquals(backing, _source)
+        )
             _valuesDecoded++;
     }
 }
@@ -774,9 +764,11 @@ internal sealed class CompactMarkdownWriter
             return;
 
         var tag = _arena.LocalName(handle).Memory.Span;
-        if (tag.Equals("script", StringComparison.OrdinalIgnoreCase)
+        if (
+            tag.Equals("script", StringComparison.OrdinalIgnoreCase)
             || tag.Equals("style", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("template", StringComparison.OrdinalIgnoreCase))
+            || tag.Equals("template", StringComparison.OrdinalIgnoreCase)
+        )
             return;
 
         if (TryHeadingLevel(tag, out var level))
@@ -797,8 +789,9 @@ internal sealed class CompactMarkdownWriter
         {
             EnsureNewlines(1);
         }
-        else if (tag.Equals("ul", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("ol", StringComparison.OrdinalIgnoreCase))
+        else if (
+            tag.Equals("ul", StringComparison.OrdinalIgnoreCase) || tag.Equals("ol", StringComparison.OrdinalIgnoreCase)
+        )
         {
             EnsureNewlines(2);
             VisitChildren(handle, false);
@@ -811,16 +804,19 @@ internal sealed class CompactMarkdownWriter
             VisitChildren(handle, false);
             EnsureNewlines(1);
         }
-        else if (tag.Equals("strong", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("b", StringComparison.OrdinalIgnoreCase))
+        else if (
+            tag.Equals("strong", StringComparison.OrdinalIgnoreCase)
+            || tag.Equals("b", StringComparison.OrdinalIgnoreCase)
+        )
         {
             FlushPendingSpace();
             AppendLiteral("**");
             VisitChildren(handle, false);
             AppendLiteral("**");
         }
-        else if (tag.Equals("em", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("i", StringComparison.OrdinalIgnoreCase))
+        else if (
+            tag.Equals("em", StringComparison.OrdinalIgnoreCase) || tag.Equals("i", StringComparison.OrdinalIgnoreCase)
+        )
         {
             FlushPendingSpace();
             AppendLiteral("*");
@@ -893,10 +889,7 @@ internal sealed class CompactMarkdownWriter
         {
             if (!TryFindAttribute(handle, name, out var actual))
                 return false;
-            return value is null
-                || (token
-                    ? ContainsToken(actual, value)
-                    : actual.SequenceEqual(value));
+            return value is null || (token ? ContainsToken(actual, value) : actual.SequenceEqual(value));
         }
     }
 

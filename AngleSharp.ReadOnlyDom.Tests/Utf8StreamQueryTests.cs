@@ -3,6 +3,7 @@ using System.Text;
 using System.IO.Pipelines;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
 
 namespace AngleSharp.Readonly.Tests;
 
@@ -12,15 +13,12 @@ public sealed class QueryTests
     public async Task ChildAndDescendantRelationsRemainDistinct()
     {
         var root = QueryNode<QueryState>.Root(Selector.Tag("main"));
-        root.Child(Selector.Tag("a"))
-            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("child"));
+        root.Child(Selector.Tag("a")).OnStart(static (ref QueryState state, in Element _) => state.Events.Add("child"));
         root.Descendant(Selector.Tag("a"))
             .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("descendant"));
 
-        var state = root.Compile().Execute(
-            "<main><a>direct</a><section><a>nested</a></section></main>"u8,
-            new QueryState()
-        );
+        var state = root.Compile()
+            .Execute("<main><a>direct</a><section><a>nested</a></section></main>"u8, new QueryState());
 
         await Assert.That(string.Join('|', state.Events)).IsEqualTo("child|descendant|descendant");
     }
@@ -28,8 +26,10 @@ public sealed class QueryTests
     [Test]
     public async Task PredicatesAndProjectedAttributesUseBorrowedUtf8()
     {
-        var root = QueryNode<QueryState>.Root(
-                Selector.Tag("article")
+        var root = QueryNode<QueryState>
+            .Root(
+                Selector
+                    .Tag("article")
                     .WithId("story")
                     .WithClass("featured")
                     .WithAttribute("data-id")
@@ -45,10 +45,11 @@ public sealed class QueryTests
                 "missing"
             );
 
-        var state = root.Compile().Execute(
-            "<article id=story class='lead featured wide' data-id='42' lang=en></article>"u8,
-            new QueryState()
-        );
+        var state = root.Compile()
+            .Execute(
+                "<article id=story class='lead featured wide' data-id='42' lang=en></article>"u8,
+                new QueryState()
+            );
 
         await Assert.That(string.Join('|', state.Events)).IsEqualTo("42|missing");
     }
@@ -59,8 +60,10 @@ public sealed class QueryTests
         var root = QueryNode<QueryState>.Root(Selector.Tag("main"));
         root.Descendant(Selector.Tag("a"))
             .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("a:start"))
-            .OnText(static (ref QueryState state, ReadOnlySpan<byte> text) =>
-                state.Text.Append(Encoding.UTF8.GetString(text)))
+            .OnText(
+                static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                    state.Text.Append(Encoding.UTF8.GetString(text))
+            )
             .OnEnd(static (ref QueryState state) => state.Events.Add("a:end"))
             .Descendant(Selector.Tag("img"))
             .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("img:start"))
@@ -84,9 +87,12 @@ public sealed class QueryTests
     [Test]
     public async Task PipeReaderFeedsTheSameCompiledPlanIncrementally()
     {
-        var root = QueryNode<QueryState>.Root(Selector.Tag("main"))
-            .OnText(static (ref QueryState state, ReadOnlySpan<byte> text) =>
-                state.Text.Append(Encoding.UTF8.GetString(text)));
+        var root = QueryNode<QueryState>
+            .Root(Selector.Tag("main"))
+            .OnText(
+                static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                    state.Text.Append(Encoding.UTF8.GetString(text))
+            );
         var pipe = new Pipe(new PipeOptions(minimumSegmentSize: 8, useSynchronizationContext: false));
         var execute = root.Compile().ExecuteAsync(pipe.Reader, new QueryState()).AsTask();
 
@@ -117,9 +123,7 @@ public sealed class QueryTests
     [Test]
     public async Task ExplanationAndNodeLimitMakeTheExecutionShapeExplicit()
     {
-        var root = QueryNode<QueryState>.Root(
-            Selector.Tag("ul").WithClass("news-list")
-        );
+        var root = QueryNode<QueryState>.Root(Selector.Tag("ul").WithClass("news-list"));
         root.Descendant(Selector.Tag("a").WithAttribute("href"))
             .OnStart(static (ref QueryState _, in Element _) => { }, "title");
         var explanation = root.Compile().Explanation;

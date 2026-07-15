@@ -169,11 +169,7 @@ public readonly struct Node
     }
 
     public ChildCursor Children() =>
-        new(
-            _document!,
-            _document!.IsTemplate(_handle) ? -1 : Raw.FirstChild,
-            Raw.SubtreeEndExclusive
-        );
+        new(_document!, _document!.IsTemplate(_handle) ? -1 : Raw.FirstChild, Raw.SubtreeEndExclusive);
 
     public ChildCursor TemplateContent() =>
         new(

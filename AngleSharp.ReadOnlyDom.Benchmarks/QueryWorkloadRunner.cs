@@ -702,10 +702,7 @@ internal static class QueryWorkloadRunner
             return new QueryResult(output, counts);
         }
 
-        private static Compact.Node Find(
-            Compact.Node root,
-            Func<Compact.Node, bool> predicate
-        )
+        private static Compact.Node Find(Compact.Node root, Func<Compact.Node, bool> predicate)
         {
             foreach (var descendant in root.Descendants())
                 if (predicate(descendant))

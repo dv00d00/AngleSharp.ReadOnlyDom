@@ -4,10 +4,7 @@ namespace AngleSharp.ReadOnlyDom.Compact;
 
 internal static class CompactConstructionAttributePolicy
 {
-    public static bool IsRequiredByTreeBuilder(
-        ref StructHtmlToken token,
-        ReadOnlySpan<char> attribute
-    )
+    public static bool IsRequiredByTreeBuilder(ref StructHtmlToken token, ReadOnlySpan<char> attribute)
     {
         if (
             attribute.Equals("type", StringComparison.OrdinalIgnoreCase)

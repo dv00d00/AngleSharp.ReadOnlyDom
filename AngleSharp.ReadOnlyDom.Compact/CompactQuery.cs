@@ -49,18 +49,7 @@ public static class CompactQuery
         );
 
     public static ElementQuery Elements(this CompactDocument document, ushort tagId) =>
-        new(
-            document,
-            tagId,
-            0,
-            document.NodeCount,
-            hasClass: false,
-            default,
-            null,
-            hasAttr: false,
-            default,
-            null
-        );
+        new(document, tagId, 0, document.NodeCount, hasClass: false, default, null, hasAttr: false, default, null);
 
     public static ElementQuery Elements(this Node node, string tag) =>
         CreateElements(node, node.Document.ResolveNameId(tag));
@@ -106,10 +95,9 @@ public static class CompactQuery
         {
             _document = node.Document;
             _handle = node.Handle;
-            _endExclusive =
-                _document.IsTemplate(node.Handle)
-                    ? node.Handle + 1
-                    : _document.GetNode(node.Handle).SubtreeEndExclusive;
+            _endExclusive = _document.IsTemplate(node.Handle)
+                ? node.Handle + 1
+                : _document.GetNode(node.Handle).SubtreeEndExclusive;
         }
 
         public readonly Node Current => new(_document, _handle);
@@ -229,7 +217,9 @@ public static class CompactQuery
                 if (_hasClass && !classOk && attr.NameId == _classId)
                     classOk = HasToken(_document.GetValue(attr.ValueStart, attr.ValueLength), _classToken);
                 if (_hasAttr && !attrOk && attr.NameId == _attrId)
-                    attrOk = _attrValue is null || _document.GetValue(attr.ValueStart, attr.ValueLength).SequenceEqual(_attrValue);
+                    attrOk =
+                        _attrValue is null
+                        || _document.GetValue(attr.ValueStart, attr.ValueLength).SequenceEqual(_attrValue);
                 if (classOk && attrOk)
                     return true;
             }

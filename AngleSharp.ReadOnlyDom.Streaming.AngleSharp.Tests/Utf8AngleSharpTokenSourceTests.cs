@@ -46,8 +46,8 @@ public sealed class Utf8AngleSharpTokenSourceTests
         await Assert.That(document.QuerySelector("main")?.TextContent).IsEqualTo("a\uFFFDb");
     }
 
-    private static IAsyncEnumerable<ReadOnlyMemory<byte>> Segments(string html, int segmentSize)
-        => Segments(Encoding.UTF8.GetBytes(html), segmentSize);
+    private static IAsyncEnumerable<ReadOnlyMemory<byte>> Segments(string html, int segmentSize) =>
+        Segments(Encoding.UTF8.GetBytes(html), segmentSize);
 
     private static async IAsyncEnumerable<ReadOnlyMemory<byte>> Segments(byte[] bytes, int segmentSize)
     {

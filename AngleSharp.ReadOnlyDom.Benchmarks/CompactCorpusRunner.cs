@@ -90,12 +90,6 @@ internal static class CompactCorpusRunner
         GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
     }
 
-    private sealed record Measurement(
-        string Document,
-        int InputChars,
-        int Nodes,
-        double Microseconds,
-        long Allocated
-    );
+    private sealed record Measurement(string Document, int InputChars, int Nodes, double Microseconds, long Allocated);
 }
 #endif

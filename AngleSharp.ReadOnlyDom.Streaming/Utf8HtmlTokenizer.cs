@@ -120,8 +120,7 @@ public sealed class Utf8HtmlTokenizer
     private uint _numericReferenceValue;
     private bool _completed;
 
-    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink) =>
-        _sink = sink ?? throw new ArgumentNullException(nameof(sink));
+    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink) => _sink = sink ?? throw new ArgumentNullException(nameof(sink));
 
     public Utf8HtmlTokenizerCounters Counters =>
         new(_bytesConsumed, _segments, _reconsumes, 0, _maximumBufferedTokenBytes);
@@ -230,9 +229,10 @@ public sealed class Utf8HtmlTokenizer
                 && _textUtf8CarryLength == 0
             )
             {
-                var run = _state == State.Plaintext
-                    ? FindPlaintextTerminator(utf8[index..])
-                    : FindTextTerminator(utf8[index..], _state == State.Data || IsRcData());
+                var run =
+                    _state == State.Plaintext
+                        ? FindPlaintextTerminator(utf8[index..])
+                        : FindTextTerminator(utf8[index..], _state == State.Data || IsRcData());
                 if (run > 0)
                 {
                     var text = utf8.Slice(index, run);
@@ -817,15 +817,10 @@ public sealed class Utf8HtmlTokenizer
                 : (uint)(value - '0') <= 9;
             if (isDigit)
             {
-                var digit = (uint)(value - '0') <= 9
-                    ? (uint)(value - '0')
-                    : (uint)(AsciiLower(value) - 'a' + 10);
+                var digit = (uint)(value - '0') <= 9 ? (uint)(value - '0') : (uint)(AsciiLower(value) - 'a' + 10);
                 var radix = isHex ? 16u : 10u;
                 _numericReferenceHasDigits = true;
-                if (
-                    !_numericReferenceOverflow
-                    && _numericReferenceValue <= (0x10FFFFu - digit) / radix
-                )
+                if (!_numericReferenceOverflow && _numericReferenceValue <= (0x10FFFFu - digit) / radix)
                     _numericReferenceValue = _numericReferenceValue * radix + digit;
                 else
                     _numericReferenceOverflow = true;
@@ -847,7 +842,14 @@ public sealed class Utf8HtmlTokenizer
             return;
         }
         var length = _candidate.WrittenCount;
-        if (length < 32 && (IsAsciiAlphaNumeric(value) || (length == 0 && value == (byte)'#') || (length == 1 && _candidate.WrittenSpan[0] == (byte)'#' && value is (byte)'x' or (byte)'X')))
+        if (
+            length < 32
+            && (
+                IsAsciiAlphaNumeric(value)
+                || (length == 0 && value == (byte)'#')
+                || (length == 1 && _candidate.WrittenSpan[0] == (byte)'#' && value is (byte)'x' or (byte)'X')
+            )
+        )
         {
             Append(_candidate, value);
             return;
@@ -870,10 +872,7 @@ public sealed class Utf8HtmlTokenizer
             }
             else if (HtmlEntityProvider.IsInCharacterTable(scalar))
             {
-                replacementLength = Encoding.UTF8.GetBytes(
-                    HtmlEntityProvider.GetSymbolFromTable(scalar)!,
-                    replacement
-                );
+                replacementLength = Encoding.UTF8.GetBytes(HtmlEntityProvider.GetSymbolFromTable(scalar)!, replacement);
             }
             else if (HtmlEntityProvider.IsInvalidNumber(scalar) || !Rune.TryCreate(scalar, out var rune))
             {
@@ -900,7 +899,11 @@ public sealed class Utf8HtmlTokenizer
                     && IsAttributeReturnState()
                     && (
                         (length < source.Length && (source[length] == '=' || IsAsciiAlphaNumeric(source[length])))
-                        || (length == source.Length && nextInput is byte next && (next == '=' || IsAsciiAlphaNumeric(next)))
+                        || (
+                            length == source.Length
+                            && nextInput is byte next
+                            && (next == '=' || IsAsciiAlphaNumeric(next))
+                        )
                     )
                 )
                     break;
@@ -1059,9 +1062,10 @@ public sealed class Utf8HtmlTokenizer
                     else if (value is (byte)'"' or (byte)'\'')
                     {
                         publicMissing = false;
-                        state = value == (byte)'"'
-                            ? DoctypeState.PublicIdentifierDoubleQuoted
-                            : DoctypeState.PublicIdentifierSingleQuoted;
+                        state =
+                            value == (byte)'"'
+                                ? DoctypeState.PublicIdentifierDoubleQuoted
+                                : DoctypeState.PublicIdentifierSingleQuoted;
                     }
                     else
                     {
@@ -1075,9 +1079,10 @@ public sealed class Utf8HtmlTokenizer
                     if (value is (byte)'"' or (byte)'\'')
                     {
                         publicMissing = false;
-                        state = value == (byte)'"'
-                            ? DoctypeState.PublicIdentifierDoubleQuoted
-                            : DoctypeState.PublicIdentifierSingleQuoted;
+                        state =
+                            value == (byte)'"'
+                                ? DoctypeState.PublicIdentifierDoubleQuoted
+                                : DoctypeState.PublicIdentifierSingleQuoted;
                     }
                     else
                     {
@@ -1087,9 +1092,7 @@ public sealed class Utf8HtmlTokenizer
                     break;
                 case DoctypeState.PublicIdentifierDoubleQuoted:
                 case DoctypeState.PublicIdentifierSingleQuoted:
-                    var publicQuote = state == DoctypeState.PublicIdentifierDoubleQuoted
-                        ? (byte)'"'
-                        : (byte)'\'';
+                    var publicQuote = state == DoctypeState.PublicIdentifierDoubleQuoted ? (byte)'"' : (byte)'\'';
                     if (value == publicQuote)
                         state = DoctypeState.AfterPublicIdentifier;
                     else
@@ -1101,9 +1104,10 @@ public sealed class Utf8HtmlTokenizer
                     else if (value is (byte)'"' or (byte)'\'')
                     {
                         systemMissing = false;
-                        state = value == (byte)'"'
-                            ? DoctypeState.SystemIdentifierDoubleQuoted
-                            : DoctypeState.SystemIdentifierSingleQuoted;
+                        state =
+                            value == (byte)'"'
+                                ? DoctypeState.SystemIdentifierDoubleQuoted
+                                : DoctypeState.SystemIdentifierSingleQuoted;
                     }
                     else
                     {
@@ -1117,9 +1121,10 @@ public sealed class Utf8HtmlTokenizer
                     if (value is (byte)'"' or (byte)'\'')
                     {
                         systemMissing = false;
-                        state = value == (byte)'"'
-                            ? DoctypeState.SystemIdentifierDoubleQuoted
-                            : DoctypeState.SystemIdentifierSingleQuoted;
+                        state =
+                            value == (byte)'"'
+                                ? DoctypeState.SystemIdentifierDoubleQuoted
+                                : DoctypeState.SystemIdentifierSingleQuoted;
                     }
                     else
                     {
@@ -1133,9 +1138,10 @@ public sealed class Utf8HtmlTokenizer
                     else if (value is (byte)'"' or (byte)'\'')
                     {
                         systemMissing = false;
-                        state = value == (byte)'"'
-                            ? DoctypeState.SystemIdentifierDoubleQuoted
-                            : DoctypeState.SystemIdentifierSingleQuoted;
+                        state =
+                            value == (byte)'"'
+                                ? DoctypeState.SystemIdentifierDoubleQuoted
+                                : DoctypeState.SystemIdentifierSingleQuoted;
                     }
                     else
                     {
@@ -1149,9 +1155,10 @@ public sealed class Utf8HtmlTokenizer
                     if (value is (byte)'"' or (byte)'\'')
                     {
                         systemMissing = false;
-                        state = value == (byte)'"'
-                            ? DoctypeState.SystemIdentifierDoubleQuoted
-                            : DoctypeState.SystemIdentifierSingleQuoted;
+                        state =
+                            value == (byte)'"'
+                                ? DoctypeState.SystemIdentifierDoubleQuoted
+                                : DoctypeState.SystemIdentifierSingleQuoted;
                     }
                     else
                     {
@@ -1161,9 +1168,7 @@ public sealed class Utf8HtmlTokenizer
                     break;
                 case DoctypeState.SystemIdentifierDoubleQuoted:
                 case DoctypeState.SystemIdentifierSingleQuoted:
-                    var systemQuote = state == DoctypeState.SystemIdentifierDoubleQuoted
-                        ? (byte)'"'
-                        : (byte)'\'';
+                    var systemQuote = state == DoctypeState.SystemIdentifierDoubleQuoted ? (byte)'"' : (byte)'\'';
                     if (value == systemQuote)
                         state = DoctypeState.AfterSystemIdentifier;
                     else
@@ -1184,7 +1189,8 @@ public sealed class Utf8HtmlTokenizer
             quirks = true;
 
         if (
-            state is DoctypeState.AfterPublicKeyword
+            state
+            is DoctypeState.AfterPublicKeyword
                 or DoctypeState.BeforePublicIdentifier
                 or DoctypeState.PublicIdentifierDoubleQuoted
                 or DoctypeState.PublicIdentifierSingleQuoted
@@ -1197,20 +1203,21 @@ public sealed class Utf8HtmlTokenizer
 
         if (
             forceEofQuirks
-            && state is DoctypeState.BeforeName
-                or DoctypeState.Name
-                or DoctypeState.AfterName
-                or DoctypeState.AfterPublicKeyword
-                or DoctypeState.BeforePublicIdentifier
-                or DoctypeState.PublicIdentifierDoubleQuoted
-                or DoctypeState.PublicIdentifierSingleQuoted
-                or DoctypeState.AfterPublicIdentifier
-                or DoctypeState.BetweenPublicAndSystemIdentifiers
-                or DoctypeState.AfterSystemKeyword
-                or DoctypeState.BeforeSystemIdentifier
-                or DoctypeState.SystemIdentifierDoubleQuoted
-                or DoctypeState.SystemIdentifierSingleQuoted
-                or DoctypeState.AfterSystemIdentifier
+            && state
+                is DoctypeState.BeforeName
+                    or DoctypeState.Name
+                    or DoctypeState.AfterName
+                    or DoctypeState.AfterPublicKeyword
+                    or DoctypeState.BeforePublicIdentifier
+                    or DoctypeState.PublicIdentifierDoubleQuoted
+                    or DoctypeState.PublicIdentifierSingleQuoted
+                    or DoctypeState.AfterPublicIdentifier
+                    or DoctypeState.BetweenPublicAndSystemIdentifiers
+                    or DoctypeState.AfterSystemKeyword
+                    or DoctypeState.BeforeSystemIdentifier
+                    or DoctypeState.SystemIdentifierDoubleQuoted
+                    or DoctypeState.SystemIdentifierSingleQuoted
+                    or DoctypeState.AfterSystemIdentifier
         )
             quirks = true;
 
@@ -1229,11 +1236,7 @@ public sealed class Utf8HtmlTokenizer
         _doctypeSystem.Clear();
     }
 
-    private void AppendReplacedNull(
-        ArrayBufferWriter<byte> destination,
-        byte value,
-        bool lowerAscii
-    )
+    private void AppendReplacedNull(ArrayBufferWriter<byte> destination, byte value, bool lowerAscii)
     {
         if (value == 0)
             AppendReplacement(destination);
@@ -1243,7 +1246,10 @@ public sealed class Utf8HtmlTokenizer
 
     private static bool ConsumeKeyword(ReadOnlySpan<byte> source, ref int index, ReadOnlySpan<byte> keyword)
     {
-        if (source.Length - index < keyword.Length || !StartsWithAsciiIgnoreCase(source.Slice(index, keyword.Length), keyword))
+        if (
+            source.Length - index < keyword.Length
+            || !StartsWithAsciiIgnoreCase(source.Slice(index, keyword.Length), keyword)
+        )
             return false;
         index += keyword.Length;
         return true;
@@ -1256,40 +1262,87 @@ public sealed class Utf8HtmlTokenizer
         switch (_state)
         {
             case State.ScriptData:
-                if (value == '<') _state = State.ScriptLessThan;
-                else EmitScriptByte(value);
+                if (value == '<')
+                    _state = State.ScriptLessThan;
+                else
+                    EmitScriptByte(value);
                 break;
             case State.ScriptLessThan:
-                if (value == '/') BeginScriptEndTag(State.ScriptEndTagName);
-                else if (value == '!') { _sink.Text("<!"u8); _state = State.ScriptEscapeStart; }
-                else { _sink.Text("<"u8); Reconsume(ref reconsume, State.ScriptData); }
+                if (value == '/')
+                    BeginScriptEndTag(State.ScriptEndTagName);
+                else if (value == '!')
+                {
+                    _sink.Text("<!"u8);
+                    _state = State.ScriptEscapeStart;
+                }
+                else
+                {
+                    _sink.Text("<"u8);
+                    Reconsume(ref reconsume, State.ScriptData);
+                }
                 break;
             case State.ScriptEscapeStart:
-                if (value == '-') { EmitByte(value); _state = State.ScriptEscapeStartDash; }
-                else Reconsume(ref reconsume, State.ScriptData);
+                if (value == '-')
+                {
+                    EmitByte(value);
+                    _state = State.ScriptEscapeStartDash;
+                }
+                else
+                    Reconsume(ref reconsume, State.ScriptData);
                 break;
             case State.ScriptEscapeStartDash:
-                if (value == '-') { EmitByte(value); _state = State.ScriptEscapedDashDash; }
-                else Reconsume(ref reconsume, State.ScriptData);
+                if (value == '-')
+                {
+                    EmitByte(value);
+                    _state = State.ScriptEscapedDashDash;
+                }
+                else
+                    Reconsume(ref reconsume, State.ScriptData);
                 break;
             case State.ScriptEscaped:
-                if (value == '-') { EmitByte(value); _state = State.ScriptEscapedDash; }
-                else if (value == '<') _state = State.ScriptEscapedLessThan;
-                else EmitScriptByte(value);
+                if (value == '-')
+                {
+                    EmitByte(value);
+                    _state = State.ScriptEscapedDash;
+                }
+                else if (value == '<')
+                    _state = State.ScriptEscapedLessThan;
+                else
+                    EmitScriptByte(value);
                 break;
             case State.ScriptEscapedDash:
-                if (value == '-') { EmitByte(value); _state = State.ScriptEscapedDashDash; }
-                else if (value == '<') _state = State.ScriptEscapedLessThan;
-                else { EmitScriptByte(value); _state = State.ScriptEscaped; }
+                if (value == '-')
+                {
+                    EmitByte(value);
+                    _state = State.ScriptEscapedDashDash;
+                }
+                else if (value == '<')
+                    _state = State.ScriptEscapedLessThan;
+                else
+                {
+                    EmitScriptByte(value);
+                    _state = State.ScriptEscaped;
+                }
                 break;
             case State.ScriptEscapedDashDash:
-                if (value == '-') EmitByte(value);
-                else if (value == '<') _state = State.ScriptEscapedLessThan;
-                else if (value == '>') { EmitByte(value); _state = State.ScriptData; }
-                else { EmitScriptByte(value); _state = State.ScriptEscaped; }
+                if (value == '-')
+                    EmitByte(value);
+                else if (value == '<')
+                    _state = State.ScriptEscapedLessThan;
+                else if (value == '>')
+                {
+                    EmitByte(value);
+                    _state = State.ScriptData;
+                }
+                else
+                {
+                    EmitScriptByte(value);
+                    _state = State.ScriptEscaped;
+                }
                 break;
             case State.ScriptEscapedLessThan:
-                if (value == '/') BeginScriptEndTag(State.ScriptEscapedEndTagName);
+                if (value == '/')
+                    BeginScriptEndTag(State.ScriptEscapedEndTagName);
                 else if (IsAsciiLetter(value))
                 {
                     _sink.Text("<"u8);
@@ -1298,7 +1351,11 @@ public sealed class Utf8HtmlTokenizer
                     EmitByte(value);
                     _state = State.ScriptDoubleEscapeStart;
                 }
-                else { _sink.Text("<"u8); Reconsume(ref reconsume, State.ScriptEscaped); }
+                else
+                {
+                    _sink.Text("<"u8);
+                    Reconsume(ref reconsume, State.ScriptEscaped);
+                }
                 break;
             case State.ScriptEndTagName:
                 ProcessScriptEndTag(value, State.ScriptData, ref reconsume);
@@ -1307,7 +1364,11 @@ public sealed class Utf8HtmlTokenizer
                 ProcessScriptEndTag(value, State.ScriptEscaped, ref reconsume);
                 break;
             case State.ScriptDoubleEscapeStart:
-                if (IsAsciiLetter(value)) { Append(_candidate, AsciiLower(value)); EmitByte(value); }
+                if (IsAsciiLetter(value))
+                {
+                    Append(_candidate, AsciiLower(value));
+                    EmitByte(value);
+                }
                 else if (IsTagDelimiter(value))
                 {
                     var script = _candidate.WrittenSpan.SequenceEqual("script"u8);
@@ -1315,23 +1376,61 @@ public sealed class Utf8HtmlTokenizer
                     EmitByte(value);
                     _state = script ? State.ScriptDoubleEscaped : State.ScriptEscaped;
                 }
-                else { _candidate.Clear(); Reconsume(ref reconsume, State.ScriptEscaped); }
+                else
+                {
+                    _candidate.Clear();
+                    Reconsume(ref reconsume, State.ScriptEscaped);
+                }
                 break;
             case State.ScriptDoubleEscaped:
-                if (value == '-') { EmitByte(value); _state = State.ScriptDoubleEscapedDash; }
-                else if (value == '<') { EmitByte(value); _state = State.ScriptDoubleEscapedLessThan; }
-                else EmitScriptByte(value);
+                if (value == '-')
+                {
+                    EmitByte(value);
+                    _state = State.ScriptDoubleEscapedDash;
+                }
+                else if (value == '<')
+                {
+                    EmitByte(value);
+                    _state = State.ScriptDoubleEscapedLessThan;
+                }
+                else
+                    EmitScriptByte(value);
                 break;
             case State.ScriptDoubleEscapedDash:
-                if (value == '-') { EmitByte(value); _state = State.ScriptDoubleEscapedDashDash; }
-                else if (value == '<') { EmitByte(value); _state = State.ScriptDoubleEscapedLessThan; }
-                else { EmitScriptByte(value); _state = State.ScriptDoubleEscaped; }
+                if (value == '-')
+                {
+                    EmitByte(value);
+                    _state = State.ScriptDoubleEscapedDashDash;
+                }
+                else if (value == '<')
+                {
+                    EmitByte(value);
+                    _state = State.ScriptDoubleEscapedLessThan;
+                }
+                else
+                {
+                    EmitScriptByte(value);
+                    _state = State.ScriptDoubleEscaped;
+                }
                 break;
             case State.ScriptDoubleEscapedDashDash:
-                if (value == '-') EmitByte(value);
-                else if (value == '<') { EmitByte(value); _state = State.ScriptDoubleEscapedLessThan; }
-                else if (value == '>') { EmitByte(value); _state = State.ScriptData; }
-                else { EmitScriptByte(value); _state = State.ScriptDoubleEscaped; }
+                if (value == '-')
+                    EmitByte(value);
+                else if (value == '<')
+                {
+                    EmitByte(value);
+                    _state = State.ScriptDoubleEscapedLessThan;
+                }
+                else if (value == '>')
+                {
+                    EmitByte(value);
+                    _state = State.ScriptData;
+                }
+                else
+                {
+                    EmitScriptByte(value);
+                    _state = State.ScriptDoubleEscaped;
+                }
                 break;
             case State.ScriptDoubleEscapedLessThan:
                 if (value == '/')
@@ -1340,10 +1439,15 @@ public sealed class Utf8HtmlTokenizer
                     _candidate.Clear();
                     _state = State.ScriptDoubleEscapeEnd;
                 }
-                else Reconsume(ref reconsume, State.ScriptDoubleEscaped);
+                else
+                    Reconsume(ref reconsume, State.ScriptDoubleEscaped);
                 break;
             case State.ScriptDoubleEscapeEnd:
-                if (IsAsciiLetter(value)) { Append(_candidate, AsciiLower(value)); EmitByte(value); }
+                if (IsAsciiLetter(value))
+                {
+                    Append(_candidate, AsciiLower(value));
+                    EmitByte(value);
+                }
                 else if (IsTagDelimiter(value))
                 {
                     var script = _candidate.WrittenSpan.SequenceEqual("script"u8);
@@ -1351,7 +1455,11 @@ public sealed class Utf8HtmlTokenizer
                     EmitByte(value);
                     _state = script ? State.ScriptEscaped : State.ScriptDoubleEscaped;
                 }
-                else { _candidate.Clear(); Reconsume(ref reconsume, State.ScriptDoubleEscaped); }
+                else
+                {
+                    _candidate.Clear();
+                    Reconsume(ref reconsume, State.ScriptDoubleEscaped);
+                }
                 break;
         }
     }
@@ -1378,9 +1486,12 @@ public sealed class Utf8HtmlTokenizer
             _candidate.Clear();
             _isEndTag = true;
             _rawEndTag = null;
-            if (value == '>') FinishTag(false);
-            else if (value == '/') _state = State.SelfClosingStartTag;
-            else _state = State.BeforeAttributeName;
+            if (value == '>')
+                FinishTag(false);
+            else if (value == '/')
+                _state = State.SelfClosingStartTag;
+            else
+                _state = State.BeforeAttributeName;
             return;
         }
         _sink.Text(_candidate.WrittenSpan);
@@ -1390,9 +1501,12 @@ public sealed class Utf8HtmlTokenizer
 
     private void EmitScriptByte(byte value)
     {
-        if (value == 0) EmitReplacementCharacter();
-        else if (value == '\r') BeginCarriageReturn();
-        else EmitByte(value);
+        if (value == 0)
+            EmitReplacementCharacter();
+        else if (value == '\r')
+            BeginCarriageReturn();
+        else
+            EmitByte(value);
     }
 
     private static bool IsScriptState(State state) => state is >= State.ScriptData and <= State.ScriptDoubleEscapeEnd;
@@ -1414,7 +1528,13 @@ public sealed class Utf8HtmlTokenizer
                 var name = _name.WrittenSpan;
                 if (name.SequenceEqual("title"u8) || name.SequenceEqual("textarea"u8))
                     _rawEndTag = "rcdata:" + Encoding.ASCII.GetString(name);
-                else if (name.SequenceEqual("style"u8) || name.SequenceEqual("xmp"u8) || name.SequenceEqual("iframe"u8) || name.SequenceEqual("noembed"u8) || name.SequenceEqual("noframes"u8))
+                else if (
+                    name.SequenceEqual("style"u8)
+                    || name.SequenceEqual("xmp"u8)
+                    || name.SequenceEqual("iframe"u8)
+                    || name.SequenceEqual("noembed"u8)
+                    || name.SequenceEqual("noframes"u8)
+                )
                     _rawEndTag = Encoding.ASCII.GetString(name);
                 else if (name.SequenceEqual("script"u8))
                 {
@@ -1446,7 +1566,8 @@ public sealed class Utf8HtmlTokenizer
         return true;
     }
 
-    private string? RawName() => _rawEndTag?.StartsWith("rcdata:", StringComparison.Ordinal) == true ? _rawEndTag[7..] : _rawEndTag;
+    private string? RawName() =>
+        _rawEndTag?.StartsWith("rcdata:", StringComparison.Ordinal) == true ? _rawEndTag[7..] : _rawEndTag;
 
     private bool IsRcData() => _rawEndTag?.StartsWith("rcdata:", StringComparison.Ordinal) == true;
 
@@ -1549,7 +1670,12 @@ public sealed class Utf8HtmlTokenizer
         for (var i = 0; i < value.Length; i++)
         {
             var current = value[i];
-            if (current == (byte)'<' || current == 0 || current == (byte)'\r' || (includeAmpersand && current == (byte)'&'))
+            if (
+                current == (byte)'<'
+                || current == 0
+                || current == (byte)'\r'
+                || (includeAmpersand && current == (byte)'&')
+            )
                 return i;
         }
         return value.Length;
@@ -1583,21 +1709,23 @@ public sealed class Utf8HtmlTokenizer
     {
         var start = 0;
         var end = value.Length;
-        while (start < end && IsSpace(value[start])) start++;
-        while (end > start && IsSpace(value[end - 1])) end--;
+        while (start < end && IsSpace(value[start]))
+            start++;
+        while (end > start && IsSpace(value[end - 1]))
+            end--;
         return value[start..end];
     }
 
     private static bool IsSpace(byte value) => value is 0x09 or 0x0A or 0x0C or 0x0D or 0x20;
 
-    private static bool IsAsciiLetter(byte value) => (uint)(value - 'A') <= 'Z' - 'A' || (uint)(value - 'a') <= 'z' - 'a';
+    private static bool IsAsciiLetter(byte value) =>
+        (uint)(value - 'A') <= 'Z' - 'A' || (uint)(value - 'a') <= 'z' - 'a';
 
     private static bool IsAsciiAlphaNumeric(byte value) => IsAsciiLetter(value) || (uint)(value - '0') <= 9;
 
     private static bool IsTagDelimiter(byte value) => value is (byte)'>' or (byte)'/' || IsSpace(value);
 
     private static byte AsciiLower(byte value) => (uint)(value - 'A') <= 'Z' - 'A' ? (byte)(value + 0x20) : value;
-
 
     private void ThrowIfCompleted()
     {

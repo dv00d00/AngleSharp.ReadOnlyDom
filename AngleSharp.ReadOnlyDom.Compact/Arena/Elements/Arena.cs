@@ -35,11 +35,7 @@ internal sealed class Arena : IDisposable
         _columns = new MutableNodeColumns(hints.InitialNodeCapacity, trackSourceReferences);
     }
 
-    public ArenaDocument CreateDocument(
-        TextSource source,
-        CompactMetadataOptions options,
-        CompactDocumentLayout layout
-    )
+    public ArenaDocument CreateDocument(TextSource source, CompactMetadataOptions options, CompactDocumentLayout layout)
     {
         var document = new ArenaDocument(
             this,
@@ -248,11 +244,7 @@ internal sealed class Arena : IDisposable
 
     public void AddText(int parent, StringOrMemory text, bool emitWhiteSpaceOnly, int? index = null)
     {
-        if (
-            _constructionView is null
-            && !emitWhiteSpaceOnly
-            && text.Memory.Span.Trim(WhiteSpace).Length == 0
-        )
+        if (_constructionView is null && !emitWhiteSpaceOnly && text.Memory.Span.Trim(WhiteSpace).Length == 0)
             return;
         var retained = _constructionView?.SelectTextValue(text) ?? text;
         AddChild(parent, AddLeaf("#text", retained, CompactNodeKind.Text), index);
@@ -362,12 +354,7 @@ internal sealed class Arena : IDisposable
         }
 
         var nameArray = CopyCustomNames(_names);
-        var templateBoundaries = CreateTemplateBoundaries(
-            orderCount,
-            preservesConstructionHandles,
-            order,
-            remap
-        );
+        var templateBoundaries = CreateTemplateBoundaries(orderCount, preservesConstructionHandles, order, remap);
         var (text, textLength) = textBuilder.Detach();
         var result = new CompactDocument(
             nodes,
