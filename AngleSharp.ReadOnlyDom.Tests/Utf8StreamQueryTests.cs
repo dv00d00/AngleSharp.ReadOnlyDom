@@ -146,10 +146,7 @@ public sealed class QueryTests
                 {
                     if (!element.TextUtf8.SequenceEqual("hé llo"u8))
                         throw new InvalidOperationException("Normalized UTF-8 text disagrees.");
-                    if (
-                        !element.TryGetAttributeUtf8("data-label"u8, out var label)
-                        || !label.SequenceEqual("café"u8)
-                    )
+                    if (!element.TryGetAttributeUtf8("data-label"u8, out var label) || !label.SequenceEqual("café"u8))
                         throw new InvalidOperationException("Borrowed UTF-8 attribute disagrees.");
                     if (element.TryGetAttributeUtf8("missing"u8, out _))
                         throw new InvalidOperationException("Missing attribute was reported as present.");

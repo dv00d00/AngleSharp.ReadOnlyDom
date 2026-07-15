@@ -11,8 +11,7 @@ public sealed class BackpressuredQueryTests
     [Test]
     public async Task SlowOutputStopsInputDrainAndResumesWithoutChangingBytes()
     {
-        var root = StreamQuery.For<TestOutput>("html")
-            .OnText(static (ref output, text) => output.Append(text));
+        var root = StreamQuery.For<TestOutput>("html").OnText(static (ref output, text) => output.Append(text));
         var plan = root.Compile();
         var input = new Pipe(new PipeOptions(useSynchronizationContext: false));
         var output = new Pipe(

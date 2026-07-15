@@ -5,8 +5,11 @@ using System.Text;
 using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services
-    .AddHttpClient("html", client => client.DefaultRequestHeaders.UserAgent.ParseAdd("RODOM-Markdown-Proxy/0.1"))
+builder
+    .Services.AddHttpClient(
+        "html",
+        client => client.DefaultRequestHeaders.UserAgent.ParseAdd("RODOM-Markdown-Proxy/0.1")
+    )
     .ConfigurePrimaryHttpMessageHandler(() =>
         new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All }
     );
@@ -118,7 +121,8 @@ internal static class MarkdownPlan
 
     private static QueryPlan<MarkdownBuffer> Create()
     {
-        var html = StreamQuery.For<MarkdownBuffer>("html")
+        var html = StreamQuery
+            .For<MarkdownBuffer>("html")
             .OnText(static (ref output, text) => output.AppendInlineText(text))
             .OnEnd(static (ref output) => output.CompleteDocument());
         html.Descendant("title")
@@ -136,8 +140,7 @@ internal static class MarkdownPlan
         html.Descendant("li").AsInlineBlock("- "u8);
         html.Descendant("blockquote").AsInlineBlock("> "u8);
         html.Descendant("a").WithAttribute("href").AsInlineLink();
-        html.Descendant("pre")
-            .OnTextContent(static (ref output, in element) => output.FencedCode(element.TextUtf8));
+        html.Descendant("pre").OnTextContent(static (ref output, in element) => output.FencedCode(element.TextUtf8));
         html.Descendant("hr").OnClose(static (ref output, in _) => output.Block("---"u8, default));
         html.Descendant("img")
             .OnClose(
@@ -158,7 +161,8 @@ internal static class MarkdownPlan
         var table = html.Descendant("table")
             .OnStart(static (ref output, in _) => output.StartTable())
             .OnEnd(static (ref output) => output.EndTable());
-        var row = table.Descendant("tr")
+        var row = table
+            .Descendant("tr")
             .OnStart(static (ref output, in _) => output.StartRow())
             .OnEnd(static (ref output) => output.EndRow());
         row.Child("th").OnNormalizedText(static (ref output, in element) => output.Cell(element.TextUtf8));
@@ -176,8 +180,7 @@ internal static class MarkdownQueryExtensions
     {
         // Query plans live for the lifetime of the application; copy the compile-time span once.
         var ownedPrefix = prefix.ToArray();
-        return node
-            .OnStart((ref MarkdownBuffer output, in Element _) => output.StartInlineBlock(ownedPrefix))
+        return node.OnStart((ref MarkdownBuffer output, in Element _) => output.StartInlineBlock(ownedPrefix))
             .OnEnd(static (ref output) => output.EndInlineBlock());
     }
 
@@ -217,8 +220,7 @@ internal sealed class MarkdownBuffer : ICommittedUtf8Output
 
     public void AdvanceCommitted(int bytes) => _output.AdvanceCommitted(bytes);
 
-    private bool AcceptsContent =>
-        !_preferredArticleFound || !_preferredArticleComplete && _preferredArticleDepth != 0;
+    private bool AcceptsContent => !_preferredArticleFound || !_preferredArticleComplete && _preferredArticleDepth != 0;
 
     internal void DocumentTitle(ReadOnlySpan<byte> title)
     {
