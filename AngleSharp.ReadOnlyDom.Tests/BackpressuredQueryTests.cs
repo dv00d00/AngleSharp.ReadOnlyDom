@@ -3,6 +3,7 @@ using System.Buffers;
 using System.IO.Pipelines;
 using System.Text;
 using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
 
 namespace AngleSharp.Readonly.Tests;
 
