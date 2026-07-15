@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Text;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
 

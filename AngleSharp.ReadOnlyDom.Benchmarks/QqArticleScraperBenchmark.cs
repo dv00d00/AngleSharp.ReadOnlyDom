@@ -9,6 +9,7 @@ using AngleSharp.ReadOnlyDom.Filters;
 using AngleSharp.ReadOnlyDom.Html;
 using AngleSharp.ReadOnlyDom.Streaming;
 using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
 using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;

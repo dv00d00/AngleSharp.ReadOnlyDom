@@ -3,6 +3,7 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Text;
 using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
 
 var builder = WebApplication.CreateBuilder(args);
 builder
