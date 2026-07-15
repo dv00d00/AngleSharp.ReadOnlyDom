@@ -105,12 +105,7 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
         if (!selfClosing && !_pendingIsVoid)
         {
             EnsureFrameCapacity();
-            _frames[_frameCount++] = new Frame(
-                _pendingTagHash,
-                _pendingTagLength,
-                resultIndex,
-                _pendingIsTemplate
-            );
+            _frames[_frameCount++] = new Frame(_pendingTagHash, _pendingTagLength, resultIndex, _pendingIsTemplate);
             if (_pendingIsTemplate)
                 _templateDepth++;
         }
@@ -296,12 +291,7 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
         _results = replacement;
     }
 
-    private readonly record struct Frame(
-        ulong TagHash,
-        int TagLength,
-        int ResultIndex,
-        bool IsTemplate
-    );
+    private readonly record struct Frame(ulong TagHash, int TagLength, int ResultIndex, bool IsTemplate);
 
     private struct DivResult(ulong idHash, ulong classHash, ulong textHash)
     {

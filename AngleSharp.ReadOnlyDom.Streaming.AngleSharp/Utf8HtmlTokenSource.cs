@@ -23,12 +23,12 @@ public sealed class Utf8HtmlTokenSource : IHtmlTokenSource, IUtf8HtmlTokenSink
     private bool _isAcceptingCharacterData;
     private HtmlParseMode _state;
     private string? _lastStartTagName;
-    private ShouldEmitAttribute _shouldEmitAttribute =
-        static (ref StructHtmlToken _, ReadOnlyMemory<char> _) => true;
+    private ShouldEmitAttribute _shouldEmitAttribute = static (ref StructHtmlToken _, ReadOnlyMemory<char> _) => true;
 
     public Utf8HtmlTokenSource(
         IAsyncEnumerable<ReadOnlyMemory<byte>> input,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(input);
         _input = input.GetAsyncEnumerator(cancellationToken);
@@ -157,11 +157,9 @@ public sealed class Utf8HtmlTokenSource : IHtmlTokenSource, IUtf8HtmlTokenSink
             _tokens.Enqueue(StructHtmlToken.Comment(Encoding.UTF8.GetString(utf8), default));
     }
 
-    void IUtf8HtmlTokenSink.Doctype(ReadOnlySpan<byte> utf8) =>
-        _tokens.Enqueue(Utf8DoctypeParser.Parse(utf8));
+    void IUtf8HtmlTokenSink.Doctype(ReadOnlySpan<byte> utf8) => _tokens.Enqueue(Utf8DoctypeParser.Parse(utf8));
 
-    void IUtf8HtmlTokenSink.EndOfFile() =>
-        _tokens.Enqueue(StructHtmlToken.EndOfFile(default));
+    void IUtf8HtmlTokenSink.EndOfFile() => _tokens.Enqueue(StructHtmlToken.EndOfFile(default));
 
     public void Dispose()
     {

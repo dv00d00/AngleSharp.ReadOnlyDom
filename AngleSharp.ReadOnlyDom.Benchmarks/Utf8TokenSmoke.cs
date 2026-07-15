@@ -42,7 +42,7 @@ internal static class Utf8TokenSmoke
                 }
             }
             if (difference is null)
-                Console.WriteLine($"PASS {document.Name,-28} {utf8.Length,12:N0} bytes");
+                Console.WriteLine($"PASS {document.Name, -28} {utf8.Length, 12:N0} bytes");
             else
             {
                 failures++;
@@ -141,8 +141,7 @@ internal static class Utf8TokenSmoke
         }
     }
 
-    private static string Preview(string? value) =>
-        value is null ? "<EOF>" : value[..Math.Min(180, value.Length)];
+    private static string Preview(string? value) => value is null ? "<EOF>" : value[..Math.Min(180, value.Length)];
 
     private sealed class TraceSink : IUtf8HtmlTokenSink, IDisposable
     {

@@ -380,9 +380,7 @@ public class TopLevelSmoke
     private static bool HasBadChar(ReadOnlySpan<char> value) => value.ContainsAny(badName);
 #endif
 
-    private static readonly Lazy<SelectorTestCase[]> CoreCases = new(() =>
-        DistinctSelectors(BuildCore()).ToArray()
-    );
+    private static readonly Lazy<SelectorTestCase[]> CoreCases = new(() => DistinctSelectors(BuildCore()).ToArray());
 
     private static readonly Lazy<SelectorTestCase[]> AllComplexCases = new(() =>
         DistinctSelectors(CustomSelectors().Concat(CustomSelectorsZip2()).Concat(CustomSelectorsZip3())).ToArray()

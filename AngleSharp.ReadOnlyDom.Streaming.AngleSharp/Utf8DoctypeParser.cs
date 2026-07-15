@@ -77,7 +77,8 @@ internal static class Utf8DoctypeParser
         ReadOnlySpan<byte> declaration,
         ref int index,
         out string identifier,
-        out bool closed)
+        out bool closed
+    )
     {
         identifier = String.Empty;
         closed = false;
@@ -128,6 +129,5 @@ internal static class Utf8DoctypeParser
     private static bool IsWhitespace(byte value) =>
         value is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\r' or 0x0C;
 
-    private static byte AsciiLower(byte value) =>
-        value is >= (byte)'A' and <= (byte)'Z' ? (byte)(value + 0x20) : value;
+    private static byte AsciiLower(byte value) => value is >= (byte)'A' and <= (byte)'Z' ? (byte)(value + 0x20) : value;
 }

@@ -47,10 +47,7 @@ public class Utf8DomProjectionBenchmark
                 ref fingerprint,
                 Utf8DivFingerprintFold.HashChars(element.GetAttribute("class") ?? string.Empty)
             );
-            Utf8DivFingerprintFold.AppendUInt64(
-                ref fingerprint,
-                Utf8DivFingerprintFold.HashChars(element.TextContent)
-            );
+            Utf8DivFingerprintFold.AppendUInt64(ref fingerprint, Utf8DivFingerprintFold.HashChars(element.TextContent));
             matches++;
         }
         Utf8DivFingerprintFold.AppendUInt64(ref fingerprint, (ulong)matches);

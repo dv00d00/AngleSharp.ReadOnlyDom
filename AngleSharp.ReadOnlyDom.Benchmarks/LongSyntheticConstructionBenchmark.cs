@@ -22,8 +22,8 @@ public class LongSyntheticConstructionBenchmark
         .TakeFirst()
         .SelectNormalizedText("text", required: true)
         .Compile();
-    private readonly CompactStreamingExtractionPlan _streamingPlan = CompactStreamingExtractor
-        .CompileFirstNormalizedText("article", "content");
+    private readonly CompactStreamingExtractionPlan _streamingPlan =
+        CompactStreamingExtractor.CompileFirstNormalizedText("article", "content");
     private readonly CompactAggregatePlan _aggregatePlan = CompactAggregate
         .First(CompactAggregateSelector.Tag("article").WithId("content"))
         .Field("text", CompactAggregateProjection.SelfNormalizedText(), required: true)
@@ -48,9 +48,9 @@ public class LongSyntheticConstructionBenchmark
         var counters = _streamingPlan.Execute(_html).Counters;
         Console.WriteLine(
             $"Synthetic fixture: {Encoding.UTF8.GetByteCount(_html):N0} UTF-8 bytes, "
-            + $"{NoiseBlocks:N0} noise blocks, target near EOF, {counters.TokensProcessed:N0} tokens, "
-            + $"{counters.NodesMaterialized:N0} topology nodes, {counters.AttributesRetained:N0} retained attributes, "
-            + $"early terminated={counters.EarlyTerminated}."
+                + $"{NoiseBlocks:N0} noise blocks, target near EOF, {counters.TokensProcessed:N0} tokens, "
+                + $"{counters.NodesMaterialized:N0} topology nodes, {counters.AttributesRetained:N0} retained attributes, "
+                + $"early terminated={counters.EarlyTerminated}."
         );
     }
 
@@ -145,8 +145,8 @@ public class LongSyntheticConstructionBenchmark
         var actualContext = actual.Substring(contextStart, Math.Min(60, actual.Length - contextStart));
         throw new InvalidOperationException(
             $"Long synthetic {implementation} result differs at character {mismatch}; "
-            + $"expected length {expected.Length}, actual length {actual.Length}; "
-            + $"expected context '{expectedContext}', actual context '{actualContext}'."
+                + $"expected length {expected.Length}, actual length {actual.Length}; "
+                + $"expected context '{expectedContext}', actual context '{actualContext}'."
         );
     }
 }

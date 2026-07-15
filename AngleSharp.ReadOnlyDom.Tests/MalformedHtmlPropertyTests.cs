@@ -10,7 +10,6 @@ using FsCheck.Fluent;
 using AngleSharp.ReadOnlyDom.Compact;
 #endif
 
-
 namespace AngleSharp.Readonly.Tests;
 
 public class MalformedHtmlPropertyTests

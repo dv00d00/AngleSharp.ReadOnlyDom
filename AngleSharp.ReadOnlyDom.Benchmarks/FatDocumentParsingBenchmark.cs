@@ -52,7 +52,10 @@ public class FatDocumentParsingBenchmark
         using var frozen = _frozenParser.ParseCompactDocument(_html);
         using var frozenSource = _frozenSourceParser.ParseCompactDocument(_html);
 
-        if (frozen.Layout != CompactDocumentLayout.FrozenColumns || frozenSource.Layout != CompactDocumentLayout.FrozenColumns)
+        if (
+            frozen.Layout != CompactDocumentLayout.FrozenColumns
+            || frozenSource.Layout != CompactDocumentLayout.FrozenColumns
+        )
             throw new InvalidOperationException($"{Document} requires packed fallback and is not a frozen-view case.");
 
         if (!frozenSource.HasSourceLocations)

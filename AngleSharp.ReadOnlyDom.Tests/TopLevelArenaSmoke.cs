@@ -11,9 +11,15 @@ public class TopLevelArenaSmoke
 
     private static readonly ConcurrentDictionary<string, string> FileContents = new();
     private static readonly ConcurrentDictionary<string, IHtmlDocument> ParsedMutableDocs = new();
-    private static readonly ConcurrentDictionary<(string FileName, CompactDocumentLayout Layout), CompactDocument> ParsedArenaDocs = new();
+    private static readonly ConcurrentDictionary<
+        (string FileName, CompactDocumentLayout Layout),
+        CompactDocument
+    > ParsedArenaDocs = new();
     private static readonly CompactDocumentLayout[] Layouts =
-        [CompactDocumentLayout.Packed, CompactDocumentLayout.FrozenColumns];
+    [
+        CompactDocumentLayout.Packed,
+        CompactDocumentLayout.FrozenColumns,
+    ];
 
     private static string GetHtml(string fileName) =>
         FileContents.GetOrAdd(fileName, static fileName => File.ReadAllText(BaseDir + fileName));
@@ -23,15 +29,15 @@ public class TopLevelArenaSmoke
         CompactDocumentLayout layout
     ) =>
         (
-            ParsedMutableDocs.GetOrAdd(fileName, static fileName => TopLevelSmoke.parser.ParseDocument(GetHtml(fileName))),
+            ParsedMutableDocs.GetOrAdd(
+                fileName,
+                static fileName => TopLevelSmoke.parser.ParseDocument(GetHtml(fileName))
+            ),
             ParsedArenaDocs.GetOrAdd(
                 (fileName, layout),
                 static key =>
                     CompactParser
-                        .CreateParser(
-                        CompactMetadataOptions.ParentLinks,
-                        layout: key.Layout
-                        )
+                        .CreateParser(CompactMetadataOptions.ParentLinks, layout: key.Layout)
                         .ParseCompactDocument(GetHtml(key.FileName))
             )
         );
@@ -49,15 +55,13 @@ public class TopLevelArenaSmoke
             .Distinct();
 
     public static IEnumerable<(string FileName, string Id, CompactDocumentLayout Layout)> Ids() =>
-        TopLevelSmoke
-            .Ids()
-            .SelectMany(test => Layouts.Select(layout => (test.FileName, test.Id, layout)))
-            .Distinct();
+        TopLevelSmoke.Ids().SelectMany(test => Layouts.Select(layout => (test.FileName, test.Id, layout))).Distinct();
 
     public static IEnumerable<(string FileName, string Tag1, string Tag2, CompactDocumentLayout Layout)> TwoTags() =>
-        TopLevelSmoke.TwoTags().SelectMany(test =>
-            Layouts.Select(layout => (test.FileName, test.Tag1, test.Tag2, layout))
-        ).Distinct();
+        TopLevelSmoke
+            .TwoTags()
+            .SelectMany(test => Layouts.Select(layout => (test.FileName, test.Tag1, test.Tag2, layout)))
+            .Distinct();
 
     public static IEnumerable<(
         string FileName,
@@ -66,9 +70,10 @@ public class TopLevelArenaSmoke
         string Tag3,
         CompactDocumentLayout Layout
     )> ThreeTags() =>
-        TopLevelSmoke.ThreeTags().SelectMany(test =>
-            Layouts.Select(layout => (test.FileName, test.Tag1, test.Tag2, test.Tag3, layout))
-        ).Distinct();
+        TopLevelSmoke
+            .ThreeTags()
+            .SelectMany(test => Layouts.Select(layout => (test.FileName, test.Tag1, test.Tag2, test.Tag3, layout)))
+            .Distinct();
 
     public static IEnumerable<(TopLevelSmoke.SelectorTestCase TestCase, CompactDocumentLayout Layout)> Complex() =>
         TopLevelSmoke
@@ -111,8 +116,14 @@ public class TopLevelArenaSmoke
     {
         var hash = selector.IndexOf('#');
         var dot = selector.IndexOf('.');
-        var tagEnd = hash < 0 ? dot : dot < 0 ? hash : Math.Min(hash, dot);
-        var tag = tagEnd < 0 ? selector : tagEnd == 0 ? null : selector[..tagEnd];
+        var tagEnd =
+            hash < 0 ? dot
+            : dot < 0 ? hash
+            : Math.Min(hash, dot);
+        var tag =
+            tagEnd < 0 ? selector
+            : tagEnd == 0 ? null
+            : selector[..tagEnd];
         var id = hash < 0 ? null : selector[(hash + 1)..(dot > hash ? dot : selector.Length)];
         var className = dot < 0 ? null : selector[(dot + 1)..];
 
@@ -128,15 +139,10 @@ public class TopLevelArenaSmoke
     public async Task ParentLinksSupportDescendantMatching(CompactDocumentLayout layout)
     {
         using var document = CompactParser
-            .CreateParser(
-            CompactMetadataOptions.ParentLinks,
-            layout: layout
-            )
+            .CreateParser(CompactMetadataOptions.ParentLinks, layout: layout)
             .ParseCompactDocument("<main><ul class=navigation><li><span>x</span></li></ul></main>");
 
-        await Assert
-            .That(Count(document, n => n.Is("ul") && n.HasClass("navigation"), n => n.Is("span")))
-            .IsEqualTo(1);
+        await Assert.That(Count(document, n => n.Is("ul") && n.HasClass("navigation"), n => n.Is("span"))).IsEqualTo(1);
     }
 
     [Test]
@@ -192,10 +198,7 @@ public class TopLevelArenaSmoke
 
     [Test]
     [MethodDataSource(nameof(Complex))]
-    public async Task SameResultComplex(
-        TopLevelSmoke.SelectorTestCase testCase,
-        CompactDocumentLayout layout
-    )
+    public async Task SameResultComplex(TopLevelSmoke.SelectorTestCase testCase, CompactDocumentLayout layout)
     {
         var (mutable, arena) = GetDocs(testCase.FileName, layout);
         var expected = mutable.QuerySelectorAll(testCase.CssSelector).Length;

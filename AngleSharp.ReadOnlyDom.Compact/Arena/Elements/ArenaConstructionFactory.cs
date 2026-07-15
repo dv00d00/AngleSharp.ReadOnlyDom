@@ -104,11 +104,11 @@ internal sealed class ArenaConstructionFactory : IDomConstructionElementFactory<
     public ArenaElement CreateUnknown(ArenaDocument document, StringOrMemory tagName) => Create(document, tagName);
 
     public ArenaDocument CreateDocument(TextSource source, IBrowsingContext? context = null) =>
-        new Arena(
-            _hints,
-            _trackSourceReferences,
-            _constructionView?.CreateState(source)
-        ).CreateDocument(source, _options, _layout);
+        new Arena(_hints, _trackSourceReferences, _constructionView?.CreateState(source)).CreateDocument(
+            source,
+            _options,
+            _layout
+        );
 
     private static ArenaElement CreateKnown(ArenaDocument document, StringOrMemory name, ElementMarker marker)
     {

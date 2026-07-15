@@ -69,9 +69,12 @@ public readonly struct CompactExtractionValue
     public bool Exists { get; }
     public CompactValueOwnership Ownership { get; }
     public ReadOnlySpan<char> Span =>
-        !Exists ? default : _owned is not null ? _owned.AsSpan() : _document!.GetValue(_start, _length);
+        !Exists ? default
+        : _owned is not null ? _owned.AsSpan()
+        : _document!.GetValue(_start, _length);
 
     public string Own() => Exists ? (_owned ?? Span.ToString()) : string.Empty;
+
     public override string ToString() => Own();
 }
 
@@ -150,6 +153,7 @@ public sealed class CompactExtractionPlanBuilder
     }
 
     public CompactExtractionPlanBuilder Descendant(string tag) => AddStep(CompactPathAxis.Descendant, tag);
+
     public CompactExtractionPlanBuilder Child(string tag) => AddStep(CompactPathAxis.Child, tag);
 
     public CompactExtractionPlanBuilder WithId(string id) => WithAttribute("id", id);
@@ -201,8 +205,10 @@ public sealed class CompactExtractionPlanBuilder
     {
         if (_projections.Count == 0)
             throw new InvalidOperationException("At least one projection is required.");
-        if (_projections.Select(static projection => projection.Field).Distinct(StringComparer.Ordinal).Count()
-            != _projections.Count)
+        if (
+            _projections.Select(static projection => projection.Field).Distinct(StringComparer.Ordinal).Count()
+            != _projections.Count
+        )
             throw new InvalidOperationException("Projection field names must be unique.");
 
         return new CompactExtractionPlan(
@@ -260,11 +266,7 @@ public sealed class CompactExtractionPlan
     private readonly PlanStep[] _steps;
     private readonly PlanProjection[] _projections;
 
-    internal CompactExtractionPlan(
-        PlanStep[] steps,
-        PlanProjection[] projections,
-        CompactPlanCardinality cardinality
-    )
+    internal CompactExtractionPlan(PlanStep[] steps, PlanProjection[] projections, CompactPlanCardinality cardinality)
     {
         _steps = steps;
         _projections = projections;
@@ -356,28 +358,45 @@ public sealed class CompactExtractionPlan
         for (var index = 0; index < _steps.Length; index++)
         {
             var step = _steps[index];
-            text.Append("step ").Append(index).Append(": ").Append(step.Axis.ToString().ToLowerInvariant())
-                .Append(" tag=").Append(step.Tag);
+            text.Append("step ")
+                .Append(index)
+                .Append(": ")
+                .Append(step.Axis.ToString().ToLowerInvariant())
+                .Append(" tag=")
+                .Append(step.Tag);
             if (step.ClassToken is not null)
                 text.Append(" class~=").Append(step.ClassToken);
             foreach (var predicate in step.Attributes)
-                text.Append(' ').Append(predicate.Name).Append(predicate.Value is null ? " exists" : "=").Append(predicate.Value);
+                text.Append(' ')
+                    .Append(predicate.Name)
+                    .Append(predicate.Value is null ? " exists" : "=")
+                    .Append(predicate.Value);
             text.AppendLine();
         }
         foreach (var projection in _projections)
         {
-            text.Append("project ").Append(projection.Field).Append(": ")
+            text.Append("project ")
+                .Append(projection.Field)
+                .Append(": ")
                 .Append(projection.NormalizedText ? "normalized-subtree-text" : $"attribute({projection.Attribute})")
                 .Append(projection.Required ? " required" : " optional")
                 .Append(projection.Own ? " owned" : " borrowed")
                 .AppendLine();
         }
-        text.Append("payloads: inspect=[").AppendJoin(',', Requirements.InspectedAttributes)
-            .Append("]; retain=[").AppendJoin(',', Requirements.RetainedAttributes)
-            .Append("]; materialize=[").AppendJoin(',', Requirements.MaterializedAttributes)
-            .Append("]; text=").Append(Requirements.RetainsText)
+        text.Append("payloads: inspect=[")
+            .AppendJoin(',', Requirements.InspectedAttributes)
+            .Append("]; retain=[")
+            .AppendJoin(',', Requirements.RetainedAttributes)
+            .Append("]; materialize=[")
+            .AppendJoin(',', Requirements.MaterializedAttributes)
+            .Append("]; text=")
+            .Append(Requirements.RetainsText)
             .Append("; sidecars=none; termination=")
-            .Append(Cardinality == CompactPlanCardinality.First ? "first valid row after path evaluation" : "end of candidate ranges")
+            .Append(
+                Cardinality == CompactPlanCardinality.First
+                    ? "first valid row after path evaluation"
+                    : "end of candidate ranges"
+            )
             .Append("; state=two candidate lists + duplicate handle set");
         return text.ToString();
     }
@@ -394,8 +413,10 @@ public sealed class CompactExtractionPlan
         counters.CandidateNodes++;
         if (seen is not null && !seen.Add(candidate.Handle))
             return;
-        if (step.ClassToken is not null
-            && !MatchAttribute(candidate, document, step.ClassId, step.ClassToken, token: true, counters))
+        if (
+            step.ClassToken is not null
+            && !MatchAttribute(candidate, document, step.ClassId, step.ClassToken, token: true, counters)
+        )
             return;
         foreach (var predicate in step.Attributes)
             if (!MatchAttribute(candidate, document, predicate.NameId, predicate.Value, token: false, counters))
@@ -513,8 +534,10 @@ public sealed class CompactExtractionPlan
             document.ResolveNameId(step.Tag),
             step.ClassToken,
             step.ClassToken is null ? ushort.MaxValue : document.ResolveNameId("class"),
-            step.Attributes
-                .Select(predicate => new ResolvedAttributePredicate(document.ResolveNameId(predicate.Name), predicate.Value))
+            step.Attributes.Select(predicate => new ResolvedAttributePredicate(
+                    document.ResolveNameId(predicate.Name),
+                    predicate.Value
+                ))
                 .ToArray()
         );
 

@@ -1,16 +1,15 @@
 #if NET10_0
+
 using System.Buffers;
 using System.Text;
 using AngleSharp.Html.Parser;
-using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.ReadOnlyDom.Compact;
-using AngleSharp.ReadOnlyDom.Streaming;
 using AngleSharp.ReadOnlyDom.Compact.Experimental;
 using AngleSharp.ReadOnlyDom.Filters;
 using AngleSharp.ReadOnlyDom.Html;
+using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
 using BenchmarkDotNet.Attributes;
-
-using Element = AngleSharp.ReadOnlyDom.Streaming.Element;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
@@ -21,12 +20,15 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 [MemoryDiagnoser]
 public class QqArticleScraperBenchmark
 {
-    private static readonly QueryPlan<CompiledArticleState> ArticleQuery =
-        CreateArticleQuery();
+    private static readonly QueryPlan<CompiledArticleState> ArticleQuery = CreateArticleQuery();
     private readonly HtmlParser _angleSharp = new();
     private readonly HtmlParser _readOnlyMinimal = CreateReadOnlyParser(ReadOnlyMetadataProfile.Minimal);
     private readonly HtmlParser _readOnlySourceMapped = CreateReadOnlyParser(ReadOnlyMetadataProfile.SourceMapped);
-    private readonly HtmlParser _compact = CompactParser.CreateParser(parserOptions: CreateOptions(trackSources: false));
+
+    private readonly HtmlParser _compact = CompactParser.CreateParser(
+        parserOptions: CreateOptions(trackSources: false)
+    );
+
     private string _html = null!;
     private byte[] _utf8 = null!;
     private List<Article> _expected = null!;
@@ -71,6 +73,7 @@ public class QqArticleScraperBenchmark
                 );
             }
         }
+
         return output;
     }
 
@@ -122,6 +125,7 @@ public class QqArticleScraperBenchmark
                 }
             }
         }
+
         return output;
     }
 
@@ -141,37 +145,40 @@ public class QqArticleScraperBenchmark
         var state = ArticleQuery.Execute(_utf8, new CompiledArticleState());
         return state.DetachResults();
     }
+    
+    [Benchmark]
+    public List<Article> QueryCompiledUtf8Fold2()
+    {
+        var list = QueryNode<CompiledArticleState>.Root(Selector.Tag("ul").WithClass("news-list"));
+        
+        var card = list.Descendant(Selector.Tag("li").WithAttribute("dt-eid", "em_item_article"))
+            .OnStart(static (ref state, in element) => state.StartCard(element), "dt-params")
+            .OnEnd(static (ref state) => state.EndCard());
+        
+        var link = card.Descendant(Selector.Tag("a").WithAttribute("href"))
+            .OnStart(static (ref state, in element) => state.StartLink(element), "href")
+            .OnText(static (ref state, text) => state.AppendText(text))
+            .OnEnd(static (ref state) => state.EndLink());
+        
+        link.Descendant(Selector.Tag("img"))
+            .OnStart(static (ref state, in element) => state.Image(element), "src", "alt");
+        
+        var state = ArticleQuery.Execute(_utf8, new CompiledArticleState());
+        return state.DetachResults();
+    }
 
     private static QueryPlan<CompiledArticleState> CreateArticleQuery()
     {
-        var list = QueryNode<CompiledArticleState>.Root(
-            Selector.Tag("ul").WithClass("news-list")
-        );
-        var card = list.Descendant(
-                Selector.Tag("li").WithAttribute("dt-eid", "em_item_article")
-            )
-            .OnStart(
-                static (ref CompiledArticleState state, in Element element) =>
-                    state.StartCard(element),
-                "dt-params"
-            )
-            .OnEnd(static (ref CompiledArticleState state) => state.EndCard());
+        var list = QueryNode<CompiledArticleState>.Root(Selector.Tag("ul").WithClass("news-list"));
+        var card = list.Descendant(Selector.Tag("li").WithAttribute("dt-eid", "em_item_article"))
+            .OnStart(static (ref state, in element) => state.StartCard(element), "dt-params")
+            .OnEnd(static (ref state) => state.EndCard());
         var link = card.Descendant(Selector.Tag("a").WithAttribute("href"))
-            .OnStart(
-                static (ref CompiledArticleState state, in Element element) =>
-                    state.StartLink(element),
-                "href"
-            )
-            .OnText(static (ref CompiledArticleState state, ReadOnlySpan<byte> text) =>
-                state.AppendText(text))
-            .OnEnd(static (ref CompiledArticleState state) => state.EndLink());
+            .OnStart(static (ref state, in element) => state.StartLink(element), "href")
+            .OnText(static (ref state, text) => state.AppendText(text))
+            .OnEnd(static (ref state) => state.EndLink());
         link.Descendant(Selector.Tag("img"))
-            .OnStart(
-                static (ref CompiledArticleState state, in Element element) =>
-                    state.Image(element),
-                "src",
-                "alt"
-            );
+            .OnStart(static (ref state, in element) => state.Image(element), "src", "alt");
         return list.Compile();
     }
 
@@ -199,6 +206,7 @@ public class QqArticleScraperBenchmark
                 );
             }
         }
+
         return output;
     }
 
@@ -251,21 +259,26 @@ public class QqArticleScraperBenchmark
                 pendingSpace = output.Length != 0;
                 continue;
             }
+
             if (pendingSpace)
             {
                 output.Append(' ');
                 pendingSpace = false;
             }
+
             output.Append(character);
         }
+
         return output.ToString();
     }
 
-    private static string? NullIfEmpty(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static HtmlParser CreateReadOnlyParser(ReadOnlyMetadataProfile profile) =>
-        new(CreateOptions(profile is ReadOnlyMetadataProfile.SourceMapped or ReadOnlyMetadataProfile.Diagnostic), ReadOnlyParser.CreateContext(profile));
+        new(
+            CreateOptions(profile is ReadOnlyMetadataProfile.SourceMapped or ReadOnlyMetadataProfile.Diagnostic),
+            ReadOnlyParser.CreateContext(profile)
+        );
 
     private static HtmlParserOptions CreateOptions(bool trackSources) =>
         new()
@@ -278,17 +291,11 @@ public class QqArticleScraperBenchmark
             SkipPlaintext = true,
             SkipCDATA = true,
             DisableElementPositionTracking = !trackSources,
-            ShouldEmitAttribute = static (ref StructHtmlToken _, ReadOnlyMemory<char> name) =>
+            ShouldEmitAttribute = static (ref _, name) =>
                 name.Span is "class" or "dt-eid" or "dt-params" or "href" or "src" or "alt",
         };
 
-    public sealed record Article(
-        string Title,
-        string Url,
-        string? ImageUrl,
-        string? ImageAlt,
-        string CardMetadata
-    );
+    public sealed record Article(string Title, string Url, string? ImageUrl, string? ImageAlt, string CardMetadata);
 
     private sealed class CompiledArticleState
     {
@@ -299,8 +306,7 @@ public class QqArticleScraperBenchmark
         private string? _imageUrl;
         private string? _imageAlt;
 
-        public void StartCard(in Element element) =>
-            _cardMetadata = Decode(element, "dt-params") ?? string.Empty;
+        public void StartCard(in Element element) => _cardMetadata = Decode(element, "dt-params") ?? string.Empty;
 
         public void EndCard() => _cardMetadata = string.Empty;
 
@@ -427,6 +433,7 @@ public class QqArticleScraperBenchmark
                 _activeImageAlt = null;
                 _title.Clear();
             }
+
             if (_pendingKind == TagKind.Img && _activeHref is not null)
             {
                 _activeImageUrl ??= _pendingImageUrl;
@@ -441,15 +448,11 @@ public class QqArticleScraperBenchmark
             }
 
             EnsureCapacity();
-            _frames[_frameCount++] = new Frame(
-                _pendingHash,
-                _pendingLength,
-                newsList,
-                card,
-                articleLink
-            );
-            if (newsList) _newsListDepth++;
-            if (card) _cardDepth++;
+            _frames[_frameCount++] = new Frame(_pendingHash, _pendingLength, newsList, card, articleLink);
+            if (newsList)
+                _newsListDepth++;
+            if (card)
+                _cardDepth++;
         }
 
         public void Text(ReadOnlySpan<byte> utf8)
@@ -496,7 +499,8 @@ public class QqArticleScraperBenchmark
 
         public void Dispose()
         {
-            if (_disposed) return;
+            if (_disposed)
+                return;
             _disposed = true;
             ArrayPool<Frame>.Shared.Return(_frames);
             _frames = [];
@@ -504,13 +508,17 @@ public class QqArticleScraperBenchmark
 
         private void Close(Frame frame)
         {
-            if (frame.ArticleLink) EmitArticle();
+            if (frame.ArticleLink)
+                EmitArticle();
             if (frame.Card)
             {
                 _cardDepth--;
-                if (_cardDepth == 0) _cardMetadata = string.Empty;
+                if (_cardDepth == 0)
+                    _cardMetadata = string.Empty;
             }
-            if (frame.NewsList) _newsListDepth--;
+
+            if (frame.NewsList)
+                _newsListDepth--;
         }
 
         private void EmitArticle()
@@ -526,7 +534,8 @@ public class QqArticleScraperBenchmark
 
         private void EnsureCapacity()
         {
-            if (_frameCount < _frames.Length) return;
+            if (_frameCount < _frames.Length)
+                return;
             var replacement = ArrayPool<Frame>.Shared.Rent(_frames.Length * 2);
             _frames.AsSpan(0, _frameCount).CopyTo(replacement);
             ArrayPool<Frame>.Shared.Return(_frames);
@@ -538,20 +547,30 @@ public class QqArticleScraperBenchmark
             var index = 0;
             while (index < tokens.Length)
             {
-                while (index < tokens.Length && tokens[index] is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\r' or 0x0C) index++;
+                while (
+                    index < tokens.Length
+                    && tokens[index] is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\r' or 0x0C
+                )
+                    index++;
                 var start = index;
-                while (index < tokens.Length && tokens[index] is not ((byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\r' or 0x0C)) index++;
-                if (tokens[start..index].SequenceEqual(wanted)) return true;
+                while (
+                    index < tokens.Length
+                    && tokens[index] is not ((byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\r' or 0x0C)
+                )
+                    index++;
+                if (tokens[start..index].SequenceEqual(wanted))
+                    return true;
             }
+
             return false;
         }
 
         private static TagKind Kind(ReadOnlySpan<byte> name) =>
             name.SequenceEqual("ul"u8) ? TagKind.Ul
-                : name.SequenceEqual("li"u8) ? TagKind.Li
-                : name.SequenceEqual("a"u8) ? TagKind.A
-                : name.SequenceEqual("img"u8) ? TagKind.Img
-                : TagKind.Other;
+            : name.SequenceEqual("li"u8) ? TagKind.Li
+            : name.SequenceEqual("a"u8) ? TagKind.A
+            : name.SequenceEqual("img"u8) ? TagKind.Img
+            : TagKind.Other;
 
         private static bool IsVoid(TagKind kind) => kind == TagKind.Img;
 
@@ -563,10 +582,19 @@ public class QqArticleScraperBenchmark
                 hash ^= character;
                 hash *= Utf8DivFingerprintFold.Prime;
             }
+
             return hash;
         }
 
-        private enum TagKind : byte { Other, Ul, Li, A, Img }
+        private enum TagKind : byte
+        {
+            Other,
+            Ul,
+            Li,
+            A,
+            Img,
+        }
+
         private readonly record struct Frame(ulong Hash, int Length, bool NewsList, bool Card, bool ArticleLink);
     }
 }

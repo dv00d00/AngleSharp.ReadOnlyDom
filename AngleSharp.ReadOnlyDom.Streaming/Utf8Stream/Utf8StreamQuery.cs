@@ -3,7 +3,7 @@ using System.IO.Pipelines;
 using System.Numerics;
 using System.Text;
 
-namespace AngleSharp.ReadOnlyDom.Streaming;
+namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
 
 public enum QueryRelation : byte
 {
@@ -12,10 +12,7 @@ public enum QueryRelation : byte
     Child,
 }
 
-public delegate void StartHandler<TState>(
-    ref TState state,
-    in Element element
-);
+public delegate void StartHandler<TState>(ref TState state, in Element element);
 
 public delegate void TextHandler<TState>(ref TState state, ReadOnlySpan<byte> utf8);
 
@@ -29,13 +26,7 @@ public readonly ref struct Element
     private readonly int[] _starts;
     private readonly int[] _lengths;
 
-    internal Element(
-        string[] attributeNames,
-        byte[][] attributeNameUtf8,
-        byte[] values,
-        int[] starts,
-        int[] lengths
-    )
+    internal Element(string[] attributeNames, byte[][] attributeNameUtf8, byte[] values, int[] starts, int[] lengths)
     {
         _attributeNames = attributeNames;
         _attributeNameUtf8 = attributeNameUtf8;
@@ -102,24 +93,14 @@ public sealed class Selector
         if (token.Any(IsHtmlSpace))
             throw new ArgumentException("A class-token predicate must contain exactly one token.", nameof(token));
         _attributes.Add(
-            new AttributePredicate(
-                NormalizeName("class", "name"),
-                AttributePredicateKind.ContainsToken,
-                token
-            )
+            new AttributePredicate(NormalizeName("class", "name"), AttributePredicateKind.ContainsToken, token)
         );
         return this;
     }
 
     public Selector WithAttribute(string name)
     {
-        _attributes.Add(
-            new AttributePredicate(
-                NormalizeName(name, nameof(name)),
-                AttributePredicateKind.Exists,
-                null
-            )
-        );
+        _attributes.Add(new AttributePredicate(NormalizeName(name, nameof(name)), AttributePredicateKind.Exists, null));
         return this;
     }
 
@@ -127,11 +108,7 @@ public sealed class Selector
     {
         ArgumentNullException.ThrowIfNull(value);
         _attributes.Add(
-            new AttributePredicate(
-                NormalizeName(name, nameof(name)),
-                AttributePredicateKind.Equals,
-                value
-            )
+            new AttributePredicate(NormalizeName(name, nameof(name)), AttributePredicateKind.Equals, value)
         );
         return this;
     }
@@ -142,7 +119,9 @@ public sealed class Selector
         foreach (var character in value)
         {
             if (character > 0x7F)
-                throw new NotSupportedException("The streaming query prototype accepts ASCII tag and attribute names only.");
+                throw new NotSupportedException(
+                    "The streaming query prototype accepts ASCII tag and attribute names only."
+                );
         }
         return value.ToLowerInvariant();
     }
@@ -157,11 +136,7 @@ internal enum AttributePredicateKind : byte
     ContainsToken,
 }
 
-internal sealed record AttributePredicate(
-    string Name,
-    AttributePredicateKind Kind,
-    string? Value
-);
+internal sealed record AttributePredicate(string Name, AttributePredicateKind Kind, string? Value);
 
 public sealed class QueryNode<TState>
 {
@@ -172,11 +147,7 @@ public sealed class QueryNode<TState>
     private TextHandler<TState>? _text;
     private EndHandler<TState>? _end;
 
-    private QueryNode(
-        Selector selector,
-        QueryRelation relation,
-        QueryNode<TState>? parent
-    )
+    private QueryNode(Selector selector, QueryRelation relation, QueryNode<TState>? parent)
     {
         Selector = selector ?? throw new ArgumentNullException(nameof(selector));
         Relation = relation;
@@ -194,19 +165,13 @@ public sealed class QueryNode<TState>
     internal TextHandler<TState>? TextHandler => _text;
     internal EndHandler<TState>? EndHandler => _end;
 
-    public static QueryNode<TState> Root(Selector selector) =>
-        new(selector, QueryRelation.Root, null);
+    public static QueryNode<TState> Root(Selector selector) => new(selector, QueryRelation.Root, null);
 
-    public QueryNode<TState> Descendant(Selector selector) =>
-        AddChild(selector, QueryRelation.Descendant);
+    public QueryNode<TState> Descendant(Selector selector) => AddChild(selector, QueryRelation.Descendant);
 
-    public QueryNode<TState> Child(Selector selector) =>
-        AddChild(selector, QueryRelation.Child);
+    public QueryNode<TState> Child(Selector selector) => AddChild(selector, QueryRelation.Child);
 
-    public QueryNode<TState> OnStart(
-        StartHandler<TState> handler,
-        params string[] projectedAttributes
-    )
+    public QueryNode<TState> OnStart(StartHandler<TState> handler, params string[] projectedAttributes)
     {
         _start = handler ?? throw new ArgumentNullException(nameof(handler));
         foreach (var attribute in projectedAttributes)
@@ -228,10 +193,7 @@ public sealed class QueryNode<TState>
 
     public QueryPlan<TState> Compile() => QueryCompiler.Compile(_root);
 
-    private QueryNode<TState> AddChild(
-        Selector selector,
-        QueryRelation relation
-    )
+    private QueryNode<TState> AddChild(Selector selector, QueryRelation relation)
     {
         var child = new QueryNode<TState>(selector, relation, this);
         _children.Add(child);
@@ -293,9 +255,7 @@ public sealed class QueryPlan<TState>
     )
     {
         using var session = CreateSession(state);
-        await Utf8HtmlTokenizer
-            .TokenizeAsync(reader, session, cancellationToken)
-            .ConfigureAwait(false);
+        await Utf8HtmlTokenizer.TokenizeAsync(reader, session, cancellationToken).ConfigureAwait(false);
         return session.State;
     }
 }
@@ -329,8 +289,9 @@ internal static class QueryCompiler
             throw new NotSupportedException("StreamingOnly plans support at most 64 query nodes.");
 
         var attributeNames = sourceNodes
-            .SelectMany(static node => node.Selector.Attributes.Select(static predicate => predicate.Name)
-                .Concat(node.ProjectedAttributes))
+            .SelectMany(static node =>
+                node.Selector.Attributes.Select(static predicate => predicate.Name).Concat(node.ProjectedAttributes)
+            )
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToArray();
@@ -349,20 +310,17 @@ internal static class QueryCompiler
         {
             var source = sourceNodes[index];
             var tagName = Encoding.UTF8.GetBytes(source.Selector.TagName);
-            var predicates = source.Selector.Attributes
-                .Select(predicate => new CompiledAttributePredicate(
+            var predicates = source
+                .Selector.Attributes.Select(predicate => new CompiledAttributePredicate(
                     attributeIndexes[predicate.Name],
                     predicate.Kind,
                     predicate.Value is null ? null : Encoding.UTF8.GetBytes(predicate.Value)
                 ))
                 .ToArray();
-            var requiredAttributeBits = source.Selector.Attributes
-                .Select(static predicate => predicate.Name)
+            var requiredAttributeBits = source
+                .Selector.Attributes.Select(static predicate => predicate.Name)
                 .Concat(source.ProjectedAttributes)
-                .Aggregate(
-                    0UL,
-                    (bits, name) => bits | (1UL << attributeIndexes[name])
-                );
+                .Aggregate(0UL, (bits, name) => bits | (1UL << attributeIndexes[name]));
             nodes[index] = new CompiledQueryNode<TState>(
                 index,
                 source.Parent is null ? -1 : sourceIndexes[source.Parent],
@@ -377,26 +335,16 @@ internal static class QueryCompiler
             );
         }
 
-        var tags = nodes.Select(static node => Encoding.UTF8.GetString(node.TagName))
+        var tags = nodes
+            .Select(static node => Encoding.UTF8.GetString(node.TagName))
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToArray();
-        var explanation = new QueryExplanation(
-            "StreamingOnly",
-            tags,
-            attributeNames,
-            nodes.Length,
-            24,
-            false,
-            null
-        );
+        var explanation = new QueryExplanation("StreamingOnly", tags, attributeNames, nodes.Length, 24, false, null);
         return new QueryPlan<TState>(nodes, attributeNames, attributeNameUtf8, explanation);
     }
 
-    private static void AddPreorder<TState>(
-        QueryNode<TState> node,
-        List<QueryNode<TState>> nodes
-    )
+    private static void AddPreorder<TState>(QueryNode<TState> node, List<QueryNode<TState>> nodes)
     {
         nodes.Add(node);
         foreach (var child in node.Children)
@@ -547,11 +495,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         }
 
         EnsureFrameCapacity();
-        _frames[_frameCount++] = new QueryFrame(
-            _pendingTagHash,
-            _pendingTagLength,
-            matches
-        );
+        _frames[_frameCount++] = new QueryFrame(_pendingTagHash, _pendingTagLength, matches);
         IncrementActive(matches);
     }
 
@@ -610,8 +554,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         return node.Relation switch
         {
             QueryRelation.Descendant => _activeCounts[node.ParentIndex] != 0,
-            QueryRelation.Child =>
-                _frameCount != 0
+            QueryRelation.Child => _frameCount != 0
                 && (_frames[_frameCount - 1].Matches & (1UL << node.ParentIndex)) != 0,
             _ => false,
         };
@@ -625,15 +568,9 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
             if (length < 0)
                 return false;
             var value = _attributeValues.AsSpan(_attributeStarts[predicate.AttributeIndex], length);
-            if (
-                predicate.Kind == AttributePredicateKind.Equals
-                && !value.SequenceEqual(predicate.Value)
-            )
+            if (predicate.Kind == AttributePredicateKind.Equals && !value.SequenceEqual(predicate.Value))
                 return false;
-            if (
-                predicate.Kind == AttributePredicateKind.ContainsToken
-                && !ContainsToken(value, predicate.Value!)
-            )
+            if (predicate.Kind == AttributePredicateKind.ContainsToken && !ContainsToken(value, predicate.Value!))
                 return false;
         }
         return true;
@@ -724,19 +661,37 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         return false;
     }
 
-    private static bool IsHtmlSpace(byte value) =>
-        value is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\r' or 0x0C;
+    private static bool IsHtmlSpace(byte value) => value is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\r' or 0x0C;
 
     private static bool IsVoidTag(ulong hash, int length) =>
         (length == 2 && (hash == VoidElementHashes.BrHash || hash == VoidElementHashes.HrHash))
-        || (length == 3 && (hash == VoidElementHashes.ImgHash || hash == VoidElementHashes.WbrHash || hash == VoidElementHashes.ColHash))
-        || (length == 4 && (hash == VoidElementHashes.AreaHash || hash == VoidElementHashes.BaseHash || hash == VoidElementHashes.LinkHash || hash == VoidElementHashes.MetaHash))
-        || (length == 5 && (hash == VoidElementHashes.EmbedHash || hash == VoidElementHashes.InputHash || hash == VoidElementHashes.ParamHash || hash == VoidElementHashes.TrackHash))
+        || (
+            length == 3
+            && (
+                hash == VoidElementHashes.ImgHash
+                || hash == VoidElementHashes.WbrHash
+                || hash == VoidElementHashes.ColHash
+            )
+        )
+        || (
+            length == 4
+            && (
+                hash == VoidElementHashes.AreaHash
+                || hash == VoidElementHashes.BaseHash
+                || hash == VoidElementHashes.LinkHash
+                || hash == VoidElementHashes.MetaHash
+            )
+        )
+        || (
+            length == 5
+            && (
+                hash == VoidElementHashes.EmbedHash
+                || hash == VoidElementHashes.InputHash
+                || hash == VoidElementHashes.ParamHash
+                || hash == VoidElementHashes.TrackHash
+            )
+        )
         || (length == 6 && hash == VoidElementHashes.SourceHash);
 }
 
-internal readonly record struct QueryFrame(
-    ulong TagHash,
-    int TagLength,
-    ulong Matches
-);
+internal readonly record struct QueryFrame(ulong TagHash, int TagLength, ulong Matches);
