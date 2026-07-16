@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <Compile Remove="HttpParsingBenchmark.cs" Condition=" '$(TargetFramework)' == 'net472' " />
+    <Using Include="AngleSharp.Html.Parser.Utf8" Condition=" '$(TargetFramework)' == 'net10.0' " />
   </ItemGroup>
 
   <ItemGroup>

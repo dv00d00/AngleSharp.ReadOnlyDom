@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="System.IO.Pipelines" />
+    <Using Include="AngleSharp.Html.Parser.Utf8" />
     <ProjectReference Include="..\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj" />
     <ProjectReference Include="..\AngleSharp.ReadOnlyDom.Streaming\AngleSharp.ReadOnlyDom.Streaming.csproj" />
   </ItemGroup>

@@ -29,7 +29,7 @@ internal static class HtmlEncodingSniffer
         return new Detection(sink.DetectedEncoding ?? fallback ?? Encoding.GetEncoding(1252), 0);
     }
 
-    private sealed class EncodingDeclarationSink : IUtf8HtmlTokenSink
+    private sealed class EncodingDeclarationSink : IOptimizedUtf8HtmlTokenSink
     {
         private bool _isMeta;
         private string? _charset;
@@ -47,6 +47,14 @@ internal static class HtmlEncodingSniffer
             _content = null;
             _httpEquiv = null;
         }
+
+        public void StartTag(ReadOnlySpan<byte> name, ulong hash) => StartTag(name);
+
+        public bool WantsAttribute(ReadOnlySpan<byte> name) =>
+            _isMeta
+            && (
+                name.SequenceEqual("charset"u8) || name.SequenceEqual("content"u8) || name.SequenceEqual("http-equiv"u8)
+            );
 
         public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
         {
@@ -79,6 +87,8 @@ internal static class HtmlEncodingSniffer
         }
 
         public void EndTag(ReadOnlySpan<byte> name) { }
+
+        public void EndTag(ReadOnlySpan<byte> name, ulong hash) { }
 
         private static bool TryResolve(string? label, out Encoding encoding)
         {
