@@ -21,7 +21,10 @@ internal static class EncodedHtmlInput
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(inputSliceSize);
 
         if (!inputEncoding.Detect && inputEncoding.Encoding is null)
-            throw new ArgumentException("Use HtmlInputEncoding.Known or HtmlInputEncoding.Auto.", nameof(inputEncoding));
+            throw new ArgumentException(
+                "Use HtmlInputEncoding.Known or HtmlInputEncoding.Auto.",
+                nameof(inputEncoding)
+            );
 
         limits ??= HtmlStreamingLimits.Default;
         var tokenizer = new Utf8HtmlTokenizer(sink, stateMetrics: null, limits, countInputBytes: false);
@@ -88,14 +91,13 @@ internal static class EncodedHtmlInput
         var prefix = ArrayPool<byte>.Shared.Rent(HtmlEncodingSniffer.PrefixSize);
         try
         {
-            var count = await ReadPrefixAsync(reader, prefix, cancellationToken, maximumInputBytes).ConfigureAwait(false);
+            var count = await ReadPrefixAsync(reader, prefix, cancellationToken, maximumInputBytes)
+                .ConfigureAwait(false);
             var detection = HtmlEncodingSniffer.Detect(prefix.AsSpan(0, count), fallback);
 
             if (detection.Encoding.CodePage == Encoding.UTF8.CodePage)
             {
-                tokenizer.Write(
-                    prefix.AsSpan(detection.PreambleLength, count - detection.PreambleLength)
-                );
+                tokenizer.Write(prefix.AsSpan(detection.PreambleLength, count - detection.PreambleLength));
                 if (afterInputSlice is not null)
                     await afterInputSlice().ConfigureAwait(false);
                 await PumpUtf8Async(
@@ -112,9 +114,7 @@ internal static class EncodedHtmlInput
             }
 
             using var transcoder = new Transcoder(detection.Encoding, tokenizer);
-            transcoder.Write(
-                prefix.AsSpan(detection.PreambleLength, count - detection.PreambleLength)
-            );
+            transcoder.Write(prefix.AsSpan(detection.PreambleLength, count - detection.PreambleLength));
             if (afterInputSlice is not null)
                 await afterInputSlice().ConfigureAwait(false);
             await PumpEncodedAsync(
@@ -304,14 +304,7 @@ internal static class EncodedHtmlInput
         {
             while (!source.IsEmpty)
             {
-                _decoder.Convert(
-                    source,
-                    _characters,
-                    flush: false,
-                    out var bytesUsed,
-                    out var charactersUsed,
-                    out _
-                );
+                _decoder.Convert(source, _characters, flush: false, out var bytesUsed, out var charactersUsed, out _);
                 if (bytesUsed == 0 && charactersUsed == 0)
                     throw new InvalidOperationException("The source decoder made no progress.");
                 source = source[bytesUsed..];
@@ -343,14 +336,7 @@ internal static class EncodedHtmlInput
             var completed = false;
             do
             {
-                _encoder.Convert(
-                    characters,
-                    _utf8,
-                    flush,
-                    out var charactersUsed,
-                    out var bytesUsed,
-                    out completed
-                );
+                _encoder.Convert(characters, _utf8, flush, out var charactersUsed, out var bytesUsed, out completed);
                 if (!completed && charactersUsed == 0 && bytesUsed == 0)
                     throw new InvalidOperationException("The UTF-8 encoder made no progress.");
                 characters = characters[charactersUsed..];

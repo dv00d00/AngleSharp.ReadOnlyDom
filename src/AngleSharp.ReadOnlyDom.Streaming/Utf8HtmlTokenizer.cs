@@ -203,11 +203,7 @@ public sealed class Utf8HtmlTokenizer
         ThrowIfCompleted();
         var observedInputBytes = SaturatingAdd(_bytesConsumed, utf8.Length);
         if (observedInputBytes > _maximumInputBytesAllowed)
-            ThrowLimitExceeded(
-                HtmlStreamingLimit.InputBytes,
-                _maximumInputBytesAllowed,
-                observedInputBytes
-            );
+            ThrowLimitExceeded(HtmlStreamingLimit.InputBytes, _maximumInputBytesAllowed, observedInputBytes);
         _bytesConsumed = observedInputBytes;
         var index = 0;
         while (_utf8CarryLength != 0)
@@ -1796,11 +1792,7 @@ public sealed class Utf8HtmlTokenizer
     {
         var observed = SaturatingAdd(_bufferedTokenBytes, additional);
         if (observed > _maximumBufferedTokenBytesAllowed)
-            ThrowLimitExceeded(
-                HtmlStreamingLimit.BufferedTokenBytes,
-                _maximumBufferedTokenBytesAllowed,
-                observed
-            );
+            ThrowLimitExceeded(HtmlStreamingLimit.BufferedTokenBytes, _maximumBufferedTokenBytesAllowed, observed);
     }
 
     private void Clear(ArrayBufferWriter<byte> buffer)

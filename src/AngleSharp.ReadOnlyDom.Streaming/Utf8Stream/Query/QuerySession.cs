@@ -62,10 +62,7 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
             var index = BitOperations.TrailingZeroCount(candidates);
             candidates &= candidates - 1;
             var node = _plan.Nodes[index];
-            if (
-                !name.SequenceEqual(node.TagName)
-                || !ParentMatches(node)
-            )
+            if (!name.SequenceEqual(node.TagName) || !ParentMatches(node))
                 continue;
             _pendingCandidateBits |= 1UL << node.Index;
             _pendingAttributeBits |= node.RequiredAttributeBits;
@@ -256,7 +253,7 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
         {
             QueryRelation.Descendant => _activeCounts[node.ParentIndex] != 0,
             QueryRelation.Child => _frameCount != 0
-                                   && (_frames[_frameCount - 1].Matches & (1UL << node.ParentIndex)) != 0,
+                && (_frames[_frameCount - 1].Matches & (1UL << node.ParentIndex)) != 0,
             _ => false,
         };
     }
@@ -449,19 +446,15 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
             completed &= completed - 1;
             captureCount = SaturatingAdd(captureCount, _completedCaptures[index]?.Count ?? 0);
         }
-        return captureCount == 0 || textLength == 0
-            ? 0
-            : captureCount > long.MaxValue / textLength
-                ? long.MaxValue
-                : captureCount * textLength;
+        return captureCount == 0 || textLength == 0 ? 0
+            : captureCount > long.MaxValue / textLength ? long.MaxValue
+            : captureCount * textLength;
     }
 
     private void EnsureQueryCaptureCapacity(long additional)
     {
         var observed =
-            _queryCaptureBytes > long.MaxValue - additional
-                ? long.MaxValue
-                : _queryCaptureBytes + additional;
+            _queryCaptureBytes > long.MaxValue - additional ? long.MaxValue : _queryCaptureBytes + additional;
         if (observed > _maximumQueryCaptureBytes)
             throw new HtmlStreamingLimitExceededException(
                 HtmlStreamingLimit.QueryCaptureBytes,

@@ -120,11 +120,7 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IConst
 
     public void InsertText(int idx, StringOrMemory text, bool emitWhiteSpaceOnly = false)
     {
-        if (
-            !emitWhiteSpaceOnly
-            && text.Memory.Span.Trim(WhiteSpace).Length == 0
-            && !ShouldRetainWhitespaceAt(idx)
-        )
+        if (!emitWhiteSpaceOnly && text.Memory.Span.Trim(WhiteSpace).Length == 0 && !ShouldRetainWhitespaceAt(idx))
         {
             return;
         }
