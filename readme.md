@@ -71,6 +71,8 @@ var headings = query.Execute(htmlUtf8, new List<string>());
 
 Callbacks can consume borrowed UTF-8 spans or explicitly materialize owned strings. More complete examples cover
 attributes, typed products, subtree text, arbitrary aggregate state, `PipeReader`, and backpressured output.
+Independent query roots can be combined with `StreamQuery.Observe(...)`; `.Resolve(...)` turns their shared evidence
+state into a caller-defined success, empty-result, provider-error, or unexpected-response outcome after EOF.
 
 ## Run it
 

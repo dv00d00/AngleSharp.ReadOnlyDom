@@ -19,6 +19,7 @@ RunReadOnlyDom();
 RunCompactDom();
 RunConstructionTimeViews();
 StreamingQueryExamples.Run();
+StreamingOutcomeExample.Run();
 
 static void RunReadOnlyDom()
 {
