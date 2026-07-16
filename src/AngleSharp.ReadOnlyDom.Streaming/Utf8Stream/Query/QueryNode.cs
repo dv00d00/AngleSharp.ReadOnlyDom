@@ -30,6 +30,7 @@ public sealed class QueryNode<TState>
     internal EndHandler<TState>? EndHandler => _end;
     internal CompletedElementHandler<TState>? CompletedHandler => _completed;
     internal CompletedTextMode CompletedTextMode => _completedTextMode;
+    internal QueryNode<TState> RootNode => _root;
 
     public static QueryNode<TState> Root(Selector selector) => new(selector, QueryRelation.Root, null);
 

@@ -36,6 +36,10 @@ public sealed class QueryPlan<TState>
 
     public QueryExplanation Explanation { get; }
 
+    /// <summary>Resolves the accumulated query state after successful input completion.</summary>
+    public ResolvedQueryPlan<TState, TResult> Resolve<TResult>(Func<TState, TResult> resolver) =>
+        new(this, resolver);
+
     public QuerySession<TState> CreateSession(TState state, HtmlStreamingLimits? limits = null) =>
         new(this, state, limits ?? HtmlStreamingLimits.Default);
 

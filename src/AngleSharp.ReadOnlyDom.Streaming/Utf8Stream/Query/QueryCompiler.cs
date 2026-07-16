@@ -6,8 +6,24 @@ internal static class QueryCompiler
 {
     public static QueryPlan<TState> Compile<TState>(QueryNode<TState> root)
     {
+        ArgumentNullException.ThrowIfNull(root);
+        return Compile([root.RootNode]);
+    }
+
+    public static QueryPlan<TState> Compile<TState>(IReadOnlyList<QueryNode<TState>> roots)
+    {
+        ArgumentNullException.ThrowIfNull(roots);
+        if (roots.Count == 0)
+            throw new ArgumentException("At least one query root is required.", nameof(roots));
+
         var sourceNodes = new List<QueryNode<TState>>();
-        AddPreorder(root, sourceNodes);
+        foreach (var root in roots)
+        {
+            ArgumentNullException.ThrowIfNull(root);
+            if (root.Parent is not null)
+                throw new ArgumentException("Every compiled query must be a root query.", nameof(roots));
+            AddPreorder(root, sourceNodes);
+        }
         if (sourceNodes.Count > 64)
             throw new NotSupportedException("StreamingOnly plans support at most 64 query nodes.");
 
