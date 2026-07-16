@@ -95,12 +95,7 @@ public sealed class HtmlTextExtractorTests
         var reader = PipeReader.Create(inputStream, new StreamPipeReaderOptions(leaveOpen: true));
         var writer = PipeWriter.Create(outputStream, new StreamPipeWriterOptions(leaveOpen: true));
 
-        await HtmlTextExtractor.Default.ExtractAsync(
-            reader,
-            writer,
-            flushThreshold: 8,
-            inputSliceSize: 3
-        );
+        await HtmlTextExtractor.Default.ExtractAsync(reader, writer, flushThreshold: 8, inputSliceSize: 3);
         await reader.CompleteAsync();
         await writer.CompleteAsync();
 

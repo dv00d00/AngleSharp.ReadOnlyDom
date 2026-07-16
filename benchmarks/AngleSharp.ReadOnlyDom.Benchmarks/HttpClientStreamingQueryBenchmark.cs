@@ -38,7 +38,9 @@ public class HttpClientStreamingQueryBenchmark
         var materialized = await MaterializeThenFold();
         var streamed = await ResponseStreamFold();
         if (materialized != streamed)
-            throw new InvalidOperationException($"HTTP lanes disagree: materialized={materialized}, streamed={streamed}.");
+            throw new InvalidOperationException(
+                $"HTTP lanes disagree: materialized={materialized}, streamed={streamed}."
+            );
     }
 
     [GlobalCleanup]

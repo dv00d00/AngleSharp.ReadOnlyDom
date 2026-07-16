@@ -37,8 +37,7 @@ public sealed class QueryPlan<TState>
     public QueryExplanation Explanation { get; }
 
     /// <summary>Resolves the accumulated query state after successful input completion.</summary>
-    public ResolvedQueryPlan<TState, TResult> Resolve<TResult>(Func<TState, TResult> resolver) =>
-        new(this, resolver);
+    public ResolvedQueryPlan<TState, TResult> Resolve<TResult>(Func<TState, TResult> resolver) => new(this, resolver);
 
     public QuerySession<TState> CreateSession(TState state, HtmlStreamingLimits? limits = null) =>
         new(this, state, limits ?? HtmlStreamingLimits.Default);
@@ -62,9 +61,7 @@ public sealed class QueryPlan<TState>
     {
         limits ??= HtmlStreamingLimits.Default;
         using var session = CreateSession(state, limits);
-        await Utf8HtmlTokenizer
-            .TokenizeAsync(reader, session, cancellationToken, limits)
-            .ConfigureAwait(false);
+        await Utf8HtmlTokenizer.TokenizeAsync(reader, session, cancellationToken, limits).ConfigureAwait(false);
         return session.State;
     }
 

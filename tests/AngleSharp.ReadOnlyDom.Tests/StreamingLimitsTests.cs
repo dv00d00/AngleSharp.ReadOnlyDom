@@ -8,8 +8,12 @@ namespace AngleSharp.Readonly.Tests;
 
 public sealed class StreamingLimitsTests
 {
-    private static readonly HtmlStreamingLimits SmallScratch =
-        new(maximumBufferedTokenBytes: 64, maximumNestingDepth: 100, maximumInputBytes: 1_000_000, maximumQueryCaptureBytes: 1_000_000);
+    private static readonly HtmlStreamingLimits SmallScratch = new(
+        maximumBufferedTokenBytes: 64,
+        maximumNestingDepth: 100,
+        maximumInputBytes: 1_000_000,
+        maximumQueryCaptureBytes: 1_000_000
+    );
 
     public static IEnumerable<string> DegenerateTokens()
     {
@@ -44,8 +48,7 @@ public sealed class StreamingLimitsTests
     [Test]
     public async Task ScratchAccountingDoesNotAccumulateAcrossClearedTokenBuffers()
     {
-        const string fragment =
-            "<alpha first=123456 second=abcdef></alpha><beta third=uvwxyz><!--ok--></beta>";
+        const string fragment = "<alpha first=123456 second=abcdef></alpha><beta third=uvwxyz><!--ok--></beta>";
         var tokenizer = new Utf8HtmlTokenizer(new NullSink(), SmallScratch);
 
         for (var iteration = 0; iteration < 1000; iteration++)
@@ -82,7 +85,8 @@ public sealed class StreamingLimitsTests
                 HtmlInputEncoding.Known(Encoding.Latin1),
                 new TestState(),
                 limits: Limits(input: bytes.Length - 1)
-            ));
+            )
+        );
         await reader.CompleteAsync();
 
         await Assert.That(error.Limit).IsEqualTo(HtmlStreamingLimit.InputBytes);
@@ -112,14 +116,9 @@ public sealed class StreamingLimitsTests
     public async Task DepthLimitFailsBeforeCurrentElementCallback()
     {
         var starts = 0;
-        var plan = StreamQuery
-            .For<TestState>("div")
-            .OnStart((ref TestState _, in Element _) => starts++)
-            .Compile();
+        var plan = StreamQuery.For<TestState>("div").OnStart((ref TestState _, in Element _) => starts++).Compile();
 
-        var error = Capture(() =>
-            plan.Execute("<div><div><div><div>"u8, new TestState(), Limits(depth: 3))
-        );
+        var error = Capture(() => plan.Execute("<div><div><div><div>"u8, new TestState(), Limits(depth: 3)));
 
         await Assert.That(error.Limit).IsEqualTo(HtmlStreamingLimit.NestingDepth);
         await Assert.That(error.Observed).IsEqualTo(4);
@@ -136,11 +135,7 @@ public sealed class StreamingLimitsTests
             .Compile();
 
         var error = Capture(() =>
-            plan.Execute(
-                "<div><div><div>1234567890</div></div></div>"u8,
-                new TestState(),
-                Limits(capture: 20)
-            )
+            plan.Execute("<div><div><div>1234567890</div></div></div>"u8, new TestState(), Limits(capture: 20))
         );
 
         await Assert.That(error.Limit).IsEqualTo(HtmlStreamingLimit.QueryCaptureBytes);
@@ -158,13 +153,7 @@ public sealed class StreamingLimitsTests
             .OnClose((ref TestState _, in CompletedElement _) => completed++, "data-value")
             .Compile();
 
-        var error = Capture(() =>
-            plan.Execute(
-                "<p data-value='1234567890'>"u8,
-                new TestState(),
-                Limits(capture: 15)
-            )
-        );
+        var error = Capture(() => plan.Execute("<p data-value='1234567890'>"u8, new TestState(), Limits(capture: 15)));
 
         await Assert.That(error.Limit).IsEqualTo(HtmlStreamingLimit.QueryCaptureBytes);
         await Assert.That(error.Observed).IsEqualTo(20);
@@ -182,7 +171,12 @@ public sealed class StreamingLimitsTests
     }
 
     private static HtmlStreamingLimits Limits(int depth = 100, long input = 1_000_000, long capture = 1_000_000) =>
-        new(maximumBufferedTokenBytes: 1_000_000, maximumNestingDepth: depth, maximumInputBytes: input, maximumQueryCaptureBytes: capture);
+        new(
+            maximumBufferedTokenBytes: 1_000_000,
+            maximumNestingDepth: depth,
+            maximumInputBytes: input,
+            maximumQueryCaptureBytes: capture
+        );
 
     private static HtmlStreamingLimitExceededException Capture(Action action)
     {
@@ -215,9 +209,13 @@ public sealed class StreamingLimitsTests
     private sealed class NullSink : IUtf8HtmlTokenSink
     {
         public void Text(ReadOnlySpan<byte> utf8) { }
+
         public void StartTag(ReadOnlySpan<byte> name) { }
+
         public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value) { }
+
         public void StartTagEnd(bool selfClosing) { }
+
         public void EndTag(ReadOnlySpan<byte> name) { }
     }
 }

@@ -257,10 +257,7 @@ internal sealed class Arena : IDisposable
 
     private bool ShouldRetainWhitespaceAt(int parent, int? index)
     {
-        if (
-            _columns.Kinds[parent] == CompactNodeKind.Element
-            && (_columns.Flags[parent] & NodeFlags.Special) == 0
-        )
+        if (_columns.Kinds[parent] == CompactNodeKind.Element && (_columns.Flags[parent] & NodeFlags.Special) == 0)
         {
             return true;
         }
@@ -274,9 +271,7 @@ internal sealed class Arena : IDisposable
             previous = _columns.PreviousSiblings[previous];
         }
 
-        var next = index is { } position && position < _columns.ChildCounts[parent]
-            ? ChildAt(parent, position)
-            : -1;
+        var next = index is { } position && position < _columns.ChildCounts[parent] ? ChildAt(parent, position) : -1;
         while (next >= 0)
         {
             var isPhrasing = IsPhrasingContent(next);

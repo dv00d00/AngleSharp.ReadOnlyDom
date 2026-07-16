@@ -27,6 +27,5 @@ public readonly struct HtmlInputEncoding
     /// Detects a UTF-8 or UTF-16 BOM, then an encoding declaration in the first 1024 bytes, and otherwise uses
     /// <paramref name="fallback"/> or Windows-1252.
     /// </summary>
-    public static HtmlInputEncoding Auto(Encoding? fallback = null) =>
-        new(encoding: null, fallback, detect: true);
+    public static HtmlInputEncoding Auto(Encoding? fallback = null) => new(encoding: null, fallback, detect: true);
 }

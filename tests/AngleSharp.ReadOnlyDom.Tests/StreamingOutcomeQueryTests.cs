@@ -8,8 +8,7 @@ namespace AngleSharp.Readonly.Tests;
 
 public sealed class StreamingOutcomeQueryTests
 {
-    private const string Html =
-        """
+    private const string Html = """
         <main id="tracking-results">
           <aside id="service-status" data-code="DEGRADED">Updates may be delayed.</aside>
           <template><div data-code="INVALID_TRACKING_NUMBER">stale template</div></template>
@@ -54,16 +53,16 @@ public sealed class StreamingOutcomeQueryTests
     {
         var outcomes = CreateParser().Execute(Encoding.UTF8.GetBytes(Html), new ObservationState());
 
-        await Assert.That(outcomes.Select(static item => item.Kind)).IsEquivalentTo(
-            [
+        await Assert
+            .That(outcomes.Select(static item => item.Kind))
+            .IsEquivalentTo([
                 OutcomeKind.Success,
                 OutcomeKind.PendingWithoutScans,
                 OutcomeKind.InvalidTrackingNumber,
                 OutcomeKind.BotChallenge,
                 OutcomeKind.MalformedRows,
                 OutcomeKind.Unrecognized,
-            ]
-        );
+            ]);
         await Assert.That(outcomes[0].ValidRows).IsEqualTo(2);
         await Assert.That(outcomes[1].TablePresent).IsTrue();
         await Assert.That(outcomes[1].RawRows).IsEqualTo(0);
@@ -85,16 +84,16 @@ public sealed class StreamingOutcomeQueryTests
         var outcomes = await execution;
         await pipe.Reader.CompleteAsync();
 
-        await Assert.That(outcomes.Select(static item => item.Kind)).IsEquivalentTo(
-            [
+        await Assert
+            .That(outcomes.Select(static item => item.Kind))
+            .IsEquivalentTo([
                 OutcomeKind.Success,
                 OutcomeKind.PendingWithoutScans,
                 OutcomeKind.InvalidTrackingNumber,
                 OutcomeKind.BotChallenge,
                 OutcomeKind.MalformedRows,
                 OutcomeKind.Unrecognized,
-            ]
-        );
+            ]);
     }
 
     [Test]
@@ -103,13 +102,11 @@ public sealed class StreamingOutcomeQueryTests
         var resolved = false;
         var parser = StreamQuery
             .Observe(StreamQuery.For<ObservationState>("main"))
-            .Resolve(
-                state =>
-                {
-                    resolved = true;
-                    return state.Resolve();
-                }
-            );
+            .Resolve(state =>
+            {
+                resolved = true;
+                return state.Resolve();
+            });
         var limits = new HtmlStreamingLimits(
             maximumBufferedTokenBytes: 64,
             maximumNestingDepth: 64,
@@ -155,11 +152,12 @@ public sealed class StreamingOutcomeQueryTests
     {
         var starts = 0;
         var root = StreamQuery.For<ObservationState>("main");
-        var descendant = root
-            .Descendant("article")
-            .OnStart((ref ObservationState _, in Element _) => starts++);
+        var descendant = root.Descendant("article").OnStart((ref ObservationState _, in Element _) => starts++);
 
-        StreamQuery.Observe(root, descendant).Compile().Execute("<main><article></article></main>"u8, new ObservationState());
+        StreamQuery
+            .Observe(root, descendant)
+            .Compile()
+            .Execute("<main><article></article></main>"u8, new ObservationState());
 
         await Assert.That(starts).IsEqualTo(1);
     }
@@ -167,10 +165,7 @@ public sealed class StreamingOutcomeQueryTests
     [Test]
     public async Task QueryNodeLimitAppliesAcrossTheWholeObservationSet()
     {
-        var queries = Enumerable
-            .Range(0, 65)
-            .Select(static _ => StreamQuery.For<ObservationState>("div"))
-            .ToArray();
+        var queries = Enumerable.Range(0, 65).Select(static _ => StreamQuery.For<ObservationState>("div")).ToArray();
 
         var rejected = false;
         try
@@ -206,8 +201,7 @@ public sealed class StreamingOutcomeQueryTests
             .Child("tr")
             .OnStart(static (ref ObservationState state, in Element _) => state.Current.BeginRow())
             .OnEnd(static (ref state) => state.Current.EndRow());
-        row.Child("td")
-            .OnNormalizedText(static (ref state, in element) => state.Current.Cells.Add(element.GetText()));
+        row.Child("td").OnNormalizedText(static (ref state, in element) => state.Current.Cells.Add(element.GetText()));
 
         AddEvidenceQuery(shipments, "div");
         AddEvidenceQuery(shipments, "section");
@@ -221,18 +215,16 @@ public sealed class StreamingOutcomeQueryTests
                     state.ProviderDegraded = element.GetAttributeOrEmpty("data-code") == "DEGRADED"
             );
 
-        return StreamQuery
-            .Observe(shipments, providerStatus)
-            .Resolve(static state => state.Resolve());
+        return StreamQuery.Observe(shipments, providerStatus).Resolve(static state => state.Resolve());
     }
 
     private static void AddEvidenceQuery(QueryNode<ObservationState> article, string tag)
     {
-        article.Descendant(tag)
+        article
+            .Descendant(tag)
             .Attribute("data-code")
             .OnNormalizedText(
-                static (ref state, in element) =>
-                    state.Current.Evidence.Add(element.GetAttributeOrEmpty("data-code"))
+                static (ref state, in element) => state.Current.Evidence.Add(element.GetAttributeOrEmpty("data-code"))
             );
     }
 
@@ -280,17 +272,15 @@ public sealed class StreamingOutcomeQueryTests
 
         internal ShipmentOutcome Resolve(bool providerDegraded)
         {
-            var kind = Evidence.Contains("BOT_CHALLENGE", StringComparer.Ordinal)
-                ? OutcomeKind.BotChallenge
+            var kind =
+                Evidence.Contains("BOT_CHALLENGE", StringComparer.Ordinal) ? OutcomeKind.BotChallenge
                 : Evidence.Contains("INVALID_TRACKING_NUMBER", StringComparer.Ordinal)
                     ? OutcomeKind.InvalidTrackingNumber
-                    : ValidRows != 0
-                        ? OutcomeKind.Success
-                        : TablePresent && RawRows == 0 && Evidence.Contains("NO_SCANS", StringComparer.Ordinal)
-                            ? OutcomeKind.PendingWithoutScans
-                            : TablePresent && RawRows != 0
-                                ? OutcomeKind.MalformedRows
-                                : OutcomeKind.Unrecognized;
+                : ValidRows != 0 ? OutcomeKind.Success
+                : TablePresent && RawRows == 0 && Evidence.Contains("NO_SCANS", StringComparer.Ordinal)
+                    ? OutcomeKind.PendingWithoutScans
+                : TablePresent && RawRows != 0 ? OutcomeKind.MalformedRows
+                : OutcomeKind.Unrecognized;
             return new ShipmentOutcome(Id, kind, TablePresent, RawRows, ValidRows, [.. Evidence], providerDegraded);
         }
     }

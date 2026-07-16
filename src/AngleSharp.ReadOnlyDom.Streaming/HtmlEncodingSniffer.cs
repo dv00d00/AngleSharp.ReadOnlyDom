@@ -72,10 +72,7 @@ internal static class HtmlEncodingSniffer
                 return;
             }
 
-            if (
-                _httpEquiv?.Equals("content-type", StringComparison.OrdinalIgnoreCase) == true
-                && _content is not null
-            )
+            if (_httpEquiv?.Equals("content-type", StringComparison.OrdinalIgnoreCase) == true && _content is not null)
             {
                 DetectedEncoding = NormalizeMetaEncoding(TextEncoding.Parse(_content));
             }

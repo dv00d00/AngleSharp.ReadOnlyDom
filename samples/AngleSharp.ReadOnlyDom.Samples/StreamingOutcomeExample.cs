@@ -71,8 +71,7 @@ internal static class StreamingOutcomeExample
             .Child("tr")
             .OnStart(static (ref TrackingEvidence evidence, in Element _) => evidence.Current.BeginRow())
             .OnEnd(static (ref evidence) => evidence.Current.EndRow());
-        row.Child("td")
-            .OnNormalizedText(static (ref evidence, in cell) => evidence.Current.Cells.Add(cell.GetText()));
+        row.Child("td").OnNormalizedText(static (ref evidence, in cell) => evidence.Current.Cells.Add(cell.GetText()));
 
         ObserveCode(shipments, "div");
         ObserveCode(shipments, "section");
@@ -86,15 +85,13 @@ internal static class StreamingOutcomeExample
                     evidence.ProviderDegraded = status.GetAttributeOrEmpty("data-code") == "DEGRADED"
             );
 
-        var parser = StreamQuery
-            .Observe(shipments, providerStatus)
-            .Resolve(static evidence => evidence.Resolve());
+        var parser = StreamQuery.Observe(shipments, providerStatus).Resolve(static evidence => evidence.Resolve());
 
         foreach (var outcome in parser.Execute(Html, new TrackingEvidence()))
         {
             Console.WriteLine(
-                $"{outcome.TrackingId,-11}: {outcome.Kind,-24} "
-                    + $"table={outcome.TablePresent,-5} rows={outcome.RawRows}/{outcome.ValidRows} "
+                $"{outcome.TrackingId, -11}: {outcome.Kind, -24} "
+                    + $"table={outcome.TablePresent, -5} rows={outcome.RawRows}/{outcome.ValidRows} "
                     + $"evidence=[{string.Join(", ", outcome.Evidence)}]"
             );
         }
@@ -160,17 +157,15 @@ internal static class StreamingOutcomeExample
 
         internal ShipmentOutcome Resolve(bool providerDegraded)
         {
-            var kind = Evidence.Contains("BOT_CHALLENGE", StringComparer.Ordinal)
-                ? ShipmentOutcomeKind.BotChallenge
+            var kind =
+                Evidence.Contains("BOT_CHALLENGE", StringComparer.Ordinal) ? ShipmentOutcomeKind.BotChallenge
                 : Evidence.Contains("INVALID_TRACKING_NUMBER", StringComparer.Ordinal)
                     ? ShipmentOutcomeKind.InvalidTrackingNumber
-                    : ValidRows != 0
-                        ? ShipmentOutcomeKind.Success
-                        : TablePresent && RawRows == 0 && Evidence.Contains("NO_SCANS", StringComparer.Ordinal)
-                            ? ShipmentOutcomeKind.PendingWithoutScans
-                            : TablePresent && RawRows != 0
-                                ? ShipmentOutcomeKind.MalformedRows
-                                : ShipmentOutcomeKind.Unrecognized;
+                : ValidRows != 0 ? ShipmentOutcomeKind.Success
+                : TablePresent && RawRows == 0 && Evidence.Contains("NO_SCANS", StringComparer.Ordinal)
+                    ? ShipmentOutcomeKind.PendingWithoutScans
+                : TablePresent && RawRows != 0 ? ShipmentOutcomeKind.MalformedRows
+                : ShipmentOutcomeKind.Unrecognized;
 
             return new ShipmentOutcome(
                 TrackingId,

@@ -36,16 +36,14 @@ public class EncodedHtmlInputBenchmark
     public Task<ulong> Utf8Direct() => RunUtf8(_utf8);
 
     [Benchmark]
-    public Task<ulong> Utf8KnownAdapter() =>
-        RunEncoded(_utf8, HtmlInputEncoding.Known(Encoding.UTF8));
+    public Task<ulong> Utf8KnownAdapter() => RunEncoded(_utf8, HtmlInputEncoding.Known(Encoding.UTF8));
 
     [Benchmark]
     public Task<ulong> Windows1252Known() =>
         RunEncoded(_windows1252, HtmlInputEncoding.Known(Encoding.GetEncoding(1252)));
 
     [Benchmark]
-    public Task<ulong> Windows1252AutoMeta() =>
-        RunEncoded(_windows1252, HtmlInputEncoding.Auto());
+    public Task<ulong> Windows1252AutoMeta() => RunEncoded(_windows1252, HtmlInputEncoding.Auto());
 
     [Benchmark]
     public Task<ulong> Utf16AutoBom() => RunEncoded(_utf16, HtmlInputEncoding.Auto());

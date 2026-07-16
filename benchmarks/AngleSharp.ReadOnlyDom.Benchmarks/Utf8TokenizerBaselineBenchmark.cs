@@ -124,15 +124,21 @@ public class Utf8TokenizerBaselineBenchmark
         }
 
         public void StartTag(ReadOnlySpan<byte> name) => AddToken(2, name);
+
         public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
         {
             AddToken(3, name);
             Add(value);
         }
+
         public void StartTagEnd(bool selfClosing) => AddMarker(selfClosing ? (byte)5 : (byte)4);
+
         public void EndTag(ReadOnlySpan<byte> name) => AddToken(6, name);
+
         public void Comment(ReadOnlySpan<byte> value) => AddToken(7, value);
+
         public void Doctype(Utf8DoctypeToken token) => AddToken(8, token.Name);
+
         public void EndOfFile() => AddMarker(9);
 
         private void AddToken(byte marker, ReadOnlySpan<byte> value)

@@ -10,40 +10,39 @@ public sealed class HtmlTextOptions
 {
     public string ContentElement { get; init; } = "body";
 
-    public IReadOnlyCollection<string> IgnoredElements { get; init; } =
-        ["script", "style", "template", "noscript"];
+    public IReadOnlyCollection<string> IgnoredElements { get; init; } = ["script", "style", "template", "noscript"];
 
     public IReadOnlyCollection<string> BlockElements { get; init; } =
-        [
-            "address",
-            "article",
-            "aside",
-            "blockquote",
-            "div",
-            "dl",
-            "fieldset",
-            "figcaption",
-            "figure",
-            "footer",
-            "form",
-            "h1",
-            "h2",
-            "h3",
-            "h4",
-            "h5",
-            "h6",
-            "header",
-            "li",
-            "main",
-            "nav",
-            "ol",
-            "p",
-            "pre",
-            "section",
-            "table",
-            "tr",
-            "ul",
-        ];
+    [
+        "address",
+        "article",
+        "aside",
+        "blockquote",
+        "div",
+        "dl",
+        "fieldset",
+        "figcaption",
+        "figure",
+        "footer",
+        "form",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "li",
+        "main",
+        "nav",
+        "ol",
+        "p",
+        "pre",
+        "section",
+        "table",
+        "tr",
+        "ul",
+    ];
 
     public IReadOnlyCollection<string> LineBreakElements { get; init; } = ["br"];
 
@@ -104,7 +103,8 @@ public sealed class HtmlTextExtractor
     {
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(output);
-        await _plan.ExecuteAsync(reader, new ExtractionState(output, _settings), cancellationToken)
+        await _plan
+            .ExecuteAsync(reader, new ExtractionState(output, _settings), cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -119,7 +119,8 @@ public sealed class HtmlTextExtractor
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(writer);
         var buffer = new CommittedUtf8Buffer(inputSliceSize);
-        await _plan.ExecuteBackpressuredAsync(
+        await _plan
+            .ExecuteBackpressuredAsync(
                 reader,
                 writer,
                 new ExtractionState(buffer, _settings),
@@ -276,7 +277,10 @@ public sealed class HtmlTextExtractor
         private static string[] Snapshot(IReadOnlyCollection<string>? values, string parameterName)
         {
             ArgumentNullException.ThrowIfNull(values, parameterName);
-            return values.Select(value => Required(value, parameterName)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            return values
+                .Select(value => Required(value, parameterName))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
 
         private static string Required(string? value, string parameterName)
