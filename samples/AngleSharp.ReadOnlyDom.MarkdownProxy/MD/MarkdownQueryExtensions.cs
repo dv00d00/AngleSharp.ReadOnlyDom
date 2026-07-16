@@ -9,6 +9,7 @@ internal static class MarkdownQueryExtensions
     {
         // Query plans live for the lifetime of the application; copy the compile-time span once.
         var ownedPrefix = prefix.ToArray();
+
         return node.OnStart((ref MarkdownBuffer output, in Element _) => output.StartInlineBlock(ownedPrefix))
             .OnEnd(static (ref output) => output.EndInlineBlock());
     }
