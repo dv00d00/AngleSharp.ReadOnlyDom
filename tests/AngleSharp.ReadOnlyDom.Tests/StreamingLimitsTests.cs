@@ -210,13 +210,15 @@ public sealed class StreamingLimitsTests
     {
         public void Text(ReadOnlySpan<byte> utf8) { }
 
-        public void StartTag(ReadOnlySpan<byte> name) { }
+        public void StartTag(Utf8HtmlName name) { }
 
-        public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value) { }
+        public bool WantsAttribute(Utf8HtmlName name) => true;
+
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) { }
 
         public void StartTagEnd(bool selfClosing) { }
 
-        public void EndTag(ReadOnlySpan<byte> name) { }
+        public void EndTag(Utf8HtmlName name) { }
     }
 }
 #endif

@@ -90,7 +90,7 @@ public sealed class Html5LibTokenizerTests
                         failuresByFixtureAndState
                             .OrderByDescending(static pair => pair.Value)
                             .ThenBy(static pair => pair.Key, StringComparer.Ordinal)
-                            .Select(static pair => $"  {pair.Value, 4}  {pair.Key}")
+                            .Select(static pair => $"  {pair.Value,4}  {pair.Key}")
                     )
                     + "\nTop failing vectors:\n"
                     + String.Join(
@@ -99,7 +99,7 @@ public sealed class Html5LibTokenizerTests
                             .OrderByDescending(static pair => pair.Value)
                             .ThenBy(static pair => pair.Key, StringComparer.Ordinal)
                             .Take(40)
-                            .Select(static pair => $"  {pair.Value, 4}  {pair.Key}")
+                            .Select(static pair => $"  {pair.Value,4}  {pair.Key}")
                     )
                     + "\nFirst mismatch per failing fixture:\n"
                     + String.Join("\n", firstFailureByFixture.Values)
@@ -284,11 +284,13 @@ public sealed class Html5LibTokenizerTests
                 _tokens.Add(SpecToken.Text(value));
         }
 
-        public void StartTag(ReadOnlySpan<byte> name) =>
-            _startTag = SpecToken.StartTag(Encoding.UTF8.GetString(name), new Dictionary<string, string>(), false);
+        public void StartTag(Utf8HtmlName name) =>
+            _startTag = SpecToken.StartTag(DecodeSemanticName(name), new Dictionary<string, string>(), false);
 
-        public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value) =>
-            _startTag!.Attributes!.Add(Encoding.UTF8.GetString(name), Encoding.UTF8.GetString(value));
+        public bool WantsAttribute(Utf8HtmlName name) => true;
+
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) =>
+            _startTag!.Attributes!.Add(DecodeSemanticName(name), Encoding.UTF8.GetString(value));
 
         public void StartTagEnd(bool selfClosing)
         {
@@ -297,7 +299,19 @@ public sealed class Html5LibTokenizerTests
             _startTag = null;
         }
 
-        public void EndTag(ReadOnlySpan<byte> name) => _tokens.Add(SpecToken.EndTag(Encoding.UTF8.GetString(name)));
+        public void EndTag(Utf8HtmlName name) => _tokens.Add(SpecToken.EndTag(DecodeSemanticName(name)));
+
+        private static string DecodeSemanticName(Utf8HtmlName name)
+        {
+            var bytes = name.Verbatim.ToArray();
+            for (var index = 0; index < bytes.Length; index++)
+            {
+                var value = bytes[index];
+                if ((uint)(value - (byte)'A') <= 'Z' - 'A')
+                    bytes[index] = (byte)(value | 0x20);
+            }
+            return Encoding.UTF8.GetString(bytes);
+        }
 
         public void Comment(ReadOnlySpan<byte> utf8) => _tokens.Add(SpecToken.Comment(Encoding.UTF8.GetString(utf8)));
 

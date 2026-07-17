@@ -402,14 +402,34 @@ public sealed class Utf8HtmlTokenizerTests
                 _events.Add("text:" + text);
         }
 
-        public void StartTag(ReadOnlySpan<byte> name) => _events.Add("start:" + Encoding.ASCII.GetString(name));
+        public void StartTag(Utf8HtmlName name) => StartTag(name.Verbatim);
+
+        public void StartTag(ReadOnlySpan<byte> name) => _events.Add("start:" + DecodeSemanticName(name));
+
+        public bool WantsAttribute(Utf8HtmlName name) => true;
+
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) => Attribute(name.Verbatim, value);
 
         public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value) =>
-            _events.Add("attr:" + Encoding.ASCII.GetString(name) + "=" + DecodeValidUtf8(value));
+            _events.Add("attr:" + DecodeSemanticName(name) + "=" + DecodeValidUtf8(value));
 
         public void StartTagEnd(bool selfClosing) => _events.Add(selfClosing ? "start-end:/" : "start-end");
 
-        public void EndTag(ReadOnlySpan<byte> name) => _events.Add("end:" + Encoding.ASCII.GetString(name));
+        public void EndTag(Utf8HtmlName name) => EndTag(name.Verbatim);
+
+        public void EndTag(ReadOnlySpan<byte> name) => _events.Add("end:" + DecodeSemanticName(name));
+
+        private static string DecodeSemanticName(ReadOnlySpan<byte> name)
+        {
+            var bytes = name.ToArray();
+            for (var index = 0; index < bytes.Length; index++)
+            {
+                var value = bytes[index];
+                if ((uint)(value - (byte)'A') <= 'Z' - 'A')
+                    bytes[index] = (byte)(value | 0x20);
+            }
+            return Encoding.ASCII.GetString(bytes);
+        }
 
         public void Comment(ReadOnlySpan<byte> utf8) => _events.Add("comment:" + Encoding.UTF8.GetString(utf8));
 

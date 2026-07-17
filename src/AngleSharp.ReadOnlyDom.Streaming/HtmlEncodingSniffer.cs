@@ -29,7 +29,7 @@ internal static class HtmlEncodingSniffer
         return new Detection(sink.DetectedEncoding ?? fallback ?? Encoding.GetEncoding(1252), 0);
     }
 
-    private sealed class EncodingDeclarationSink : IOptimizedUtf8HtmlTokenSink
+    private sealed class EncodingDeclarationSink : IUtf8HtmlTokenSink
     {
         private bool _isMeta;
         private string? _charset;
@@ -40,32 +40,32 @@ internal static class HtmlEncodingSniffer
 
         public void Text(ReadOnlySpan<byte> utf8) { }
 
-        public void StartTag(ReadOnlySpan<byte> name)
+        public void StartTag(Utf8HtmlName name)
         {
-            _isMeta = name.SequenceEqual("meta"u8);
+            _isMeta = name.SemanticEquals("meta"u8);
             _charset = null;
             _content = null;
             _httpEquiv = null;
         }
 
-        public void StartTag(ReadOnlySpan<byte> name, ulong hash) => StartTag(name);
-
-        public bool WantsAttribute(ReadOnlySpan<byte> name) =>
+        public bool WantsAttribute(Utf8HtmlName name) =>
             _isMeta
             && (
-                name.SequenceEqual("charset"u8) || name.SequenceEqual("content"u8) || name.SequenceEqual("http-equiv"u8)
+                name.SemanticEquals("charset"u8)
+                || name.SemanticEquals("content"u8)
+                || name.SemanticEquals("http-equiv"u8)
             );
 
-        public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value)
         {
             if (!_isMeta)
                 return;
 
-            if (_charset is null && name.SequenceEqual("charset"u8))
+            if (_charset is null && name.SemanticEquals("charset"u8))
                 _charset = Encoding.ASCII.GetString(value).Trim();
-            else if (_content is null && name.SequenceEqual("content"u8))
+            else if (_content is null && name.SemanticEquals("content"u8))
                 _content = Encoding.ASCII.GetString(value);
-            else if (_httpEquiv is null && name.SequenceEqual("http-equiv"u8))
+            else if (_httpEquiv is null && name.SemanticEquals("http-equiv"u8))
                 _httpEquiv = Encoding.ASCII.GetString(value).Trim();
         }
 
@@ -86,9 +86,7 @@ internal static class HtmlEncodingSniffer
             }
         }
 
-        public void EndTag(ReadOnlySpan<byte> name) { }
-
-        public void EndTag(ReadOnlySpan<byte> name, ulong hash) { }
+        public void EndTag(Utf8HtmlName name) { }
 
         private static bool TryResolve(string? label, out Encoding encoding)
         {
