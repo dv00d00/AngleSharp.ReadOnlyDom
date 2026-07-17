@@ -688,11 +688,11 @@ public class QqArticleScraperBenchmark
         private List<Article> _results = new(128);
         private bool _disposed;
 
-        public void StartTag(ReadOnlySpan<byte> name)
+        public void StartTag(Utf8HtmlName name)
         {
             _pendingKind = Kind(name);
-            _pendingHash = HashAscii(name);
-            _pendingLength = name.Length;
+            _pendingHash = name.SemanticHash;
+            _pendingLength = name.Verbatim.Length;
             _pendingNewsList = false;
             _pendingCard = false;
             _pendingMetadata = null;
@@ -701,26 +701,38 @@ public class QqArticleScraperBenchmark
             _pendingImageAlt = null;
         }
 
-        public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
+        public bool WantsAttribute(Utf8HtmlName name) =>
+            _pendingKind switch
+            {
+                TagKind.Ul => name.SemanticEquals("class"u8),
+                TagKind.Li when _newsListDepth != 0 =>
+                    name.SemanticEquals("dt-eid"u8) || name.SemanticEquals("dt-params"u8),
+                TagKind.A when _cardDepth != 0 => name.SemanticEquals("href"u8),
+                TagKind.Img when _activeHref is not null =>
+                    name.SemanticEquals("src"u8) || name.SemanticEquals("alt"u8),
+                _ => false,
+            };
+
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value)
         {
             switch (_pendingKind)
             {
-                case TagKind.Ul when name.SequenceEqual("class"u8):
+                case TagKind.Ul when name.SemanticEquals("class"u8):
                     _pendingNewsList = ContainsToken(value, "news-list"u8);
                     break;
-                case TagKind.Li when _newsListDepth != 0 && name.SequenceEqual("dt-eid"u8):
+                case TagKind.Li when _newsListDepth != 0 && name.SemanticEquals("dt-eid"u8):
                     _pendingCard = value.SequenceEqual("em_item_article"u8);
                     break;
-                case TagKind.Li when _newsListDepth != 0 && name.SequenceEqual("dt-params"u8):
+                case TagKind.Li when _newsListDepth != 0 && name.SemanticEquals("dt-params"u8):
                     _pendingMetadata = Encoding.UTF8.GetString(value);
                     break;
-                case TagKind.A when _cardDepth != 0 && name.SequenceEqual("href"u8):
+                case TagKind.A when _cardDepth != 0 && name.SemanticEquals("href"u8):
                     _pendingHref = Encoding.UTF8.GetString(value);
                     break;
-                case TagKind.Img when _activeHref is not null && name.SequenceEqual("src"u8):
+                case TagKind.Img when _activeHref is not null && name.SemanticEquals("src"u8):
                     _pendingImageUrl = Encoding.UTF8.GetString(value);
                     break;
-                case TagKind.Img when _activeHref is not null && name.SequenceEqual("alt"u8):
+                case TagKind.Img when _activeHref is not null && name.SemanticEquals("alt"u8):
                     _pendingImageAlt = Encoding.UTF8.GetString(value);
                     break;
             }
@@ -777,12 +789,12 @@ public class QqArticleScraperBenchmark
             }
         }
 
-        public void EndTag(ReadOnlySpan<byte> name)
+        public void EndTag(Utf8HtmlName name)
         {
-            var hash = HashAscii(name);
+            var hash = name.SemanticHash;
             for (var index = _frameCount - 1; index >= 0; index--)
             {
-                if (_frames[index].Hash != hash || _frames[index].Length != name.Length)
+                if (_frames[index].Hash != hash || _frames[index].Length != name.Verbatim.Length)
                     continue;
                 for (var popped = _frameCount - 1; popped >= index; popped--)
                     Close(_frames[popped]);
@@ -873,26 +885,14 @@ public class QqArticleScraperBenchmark
             return false;
         }
 
-        private static TagKind Kind(ReadOnlySpan<byte> name) =>
-            name.SequenceEqual("ul"u8) ? TagKind.Ul
-            : name.SequenceEqual("li"u8) ? TagKind.Li
-            : name.SequenceEqual("a"u8) ? TagKind.A
-            : name.SequenceEqual("img"u8) ? TagKind.Img
+        private static TagKind Kind(Utf8HtmlName name) =>
+            name.SemanticEquals("ul"u8) ? TagKind.Ul
+            : name.SemanticEquals("li"u8) ? TagKind.Li
+            : name.SemanticEquals("a"u8) ? TagKind.A
+            : name.SemanticEquals("img"u8) ? TagKind.Img
             : TagKind.Other;
 
         private static bool IsVoid(TagKind kind) => kind == TagKind.Img;
-
-        private static ulong HashAscii(ReadOnlySpan<byte> value)
-        {
-            var hash = Utf8DivFingerprintFold.OffsetBasis;
-            foreach (var character in value)
-            {
-                hash ^= character;
-                hash *= Utf8DivFingerprintFold.Prime;
-            }
-
-            return hash;
-        }
 
         private enum TagKind : byte
         {

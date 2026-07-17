@@ -110,5 +110,5 @@ internal static class QueryCompiler
             AddPreorder(child, nodes);
     }
 
-    internal static ulong Hash(ReadOnlySpan<byte> value) => Utf8NameHash.Compute(value);
+    internal static ulong Hash(ReadOnlySpan<byte> value) => Utf8NameHash.ComputeSemantic(value);
 }

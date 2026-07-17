@@ -3,7 +3,7 @@ using System.Numerics;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
 
-public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposable
+public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
 {
     private readonly QueryPlan<TState> _plan;
     private readonly int[] _activeCounts;
@@ -46,23 +46,20 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
 
     public TState State => _state;
 
-    public void StartTag(ReadOnlySpan<byte> name) => StartTag(name, QueryCompiler.Hash(name));
-
-    void IOptimizedUtf8HtmlTokenSink.StartTag(ReadOnlySpan<byte> name, ulong hash) => StartTag(name, hash);
-
-    private void StartTag(ReadOnlySpan<byte> name, ulong hash)
+    public void StartTag(Utf8HtmlName name)
     {
+        var hash = name.SemanticHash;
         _pendingTagHash = hash;
-        _pendingTagLength = name.Length;
+        _pendingTagLength = name.Verbatim.Length;
         _pendingCandidateBits = 0;
         _pendingAttributeBits = 0;
-        var candidates = FindTagCandidates(hash, name.Length);
+        var candidates = FindTagCandidates(hash, name.Verbatim.Length);
         while (candidates != 0)
         {
             var index = BitOperations.TrailingZeroCount(candidates);
             candidates &= candidates - 1;
             var node = _plan.Nodes[index];
-            if (!name.SequenceEqual(node.TagName) || !ParentMatches(node))
+            if (!name.SemanticEquals(node.TagName) || !ParentMatches(node))
                 continue;
             _pendingCandidateBits |= 1UL << node.Index;
             _pendingAttributeBits |= node.RequiredAttributeBits;
@@ -70,27 +67,27 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
         ResetAttributes();
     }
 
-    bool IOptimizedUtf8HtmlTokenSink.WantsAttribute(ReadOnlySpan<byte> name)
+    public bool WantsAttribute(Utf8HtmlName name)
     {
         var attributes = _pendingAttributeBits;
         while (attributes != 0)
         {
             var index = BitOperations.TrailingZeroCount(attributes);
             attributes &= attributes - 1;
-            if (name.SequenceEqual(_plan.AttributeNameUtf8[index]))
+            if (name.SemanticEquals(_plan.AttributeNameUtf8[index]))
                 return true;
         }
         return false;
     }
 
-    public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
+    public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value)
     {
         var attributes = _pendingAttributeBits;
         while (attributes != 0)
         {
             var index = BitOperations.TrailingZeroCount(attributes);
             attributes &= attributes - 1;
-            if (!name.SequenceEqual(_plan.AttributeNameUtf8[index]))
+            if (!name.SemanticEquals(_plan.AttributeNameUtf8[index]))
                 continue;
             if (_attributeLengths[index] >= 0)
                 return;
@@ -171,15 +168,12 @@ public sealed class QuerySession<TState> : IOptimizedUtf8HtmlTokenSink, IDisposa
         AppendCompletedText(utf8);
     }
 
-    public void EndTag(ReadOnlySpan<byte> name) => EndTag(name, QueryCompiler.Hash(name));
-
-    void IOptimizedUtf8HtmlTokenSink.EndTag(ReadOnlySpan<byte> name, ulong hash) => EndTag(name, hash);
-
-    private void EndTag(ReadOnlySpan<byte> name, ulong hash)
+    public void EndTag(Utf8HtmlName name)
     {
+        var hash = name.SemanticHash;
         for (var index = _frameCount - 1; index >= 0; index--)
         {
-            if (_frames[index].TagHash != hash || _frames[index].TagLength != name.Length)
+            if (_frames[index].TagHash != hash || _frames[index].TagLength != name.Verbatim.Length)
                 continue;
             for (var popped = _frameCount - 1; popped >= index; popped--)
                 CloseFrame(_frames[popped]);

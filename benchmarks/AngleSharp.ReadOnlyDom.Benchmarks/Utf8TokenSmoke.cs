@@ -42,7 +42,7 @@ internal static class Utf8TokenSmoke
                 }
             }
             if (difference is null)
-                Console.WriteLine($"PASS {document.Name, -28} {utf8.Length, 12:N0} bytes");
+                Console.WriteLine($"PASS {document.Name,-28} {utf8.Length,12:N0} bytes");
             else
             {
                 failures++;
@@ -158,26 +158,34 @@ internal static class Utf8TokenSmoke
             _text.Advance(utf8.Length);
         }
 
+        public void StartTag(Utf8HtmlName name) => StartTag(name.Verbatim);
+
         public void StartTag(ReadOnlySpan<byte> name)
         {
             FlushText();
-            Write("S", name);
+            WriteSemantic("S", name);
         }
+
+        public bool WantsAttribute(Utf8HtmlName name) => true;
+
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) => Attribute(name.Verbatim, value);
 
         public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
         {
             _writer.Write("A\t");
-            _writer.Write(Convert.ToBase64String(name));
+            _writer.Write(Convert.ToBase64String(GetSemanticBytes(name)));
             _writer.Write('\t');
             _writer.WriteLine(Convert.ToBase64String(value));
         }
 
         public void StartTagEnd(bool selfClosing) => _writer.WriteLine(selfClosing ? "G\t1" : "G\t0");
 
+        public void EndTag(Utf8HtmlName name) => EndTag(name.Verbatim);
+
         public void EndTag(ReadOnlySpan<byte> name)
         {
             FlushText();
-            Write("E", name);
+            WriteSemantic("E", name);
         }
 
         public void Comment(ReadOnlySpan<byte> utf8)
@@ -230,6 +238,20 @@ internal static class Utf8TokenSmoke
             _writer.Write(type);
             _writer.Write('\t');
             _writer.WriteLine(Convert.ToBase64String(value));
+        }
+
+        private void WriteSemantic(string type, ReadOnlySpan<byte> name) => Write(type, GetSemanticBytes(name));
+
+        private static byte[] GetSemanticBytes(ReadOnlySpan<byte> name)
+        {
+            var bytes = name.ToArray();
+            for (var index = 0; index < bytes.Length; index++)
+            {
+                var value = bytes[index];
+                if ((uint)(value - (byte)'A') <= 'Z' - 'A')
+                    bytes[index] = (byte)(value | 0x20);
+            }
+            return bytes;
         }
     }
 }

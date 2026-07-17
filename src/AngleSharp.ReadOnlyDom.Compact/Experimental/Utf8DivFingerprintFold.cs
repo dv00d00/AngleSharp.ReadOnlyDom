@@ -58,12 +58,12 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
         }
     }
 
-    public void StartTag(ReadOnlySpan<byte> name)
+    public void StartTag(Utf8HtmlName name)
     {
-        _pendingTagHash = HashAscii(name);
-        _pendingTagLength = name.Length;
-        _pendingIsDiv = name.SequenceEqual("div"u8);
-        _pendingIsTemplate = name.SequenceEqual("template"u8);
+        _pendingTagHash = name.SemanticHash;
+        _pendingTagLength = name.Verbatim.Length;
+        _pendingIsDiv = name.SemanticEquals("div"u8);
+        _pendingIsTemplate = name.SemanticEquals("template"u8);
         _pendingIsVoid = IsVoid(name);
         _pendingIdHash = OffsetBasis;
         _pendingClassHash = OffsetBasis;
@@ -71,17 +71,20 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
         _pendingHasClass = false;
     }
 
-    public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
+    public bool WantsAttribute(Utf8HtmlName name) =>
+        _pendingIsDiv && (name.SemanticEquals("id"u8) || name.SemanticEquals("class"u8));
+
+    public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value)
     {
         if (!_pendingIsDiv)
             return;
 
-        if (!_pendingHasId && name.SequenceEqual("id"u8))
+        if (!_pendingHasId && name.SemanticEquals("id"u8))
         {
             _pendingIdHash = HashUtf8(value);
             _pendingHasId = true;
         }
-        else if (!_pendingHasClass && name.SequenceEqual("class"u8))
+        else if (!_pendingHasClass && name.SemanticEquals("class"u8))
         {
             _pendingClassHash = HashUtf8(value);
             _pendingHasClass = true;
@@ -154,12 +157,12 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
         }
     }
 
-    public void EndTag(ReadOnlySpan<byte> name)
+    public void EndTag(Utf8HtmlName name)
     {
-        var hash = HashAscii(name);
+        var hash = name.SemanticHash;
         for (var index = _frameCount - 1; index >= 0; index--)
         {
-            if (_frames[index].TagHash == hash && _frames[index].TagLength == name.Length)
+            if (_frames[index].TagHash == hash && _frames[index].TagLength == name.Verbatim.Length)
             {
                 for (var popped = index; popped < _frameCount; popped++)
                 {
@@ -238,38 +241,27 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
         return hash;
     }
 
-    private static ulong HashAscii(ReadOnlySpan<byte> value)
-    {
-        var hash = OffsetBasis;
-        foreach (var character in value)
-        {
-            hash ^= character;
-            hash *= Prime;
-        }
-        return hash;
-    }
-
     private static void AppendChar(ref ulong hash, uint character)
     {
         hash ^= (ushort)character;
         hash *= Prime;
     }
 
-    private static bool IsVoid(ReadOnlySpan<byte> name) =>
-        name.SequenceEqual("area"u8)
-        || name.SequenceEqual("base"u8)
-        || name.SequenceEqual("br"u8)
-        || name.SequenceEqual("col"u8)
-        || name.SequenceEqual("embed"u8)
-        || name.SequenceEqual("hr"u8)
-        || name.SequenceEqual("img"u8)
-        || name.SequenceEqual("input"u8)
-        || name.SequenceEqual("link"u8)
-        || name.SequenceEqual("meta"u8)
-        || name.SequenceEqual("param"u8)
-        || name.SequenceEqual("source"u8)
-        || name.SequenceEqual("track"u8)
-        || name.SequenceEqual("wbr"u8);
+    private static bool IsVoid(Utf8HtmlName name) =>
+        name.SemanticEquals("area"u8)
+        || name.SemanticEquals("base"u8)
+        || name.SemanticEquals("br"u8)
+        || name.SemanticEquals("col"u8)
+        || name.SemanticEquals("embed"u8)
+        || name.SemanticEquals("hr"u8)
+        || name.SemanticEquals("img"u8)
+        || name.SemanticEquals("input"u8)
+        || name.SemanticEquals("link"u8)
+        || name.SemanticEquals("meta"u8)
+        || name.SemanticEquals("param"u8)
+        || name.SemanticEquals("source"u8)
+        || name.SemanticEquals("track"u8)
+        || name.SemanticEquals("wbr"u8);
 
     private void EnsureFrameCapacity()
     {

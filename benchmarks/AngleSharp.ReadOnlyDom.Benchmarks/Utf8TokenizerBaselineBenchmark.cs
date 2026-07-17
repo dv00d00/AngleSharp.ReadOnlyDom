@@ -123,17 +123,19 @@ public class Utf8TokenizerBaselineBenchmark
             _inText = true;
         }
 
-        public void StartTag(ReadOnlySpan<byte> name) => AddToken(2, name);
+        public void StartTag(Utf8HtmlName name) => AddSemanticToken(2, name);
 
-        public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
+        public bool WantsAttribute(Utf8HtmlName name) => true;
+
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value)
         {
-            AddToken(3, name);
+            AddSemanticToken(3, name);
             Add(value);
         }
 
         public void StartTagEnd(bool selfClosing) => AddMarker(selfClosing ? (byte)5 : (byte)4);
 
-        public void EndTag(ReadOnlySpan<byte> name) => AddToken(6, name);
+        public void EndTag(Utf8HtmlName name) => AddSemanticToken(6, name);
 
         public void Comment(ReadOnlySpan<byte> value) => AddToken(7, value);
 
@@ -145,6 +147,16 @@ public class Utf8TokenizerBaselineBenchmark
         {
             AddMarker(marker);
             Add(value);
+        }
+
+        private void AddSemanticToken(byte marker, Utf8HtmlName name)
+        {
+            AddMarker(marker);
+            foreach (var item in name.Verbatim)
+            {
+                var semantic = (uint)(item - (byte)'A') <= 'Z' - 'A' ? (byte)(item | 0x20) : item;
+                Fingerprint = (Fingerprint ^ semantic) * Prime;
+            }
         }
 
         private void AddMarker(byte marker)

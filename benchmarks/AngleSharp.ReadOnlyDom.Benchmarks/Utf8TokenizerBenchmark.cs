@@ -74,13 +74,15 @@ public class Utf8TokenizerBenchmark
 
         public void Text(ReadOnlySpan<byte> utf8) => Events++;
 
-        public void StartTag(ReadOnlySpan<byte> name) => Events++;
+        public void StartTag(Utf8HtmlName name) => Events++;
 
-        public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value) => Events++;
+        public bool WantsAttribute(Utf8HtmlName name) => true;
+
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) => Events++;
 
         public void StartTagEnd(bool selfClosing) => Events++;
 
-        public void EndTag(ReadOnlySpan<byte> name) => Events++;
+        public void EndTag(Utf8HtmlName name) => Events++;
     }
 }
 #endif
