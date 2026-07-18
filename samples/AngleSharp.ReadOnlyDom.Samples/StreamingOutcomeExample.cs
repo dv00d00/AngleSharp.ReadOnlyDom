@@ -1,5 +1,5 @@
 using System.Text;
-using AngleSharp.ReadOnlyDom.Streaming.Query;
+using AngleSharp.ReadOnlyDom.Streaming;
 
 internal static class StreamingOutcomeExample
 {

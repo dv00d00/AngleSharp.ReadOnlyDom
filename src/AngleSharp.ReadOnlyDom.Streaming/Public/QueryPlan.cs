@@ -1,6 +1,6 @@
 ﻿using System.IO.Pipelines;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Query;
+namespace AngleSharp.ReadOnlyDom.Streaming;
 
 public sealed class QueryPlan<TState>
 {

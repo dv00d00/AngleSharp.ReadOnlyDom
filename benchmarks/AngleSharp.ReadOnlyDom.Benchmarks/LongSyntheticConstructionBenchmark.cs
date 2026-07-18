@@ -3,7 +3,7 @@ using System.Text;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Compact;
 using AngleSharp.ReadOnlyDom.Html;
-using AngleSharp.ReadOnlyDom.Streaming.Query;
+using AngleSharp.ReadOnlyDom.Streaming;
 using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;

@@ -1,7 +1,7 @@
 ﻿using System.Buffers;
 using System.Numerics;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Query;
+namespace AngleSharp.ReadOnlyDom.Streaming;
 
 internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
 {
