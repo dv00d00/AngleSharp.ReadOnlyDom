@@ -3,7 +3,6 @@ using System.Text;
 using System.IO.Pipelines;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.ReadOnlyDom.Streaming.Query;
 
 namespace AngleSharp.Readonly.Tests;
 

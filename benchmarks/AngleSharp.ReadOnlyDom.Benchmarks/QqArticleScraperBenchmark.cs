@@ -10,7 +10,6 @@ using AngleSharp.ReadOnlyDom.Compact.Experimental;
 using AngleSharp.ReadOnlyDom.Filters;
 using AngleSharp.ReadOnlyDom.Html;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.ReadOnlyDom.Streaming.Query;
 using AngleSharp.Text;
 using BenchmarkDotNet.Attributes;
 using AngleSharpDocument = AngleSharp.Dom.IDocument;

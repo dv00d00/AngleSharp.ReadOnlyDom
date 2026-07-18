@@ -1,5 +1,4 @@
 using System.IO.Pipelines;
-using AngleSharp.ReadOnlyDom.Streaming.Query;
 
 namespace AngleSharp.ReadOnlyDom.Streaming;
 

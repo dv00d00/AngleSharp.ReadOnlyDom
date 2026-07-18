@@ -1,4 +1,4 @@
-﻿namespace AngleSharp.ReadOnlyDom.Streaming.Query;
+﻿namespace AngleSharp.ReadOnlyDom.Streaming;
 
 public sealed class QueryNode<TState>
 {

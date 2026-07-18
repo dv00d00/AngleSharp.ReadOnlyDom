@@ -1,6 +1,6 @@
 ﻿using System.Text;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Query;
+namespace AngleSharp.ReadOnlyDom.Streaming;
 
 internal static class QueryPlanCompiler
 {

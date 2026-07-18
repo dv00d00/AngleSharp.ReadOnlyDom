@@ -2,7 +2,6 @@
 using System.IO.Pipelines;
 using System.Text;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.ReadOnlyDom.Streaming.Query;
 
 namespace AngleSharp.Readonly.Tests;
 

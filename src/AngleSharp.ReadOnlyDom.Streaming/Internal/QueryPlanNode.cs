@@ -1,4 +1,4 @@
-﻿namespace AngleSharp.ReadOnlyDom.Streaming.Query;
+﻿namespace AngleSharp.ReadOnlyDom.Streaming;
 
 internal sealed record QueryPlanNode<TState>(
     int Index,

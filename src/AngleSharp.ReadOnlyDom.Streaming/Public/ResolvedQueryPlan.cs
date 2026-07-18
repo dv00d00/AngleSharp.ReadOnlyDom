@@ -1,6 +1,6 @@
 using System.IO.Pipelines;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Query;
+namespace AngleSharp.ReadOnlyDom.Streaming;
 
 /// <summary>
 /// Runs a compiled observation plan and resolves its accumulated state only after the input and all open query scopes
