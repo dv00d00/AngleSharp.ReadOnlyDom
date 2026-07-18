@@ -1,4 +1,4 @@
-﻿namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+﻿namespace AngleSharp.ReadOnlyDom.Streaming.Query;
 
 public readonly ref struct Element
 {

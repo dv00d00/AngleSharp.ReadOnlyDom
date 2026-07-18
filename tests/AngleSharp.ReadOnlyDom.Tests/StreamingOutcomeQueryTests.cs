@@ -2,7 +2,7 @@
 using System.IO.Pipelines;
 using System.Text;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
 
 namespace AngleSharp.Readonly.Tests;
 
@@ -156,7 +156,6 @@ public sealed class StreamingOutcomeQueryTests
 
         StreamQuery
             .Observe(root, descendant)
-            .Compile()
             .Execute("<main><article></article></main>"u8, new ObservationState());
 
         await Assert.That(starts).IsEqualTo(1);
@@ -170,7 +169,7 @@ public sealed class StreamingOutcomeQueryTests
         var rejected = false;
         try
         {
-            StreamQuery.Observe(queries).Compile();
+            StreamQuery.Observe(queries);
         }
         catch (NotSupportedException)
         {

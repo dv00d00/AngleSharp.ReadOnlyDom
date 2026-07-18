@@ -1,16 +1,16 @@
 ﻿using System.Text;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+namespace AngleSharp.ReadOnlyDom.Streaming.Query;
 
 public readonly ref struct CompletedElement
 {
-    private readonly ElementCapture _capture;
+    private readonly CapturedElementBuffer _capture;
     private readonly string[] _attributeNames;
     private readonly byte[][] _attributeNamesUtf8;
     private readonly int[] _attributeIndexes;
 
     internal CompletedElement(
-        ElementCapture capture,
+        CapturedElementBuffer capture,
         string[] attributeNames,
         byte[][] attributeNamesUtf8,
         int[] attributeIndexes

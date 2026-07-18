@@ -1,4 +1,4 @@
-﻿using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+﻿using AngleSharp.ReadOnlyDom.Streaming.Query;
 
 internal static class MarkdownPlan
 {
@@ -24,7 +24,7 @@ internal static class MarkdownPlan
         html.Descendant("p").AsInlineBlock();
         html.Descendant("li").AsInlineBlock("- "u8);
         html.Descendant("blockquote").AsInlineBlock("> "u8);
-        html.Descendant("a").WithAttribute("href").AsInlineLink();
+        html.Descendant("a").Attribute("href").AsInlineLink();
         html.Descendant("pre").OnTextContent(static (ref output, in element) => output.FencedCode(element.TextUtf8));
         html.Descendant("hr").OnClose(static (ref output, in _) => output.Block("---"u8, default));
         html.Descendant("img")
@@ -44,11 +44,11 @@ internal static class MarkdownPlan
             );
 
         html.Descendant("table")
-            .WithId("hnmain")
+            .Id("hnmain")
             .OnStart(static (ref output, in _) => output.StartLayoutTable())
             .OnEnd(static (ref output) => output.EndLayoutTable());
-        html.Descendant("tr").WithClass("athing").AsInlineBlock("- "u8);
-        html.Descendant("span").WithClass("subline").AsInlineBlock("  "u8);
+        html.Descendant("tr").Class("athing").AsInlineBlock("- "u8);
+        html.Descendant("span").Class("subline").AsInlineBlock("  "u8);
 
         var table = html.Descendant("table")
             .OnStart(static (ref output, in _) => output.StartTable())

@@ -1,17 +1,17 @@
-﻿namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+﻿namespace AngleSharp.ReadOnlyDom.Streaming.Query;
 
-internal sealed record CompiledQueryNode<TState>(
+internal sealed record QueryPlanNode<TState>(
     int Index,
     int ParentIndex,
     QueryRelation Relation,
-    byte[] TagName,
+    byte[] TagNameUtf8,
     ulong TagHash,
-    ulong RequiredAttributeBits,
+    ulong RequestedAttributeMask,
     CompiledAttributePredicate[] Predicates,
     StartHandler<TState>? Start,
     TextHandler<TState>? Text,
     EndHandler<TState>? End,
     CompletedElementHandler<TState>? Completed,
     CompletedTextMode CompletedTextMode,
-    int[] CompletedAttributeIndexes
+    int[] CapturedAttributeIndexes
 );
