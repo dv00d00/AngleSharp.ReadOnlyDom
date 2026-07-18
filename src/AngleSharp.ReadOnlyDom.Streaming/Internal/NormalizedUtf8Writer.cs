@@ -1,13 +1,13 @@
 using System.Buffers;
 using System.Text;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
+namespace AngleSharp.ReadOnlyDom.Streaming;
 
 /// <summary>
 /// Writes UTF-8 text while collapsing source whitespace and delaying semantic separators until
 /// more content arrives, avoiding leading and trailing separators.
 /// </summary>
-public sealed class NormalizedUtf8Writer
+internal sealed class NormalizedUtf8Writer
 {
     private static readonly byte[] DefaultLineSeparator = "\n"u8.ToArray();
     private static readonly byte[] DefaultParagraphSeparator = "\n\n"u8.ToArray();
@@ -20,10 +20,10 @@ public sealed class NormalizedUtf8Writer
     private PendingSeparator _pending;
     private bool _hasContent;
 
-    public NormalizedUtf8Writer(IBufferWriter<byte> output)
+    internal NormalizedUtf8Writer(IBufferWriter<byte> output)
         : this(output, DefaultLineSeparator, DefaultParagraphSeparator, DefaultCellSeparator) { }
 
-    public NormalizedUtf8Writer(
+    internal NormalizedUtf8Writer(
         IBufferWriter<byte> output,
         ReadOnlyMemory<byte> lineSeparator,
         ReadOnlyMemory<byte> paragraphSeparator,
@@ -37,7 +37,7 @@ public sealed class NormalizedUtf8Writer
     }
 
     /// <summary>Appends UTF-8 text, collapsing every Unicode whitespace run.</summary>
-    public void Append(ReadOnlySpan<byte> utf8)
+    internal void Append(ReadOnlySpan<byte> utf8)
     {
         while (!utf8.IsEmpty)
         {
@@ -59,16 +59,16 @@ public sealed class NormalizedUtf8Writer
         }
     }
 
-    public void Space() => Request(PendingSeparator.Space);
+    internal void Space() => Request(PendingSeparator.Space);
 
-    public void CellBreak() => Request(PendingSeparator.Cell);
+    internal void CellBreak() => Request(PendingSeparator.Cell);
 
-    public void LineBreak() => Request(PendingSeparator.Line);
+    internal void LineBreak() => Request(PendingSeparator.Line);
 
-    public void ParagraphBreak() => Request(PendingSeparator.Paragraph);
+    internal void ParagraphBreak() => Request(PendingSeparator.Paragraph);
 
     /// <summary>Resets normalization state without modifying the destination.</summary>
-    public void Reset()
+    internal void Reset()
     {
         _pending = PendingSeparator.None;
         _hasContent = false;

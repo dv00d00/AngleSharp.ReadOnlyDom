@@ -1,9 +1,9 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Text;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
+namespace AngleSharp.ReadOnlyDom.Streaming;
 
 /// <summary>Configures the default query-directed HTML-to-text view.</summary>
 public sealed class HtmlTextOptions
@@ -118,12 +118,11 @@ public sealed class HtmlTextExtractor
     {
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(writer);
-        var buffer = new CommittedUtf8Buffer(inputSliceSize);
         await _plan
-            .ExecuteBackpressuredAsync(
+            .ExecuteAsync(
                 reader,
                 writer,
-                new ExtractionState(buffer, _settings),
+                new ExtractionState(writer, _settings),
                 flushThreshold,
                 inputSliceSize,
                 cancellationToken
@@ -135,8 +134,7 @@ public sealed class HtmlTextExtractor
     {
         var html = StreamQuery.For<ExtractionState>("html");
         var content = html.Descendant(settings.ContentElement)
-            .OnText(static (ref ExtractionState state, ReadOnlySpan<byte> text) => state.Append(text))
-            .OnEnd(static (ref ExtractionState state) => state.Complete());
+            .OnText(static (ref ExtractionState state, ReadOnlySpan<byte> text) => state.Append(text));
 
         foreach (var name in settings.IgnoredElements)
         {
@@ -175,15 +173,13 @@ public sealed class HtmlTextExtractor
         return html.Compile();
     }
 
-    private sealed class ExtractionState : ICommittedUtf8Output
+    private sealed class ExtractionState
     {
-        private readonly CommittedUtf8Buffer? _committed;
         private readonly NormalizedUtf8Writer _writer;
         private int _ignoredDepth;
 
         internal ExtractionState(IBufferWriter<byte> output, ExtractorSettings settings)
         {
-            _committed = output as CommittedUtf8Buffer;
             _writer = new NormalizedUtf8Writer(
                 output,
                 settings.LineSeparator,
@@ -192,16 +188,11 @@ public sealed class HtmlTextExtractor
             );
         }
 
-        public ReadOnlyMemory<byte> CommittedUtf8 => _committed?.CommittedUtf8 ?? default;
-
-        public void AdvanceCommitted(int bytes) => _committed?.AdvanceCommitted(bytes);
-
         internal void Append(ReadOnlySpan<byte> utf8)
         {
             if (_ignoredDepth != 0)
                 return;
             _writer.Append(utf8);
-            _committed?.Commit();
         }
 
         internal void StartIgnored() => _ignoredDepth++;
@@ -213,7 +204,6 @@ public sealed class HtmlTextExtractor
             _writer.Space();
             _writer.Append(alt);
             _writer.Space();
-            _committed?.Commit();
         }
 
         internal void EndIgnored()
@@ -240,7 +230,6 @@ public sealed class HtmlTextExtractor
                 _writer.ParagraphBreak();
         }
 
-        internal void Complete() => _committed?.Commit();
     }
 
     private sealed class ExtractorSettings

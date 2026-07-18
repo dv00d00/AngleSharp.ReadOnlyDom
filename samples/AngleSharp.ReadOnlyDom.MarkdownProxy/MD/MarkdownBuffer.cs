@@ -1,10 +1,10 @@
 ﻿using System.Buffers;
 using System.Text;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
+using AngleSharp.ReadOnlyDom.Streaming;
 
-internal sealed class MarkdownBuffer : ICommittedUtf8Output
+internal sealed class MarkdownBuffer : IUtf8PublishSource
 {
-    private readonly CommittedUtf8Buffer _output = new(4 * 1024);
+    private readonly PublishableUtf8Buffer _output = new(4 * 1024);
     private readonly ArrayBufferWriter<byte> _row = new(256);
     private readonly ArrayBufferWriter<byte> _linkTarget = new(128);
     private readonly ArrayBufferWriter<byte> _documentTitle = new(128);
@@ -26,9 +26,9 @@ internal sealed class MarkdownBuffer : ICommittedUtf8Output
 
     internal ReadOnlyMemory<byte> WrittenMemory => _output.WrittenUtf8;
 
-    public ReadOnlyMemory<byte> CommittedUtf8 => _output.CommittedUtf8;
+    public ReadOnlyMemory<byte> PublishableUtf8 => _output.PublishableUtf8;
 
-    public void AdvanceCommitted(int bytes) => _output.AdvanceCommitted(bytes);
+    public void AdvancePublished(int bytes) => _output.AdvancePublished(bytes);
 
     private bool AcceptsContent => !_preferredArticleFound || !_preferredArticleComplete && _preferredArticleDepth != 0;
 
@@ -66,7 +66,7 @@ internal sealed class MarkdownBuffer : ICommittedUtf8Output
         _preferredArticleDepth--;
         if (_preferredArticleDepth == 0)
         {
-            _output.Commit();
+            _output.MarkPublishable();
             _preferredArticleComplete = true;
         }
     }
@@ -74,7 +74,7 @@ internal sealed class MarkdownBuffer : ICommittedUtf8Output
     internal void CompleteDocument()
     {
         if (!_preferredArticleFound)
-            _output.Commit();
+            _output.MarkPublishable();
     }
 
     internal void Block(ReadOnlySpan<byte> prefix, ReadOnlySpan<byte> text)
@@ -303,7 +303,7 @@ internal sealed class MarkdownBuffer : ICommittedUtf8Output
     private void CommitIfSafe()
     {
         if (_preferredArticleFound && !_preferredArticleComplete && _preferredArticleDepth != 0)
-            _output.Commit();
+            _output.MarkPublishable();
     }
 
     private static void Write(IBufferWriter<byte> output, ReadOnlySpan<byte> value)

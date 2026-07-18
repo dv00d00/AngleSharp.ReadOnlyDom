@@ -1,20 +1,20 @@
-﻿namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+﻿namespace AngleSharp.ReadOnlyDom.Streaming.Query;
 
-public sealed class Selector
+internal sealed class Selector
 {
     private readonly List<AttributePredicate> _attributes = [];
 
     private Selector(string tagName) => TagName = NormalizeName(tagName, nameof(tagName));
 
-    public string TagName { get; }
+    internal string TagName { get; }
 
     internal IReadOnlyList<AttributePredicate> Attributes => _attributes;
 
-    public static Selector Tag(string tagName) => new(tagName);
+    internal static Selector Tag(string tagName) => new(tagName);
 
-    public Selector WithId(string value) => WithAttribute("id", value);
+    internal Selector WithId(string value) => WithAttribute("id", value);
 
-    public Selector WithClass(string token)
+    internal Selector WithClass(string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
         if (token.Any(IsHtmlSpace))
@@ -25,13 +25,13 @@ public sealed class Selector
         return this;
     }
 
-    public Selector WithAttribute(string name)
+    internal Selector WithAttribute(string name)
     {
         _attributes.Add(new AttributePredicate(NormalizeName(name, nameof(name)), AttributePredicateKind.Exists, null));
         return this;
     }
 
-    public Selector WithAttribute(string name, string value)
+    internal Selector WithAttribute(string name, string value)
     {
         ArgumentNullException.ThrowIfNull(value);
         _attributes.Add(

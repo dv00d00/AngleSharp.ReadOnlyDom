@@ -1,5 +1,4 @@
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
 
 internal static class StreamingQueryExamples
 {

@@ -1,9 +1,9 @@
 ﻿using System.Buffers;
 using System.Text;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+namespace AngleSharp.ReadOnlyDom.Streaming.Query;
 
-internal sealed class ElementCapture : IDisposable
+internal sealed class CapturedElementBuffer : IDisposable
 {
     private byte[] _utf8 = ArrayPool<byte>.Shared.Rent(256);
     private int[] _attributeStarts = ArrayPool<int>.Shared.Rent(1);
@@ -17,7 +17,7 @@ internal sealed class ElementCapture : IDisposable
 
     internal ReadOnlySpan<byte> TextUtf8 => _utf8.AsSpan(_textStart, _length - _textStart);
 
-    internal int Length => _length;
+    internal int BufferedByteCount => _length;
 
     internal void Reset(CompletedTextMode textMode, int attributeCount)
     {

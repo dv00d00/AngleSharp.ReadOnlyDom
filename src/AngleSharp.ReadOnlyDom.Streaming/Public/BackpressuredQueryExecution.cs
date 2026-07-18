@@ -1,7 +1,7 @@
 using System.IO.Pipelines;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
+namespace AngleSharp.ReadOnlyDom.Streaming;
 
 public static class BackpressuredQueryExecution
 {
@@ -16,7 +16,7 @@ public static class BackpressuredQueryExecution
         CancellationToken cancellationToken = default,
         HtmlStreamingLimits? limits = null
     )
-        where TState : class, ICommittedUtf8Output
+        where TState : class, IUtf8PublishSource
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(reader);
@@ -25,24 +25,24 @@ public static class BackpressuredQueryExecution
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(inputSliceSize);
 
         limits ??= HtmlStreamingLimits.Default;
-        using var session = plan.CreateSession(state, limits);
+        using var execution = plan.CreateExecution(state, limits);
         await EncodedHtmlInput
             .TokenizeAsync(
                 reader,
                 inputEncoding,
-                session,
+                execution,
                 cancellationToken,
                 inputSliceSize,
                 FlushIfNeededAsync,
                 limits
             )
             .ConfigureAwait(false);
-        await FlushCommittedAsync(writer, state, cancellationToken).ConfigureAwait(false);
-        return session.State;
+        await PublishAvailableAsync(writer, state, cancellationToken).ConfigureAwait(false);
+        return execution.State;
 
         ValueTask FlushIfNeededAsync() =>
-            state.CommittedUtf8.Length >= flushThreshold
-                ? FlushCommittedAsync(writer, state, cancellationToken)
+            state.PublishableUtf8.Length >= flushThreshold
+                ? PublishAvailableAsync(writer, state, cancellationToken)
                 : ValueTask.CompletedTask;
     }
 
@@ -56,7 +56,7 @@ public static class BackpressuredQueryExecution
         CancellationToken cancellationToken = default,
         HtmlStreamingLimits? limits = null
     )
-        where TState : class, ICommittedUtf8Output
+        where TState : class, IUtf8PublishSource
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(reader);
@@ -65,8 +65,8 @@ public static class BackpressuredQueryExecution
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(inputSliceSize);
 
         limits ??= HtmlStreamingLimits.Default;
-        using var session = plan.CreateSession(state, limits);
-        var tokenizer = new Utf8HtmlTokenizer(session, limits);
+        using var execution = plan.CreateExecution(state, limits);
+        var tokenizer = new Utf8HtmlTokenizer(execution, limits);
 
         while (true)
         {
@@ -85,9 +85,9 @@ public static class BackpressuredQueryExecution
                     {
                         var length = Math.Min(inputSliceSize, segment.Length - offset);
                         tokenizer.Write(segment.Slice(offset, length));
-                        if (state.CommittedUtf8.Length >= flushThreshold)
+                        if (state.PublishableUtf8.Length >= flushThreshold)
                         {
-                            await FlushCommittedAsync(writer, state, cancellationToken).ConfigureAwait(false);
+                            await PublishAvailableAsync(writer, state, cancellationToken).ConfigureAwait(false);
                         }
                     }
                 }
@@ -102,28 +102,28 @@ public static class BackpressuredQueryExecution
         }
 
         tokenizer.Complete();
-        await FlushCommittedAsync(writer, state, cancellationToken).ConfigureAwait(false);
+        await PublishAvailableAsync(writer, state, cancellationToken).ConfigureAwait(false);
 
-        return session.State;
+        return execution.State;
     }
 
-    private static async ValueTask FlushCommittedAsync(
+    private static async ValueTask PublishAvailableAsync(
         PipeWriter writer,
-        ICommittedUtf8Output output,
+        IUtf8PublishSource output,
         CancellationToken cancellationToken
     )
     {
-        var committed = output.CommittedUtf8;
-        if (committed.IsEmpty)
+        var publishable = output.PublishableUtf8;
+        if (publishable.IsEmpty)
             return;
 
-        committed.Span.CopyTo(writer.GetSpan(committed.Length));
-        writer.Advance(committed.Length);
+        publishable.Span.CopyTo(writer.GetSpan(publishable.Length));
+        writer.Advance(publishable.Length);
         var result = await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
         if (result.IsCanceled)
             throw new OperationCanceledException(cancellationToken);
         if (result.IsCompleted)
             throw new IOException("The output completed before query execution finished.");
-        output.AdvanceCommitted(committed.Length);
+        output.AdvancePublished(publishable.Length);
     }
 }

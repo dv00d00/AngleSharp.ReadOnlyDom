@@ -10,8 +10,7 @@ using AngleSharp.ReadOnlyDom.Compact.Experimental;
 using AngleSharp.ReadOnlyDom.Filters;
 using AngleSharp.ReadOnlyDom.Html;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
 using AngleSharp.Text;
 using BenchmarkDotNet.Attributes;
 using AngleSharpDocument = AngleSharp.Dom.IDocument;
@@ -438,14 +437,14 @@ public class QqArticleScraperBenchmark
 
     private static QueryPlan<CompiledArticleState> CreateCompletedArticleQuery()
     {
-        var list = StreamQuery.For<CompiledArticleState>("ul").WithClass("news-list");
+        var list = StreamQuery.For<CompiledArticleState>("ul").Class("news-list");
         var card = list.Descendant("li")
-            .WithAttribute("dt-eid", "em_item_article")
+            .Attribute("dt-eid", "em_item_article")
             .OnStart(static (ref state, in element) => state.StartCard(element), "dt-params")
             .OnEnd(static (ref state) => state.EndCard());
 
         var link = card.Descendant("a")
-            .WithAttribute("href")
+            .Attribute("href")
             .OnNormalizedText(
                 static (ref state, in element) =>
                 {
@@ -477,15 +476,15 @@ public class QqArticleScraperBenchmark
 
     private static QueryPlan<CompiledArticleState> CreateArticleQuery()
     {
-        var list = QueryNode<CompiledArticleState>.Root(Selector.Tag("ul").WithClass("news-list"));
-        var card = list.Descendant(Selector.Tag("li").WithAttribute("dt-eid", "em_item_article"))
+        var list = StreamQuery.For<CompiledArticleState>("ul").Class("news-list");
+        var card = list.Descendant("li").Attribute("dt-eid", "em_item_article")
             .OnStart(static (ref state, in element) => state.StartCard(element), "dt-params")
             .OnEnd(static (ref state) => state.EndCard());
-        var link = card.Descendant(Selector.Tag("a").WithAttribute("href"))
+        var link = card.Descendant("a").Attribute("href")
             .OnStart(static (ref state, in element) => state.StartLink(element), "href")
             .OnText(static (ref state, text) => state.AppendText(text))
             .OnEnd(static (ref state) => state.EndLink());
-        link.Descendant(Selector.Tag("img"))
+        link.Descendant("img")
             .OnStart(static (ref state, in element) => state.Image(element), "src", "alt");
         return list.Compile();
     }

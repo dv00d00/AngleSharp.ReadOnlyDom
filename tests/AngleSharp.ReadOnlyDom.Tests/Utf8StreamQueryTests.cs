@@ -3,8 +3,7 @@ using System.Text;
 using System.IO.Pipelines;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
 
 namespace AngleSharp.Readonly.Tests;
 
@@ -13,9 +12,9 @@ public sealed class QueryTests
     [Test]
     public async Task ChildAndDescendantRelationsRemainDistinct()
     {
-        var root = QueryNode<QueryState>.Root(Selector.Tag("main"));
-        root.Child(Selector.Tag("a")).OnStart(static (ref QueryState state, in Element _) => state.Events.Add("child"));
-        root.Descendant(Selector.Tag("a"))
+        var root = StreamQuery.For<QueryState>("main");
+        root.Child("a").OnStart(static (ref QueryState state, in Element _) => state.Events.Add("child"));
+        root.Descendant("a")
             .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("descendant"));
 
         var state = root.Compile()
@@ -58,23 +57,23 @@ public sealed class QueryTests
     [Test]
     public async Task TextEndAndVoidCallbacksPreserveStructuralOrderAcrossSegments()
     {
-        var root = QueryNode<QueryState>.Root(Selector.Tag("main"));
-        root.Descendant(Selector.Tag("a"))
+        var root = StreamQuery.For<QueryState>("main");
+        root.Descendant("a")
             .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("a:start"))
             .OnText(
                 static (ref QueryState state, ReadOnlySpan<byte> text) =>
                     state.Text.Append(Encoding.UTF8.GetString(text))
             )
             .OnEnd(static (ref QueryState state) => state.Events.Add("a:end"))
-            .Descendant(Selector.Tag("img"))
+            .Descendant("img")
             .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("img:start"))
             .OnEnd(static (ref QueryState state) => state.Events.Add("img:end"));
 
         var plan = root.Compile();
         var state = new QueryState();
-        using (var session = plan.CreateSession(state))
+        using (var execution = plan.CreateExecution(state))
         {
-            var tokenizer = new Utf8HtmlTokenizer(session);
+            var tokenizer = new Utf8HtmlTokenizer(execution);
             var html = "<main><a>hello <b>bold</b><img></a></main>"u8;
             for (var index = 0; index < html.Length; index++)
                 tokenizer.Write(html.Slice(index, 1));
@@ -88,8 +87,8 @@ public sealed class QueryTests
     [Test]
     public async Task PipeReaderFeedsTheSameCompiledPlanIncrementally()
     {
-        var root = QueryNode<QueryState>
-            .Root(Selector.Tag("main"))
+        var root = StreamQuery
+            .For<QueryState>("main")
             .OnText(
                 static (ref QueryState state, ReadOnlySpan<byte> text) =>
                     state.Text.Append(Encoding.UTF8.GetString(text))
@@ -109,15 +108,15 @@ public sealed class QueryTests
     [Test]
     public async Task OptimizedTagHashMatchesNormalizedNamesAcrossChunks()
     {
-        var root = QueryNode<QueryState>
-            .Root(Selector.Tag("article"))
+        var root = StreamQuery
+            .For<QueryState>("article")
             .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("start"))
             .OnEnd(static (ref QueryState state) => state.Events.Add("end"));
         var plan = root.Compile();
         var state = new QueryState();
-        using (var session = plan.CreateSession(state))
+        using (var execution = plan.CreateExecution(state))
         {
-            var tokenizer = new Utf8HtmlTokenizer(session);
+            var tokenizer = new Utf8HtmlTokenizer(execution);
             var html = "<ArTiClE></aRtIcLe>"u8;
             foreach (var value in html)
                 tokenizer.Write([value]);
@@ -130,14 +129,15 @@ public sealed class QueryTests
     [Test]
     public async Task QueryTokenizerDoesNotMaterializeUnrequestedAttributeValues()
     {
-        var root = QueryNode<QueryState>
-            .Root(Selector.Tag("article").WithId("story"))
+        var root = StreamQuery
+            .For<QueryState>("article")
+            .Id("story")
             .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("match"));
         var state = new QueryState();
         Utf8HtmlTokenizerCounters counters;
-        using (var session = root.Compile().CreateSession(state))
+        using (var execution = root.Compile().CreateExecution(state))
         {
-            var tokenizer = new Utf8HtmlTokenizer(session);
+            var tokenizer = new Utf8HtmlTokenizer(execution);
             tokenizer.Write(Encoding.UTF8.GetBytes($"<article ignored='{new string('x', 8192)}' id=story></article>"));
             tokenizer.Complete();
             counters = tokenizer.Counters;
@@ -152,7 +152,7 @@ public sealed class QueryTests
     {
         var root = StreamQuery.For<QueryState>("main");
         root.Descendant("section")
-            .WithAttribute("data-id")
+            .Attribute("data-id")
             .OnNormalizedText(
                 static (ref state, in element) =>
                 {
@@ -205,8 +205,8 @@ public sealed class QueryTests
     public async Task MalformedTableNestingDocumentsTheLexicalTopologyBoundary()
     {
         const string html = "<table><div id=inside>lexically nested</div></table>";
-        var root = QueryNode<QueryState>.Root(Selector.Tag("table"));
-        root.Descendant(Selector.Tag("div").WithId("inside"))
+        var root = StreamQuery.For<QueryState>("table");
+        root.Descendant("div").Id("inside")
             .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("match"));
         var lexical = root.Compile().Execute(Encoding.UTF8.GetBytes(html), new QueryState());
 
@@ -217,22 +217,21 @@ public sealed class QueryTests
     }
 
     [Test]
-    public async Task ExplanationAndNodeLimitMakeTheExecutionShapeExplicit()
+    public async Task ExplanationAndNodeLimitMakeTheExecutionModelExplicit()
     {
-        var root = QueryNode<QueryState>.Root(Selector.Tag("ul").WithClass("news-list"));
-        root.Descendant(Selector.Tag("a").WithAttribute("href"))
+        var root = StreamQuery.For<QueryState>("ul").Class("news-list");
+        root.Descendant("a").Attribute("href")
             .OnStart(static (ref QueryState _, in Element _) => { }, "title");
         var explanation = root.Compile().Explanation;
 
-        await Assert.That(explanation.ExecutionShape).IsEqualTo("StreamingOnly");
+        await Assert.That(explanation.ExecutionModel).IsEqualTo(QueryExecutionModel.LexicalStreaming);
         await Assert.That(explanation.QueryNodes).IsEqualTo(2);
         await Assert.That(explanation.RequiredTags).IsEquivalentTo(["a", "ul"]);
         await Assert.That(explanation.RequiredAttributes).IsEquivalentTo(["class", "href", "title"]);
-        await Assert.That(explanation.CanStopAfterRoot).IsFalse();
 
         var node = root;
         for (var index = 0; index < 63; index++)
-            node = node.Descendant(Selector.Tag("div"));
+            node = node.Descendant("div");
         var rejected = false;
         try
         {

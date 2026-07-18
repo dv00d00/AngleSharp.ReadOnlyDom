@@ -1,9 +1,9 @@
 ﻿using System.Buffers;
 using System.Numerics;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+namespace AngleSharp.ReadOnlyDom.Streaming.Query;
 
-public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
+internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
 {
     private readonly QueryPlan<TState> _plan;
     private readonly int[] _activeCounts;
@@ -11,8 +11,8 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
     private byte[] _attributeValues;
     private readonly int[] _attributeStarts;
     private readonly int[] _attributeLengths;
-    private readonly List<ElementCapture>?[] _completedCaptures;
-    private readonly Stack<ElementCapture>? _reusableCaptures;
+    private readonly List<CapturedElementBuffer>?[] _completedCaptures;
+    private readonly Stack<CapturedElementBuffer>? _reusableCaptures;
     private TState _state;
     private int _frameCount;
     private int _attributeValueLength;
@@ -26,7 +26,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
     private readonly long _maximumQueryCaptureBytes;
     private long _queryCaptureBytes;
 
-    internal QuerySession(QueryPlan<TState> plan, TState state, HtmlStreamingLimits limits)
+    internal QueryExecution(QueryPlan<TState> plan, TState state, HtmlStreamingLimits limits)
     {
         ArgumentNullException.ThrowIfNull(limits);
         _plan = plan;
@@ -40,8 +40,8 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         _attributeStarts = ArrayPool<int>.Shared.Rent(Math.Max(plan.AttributeNames.Length, 1));
         _attributeLengths = ArrayPool<int>.Shared.Rent(Math.Max(plan.AttributeNames.Length, 1));
         _attributeLengths.AsSpan(0, plan.AttributeNames.Length).Fill(-1);
-        _completedCaptures = plan.CompletedHandlerBits == 0 ? [] : new List<ElementCapture>?[plan.Nodes.Length];
-        _reusableCaptures = plan.CompletedHandlerBits == 0 ? null : new Stack<ElementCapture>();
+        _completedCaptures = plan.CompletedHandlerMask == 0 ? [] : new List<CapturedElementBuffer>?[plan.Nodes.Length];
+        _reusableCaptures = plan.CompletedHandlerMask == 0 ? null : new Stack<CapturedElementBuffer>();
     }
 
     public TState State => _state;
@@ -59,10 +59,10 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
             var index = BitOperations.TrailingZeroCount(candidates);
             candidates &= candidates - 1;
             var node = _plan.Nodes[index];
-            if (!name.SemanticEquals(node.TagName) || !ParentMatches(node))
+            if (!name.SemanticEquals(node.TagNameUtf8) || !ParentMatches(node))
                 continue;
             _pendingCandidateBits |= 1UL << node.Index;
-            _pendingAttributeBits |= node.RequiredAttributeBits;
+            _pendingAttributeBits |= node.RequestedAttributeMask;
         }
         ResetAttributes();
     }
@@ -74,7 +74,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         {
             var index = BitOperations.TrailingZeroCount(attributes);
             attributes &= attributes - 1;
-            if (name.SemanticEquals(_plan.AttributeNameUtf8[index]))
+            if (name.SemanticEquals(_plan.AttributeNamesUtf8[index]))
                 return true;
         }
         return false;
@@ -87,7 +87,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         {
             var index = BitOperations.TrailingZeroCount(attributes);
             attributes &= attributes - 1;
-            if (!name.SemanticEquals(_plan.AttributeNameUtf8[index]))
+            if (!name.SemanticEquals(_plan.AttributeNamesUtf8[index]))
                 continue;
             if (_attributeLengths[index] >= 0)
                 return;
@@ -128,7 +128,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
 
         var element = new Element(
             _plan.AttributeNames,
-            _plan.AttributeNameUtf8,
+            _plan.AttributeNamesUtf8,
             _attributeValues,
             _attributeStarts,
             _attributeLengths
@@ -156,7 +156,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
     public void Text(ReadOnlySpan<byte> utf8)
     {
         EnsureQueryCaptureCapacity(GetCompletedTextUpperBound(utf8.Length));
-        var handlers = _plan.TextHandlerBits;
+        var handlers = _plan.TextHandlerMask;
         while (handlers != 0)
         {
             var nodeIndex = BitOperations.TrailingZeroCount(handlers);
@@ -239,7 +239,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         _attributeValues = [];
     }
 
-    private bool ParentMatches(CompiledQueryNode<TState> node)
+    private bool ParentMatches(QueryPlanNode<TState> node)
     {
         if (node.ParentIndex < 0)
             return true;
@@ -287,17 +287,17 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
 
     private void StartCompletedCaptures(ulong matches)
     {
-        var completed = matches & _plan.CompletedHandlerBits;
+        var completed = matches & _plan.CompletedHandlerMask;
         while (completed != 0)
         {
             var index = BitOperations.TrailingZeroCount(completed);
             completed &= completed - 1;
             var node = _plan.Nodes[index];
-            var capture = _reusableCaptures!.Count == 0 ? new ElementCapture() : _reusableCaptures.Pop();
-            capture.Reset(node.CompletedTextMode, node.CompletedAttributeIndexes.Length);
-            for (var attribute = 0; attribute < node.CompletedAttributeIndexes.Length; attribute++)
+            var capture = _reusableCaptures!.Count == 0 ? new CapturedElementBuffer() : _reusableCaptures.Pop();
+            capture.Reset(node.CompletedTextMode, node.CapturedAttributeIndexes.Length);
+            for (var attribute = 0; attribute < node.CapturedAttributeIndexes.Length; attribute++)
             {
-                var attributeIndex = node.CompletedAttributeIndexes[attribute];
+                var attributeIndex = node.CapturedAttributeIndexes[attribute];
                 var length = _attributeLengths[attributeIndex];
                 if (length >= 0)
                 {
@@ -313,7 +313,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
 
     private void AppendCompletedText(ReadOnlySpan<byte> utf8)
     {
-        var completed = _plan.CompletedHandlerBits;
+        var completed = _plan.CompletedHandlerMask;
         while (completed != 0)
         {
             var index = BitOperations.TrailingZeroCount(completed);
@@ -323,9 +323,9 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
                 continue;
             foreach (var capture in captures)
             {
-                var previousLength = capture.Length;
+                var previousLength = capture.BufferedByteCount;
                 capture.Append(utf8);
-                _queryCaptureBytes += capture.Length - previousLength;
+                _queryCaptureBytes += capture.BufferedByteCount - previousLength;
             }
         }
     }
@@ -341,14 +341,14 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
         var captureIndex = captures.Count - 1;
         var capture = captures[captureIndex];
         captures.RemoveAt(captureIndex);
-        _queryCaptureBytes -= capture.Length;
+        _queryCaptureBytes -= capture.BufferedByteCount;
         try
         {
             var element = new CompletedElement(
                 capture,
                 _plan.AttributeNames,
-                _plan.AttributeNameUtf8,
-                node.CompletedAttributeIndexes
+                _plan.AttributeNamesUtf8,
+                node.CapturedAttributeIndexes
             );
             node.Completed.Invoke(ref _state, in element);
         }
@@ -415,12 +415,12 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
     private long GetCompletedAttributeBytes(ulong matches)
     {
         var total = 0L;
-        var completed = matches & _plan.CompletedHandlerBits;
+        var completed = matches & _plan.CompletedHandlerMask;
         while (completed != 0)
         {
             var index = BitOperations.TrailingZeroCount(completed);
             completed &= completed - 1;
-            foreach (var attributeIndex in _plan.Nodes[index].CompletedAttributeIndexes)
+            foreach (var attributeIndex in _plan.Nodes[index].CapturedAttributeIndexes)
             {
                 var length = _attributeLengths[attributeIndex];
                 if (length > 0)
@@ -433,7 +433,7 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
     private long GetCompletedTextUpperBound(int textLength)
     {
         var captureCount = 0L;
-        var completed = _plan.CompletedHandlerBits;
+        var completed = _plan.CompletedHandlerMask;
         while (completed != 0)
         {
             var index = BitOperations.TrailingZeroCount(completed);
@@ -479,32 +479,32 @@ public sealed class QuerySession<TState> : IUtf8HtmlTokenSink, IDisposable
     private static bool IsHtmlSpace(byte value) => value is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\r' or 0x0C;
 
     private static bool IsVoidTag(ulong hash, int length) =>
-        (length == 2 && (hash == VoidElementHashes.BrHash || hash == VoidElementHashes.HrHash))
+        (length == 2 && (hash == HtmlVoidElements.BrHash || hash == HtmlVoidElements.HrHash))
         || (
             length == 3
             && (
-                hash == VoidElementHashes.ImgHash
-                || hash == VoidElementHashes.WbrHash
-                || hash == VoidElementHashes.ColHash
+                hash == HtmlVoidElements.ImgHash
+                || hash == HtmlVoidElements.WbrHash
+                || hash == HtmlVoidElements.ColHash
             )
         )
         || (
             length == 4
             && (
-                hash == VoidElementHashes.AreaHash
-                || hash == VoidElementHashes.BaseHash
-                || hash == VoidElementHashes.LinkHash
-                || hash == VoidElementHashes.MetaHash
+                hash == HtmlVoidElements.AreaHash
+                || hash == HtmlVoidElements.BaseHash
+                || hash == HtmlVoidElements.LinkHash
+                || hash == HtmlVoidElements.MetaHash
             )
         )
         || (
             length == 5
             && (
-                hash == VoidElementHashes.EmbedHash
-                || hash == VoidElementHashes.InputHash
-                || hash == VoidElementHashes.ParamHash
-                || hash == VoidElementHashes.TrackHash
+                hash == HtmlVoidElements.EmbedHash
+                || hash == HtmlVoidElements.InputHash
+                || hash == HtmlVoidElements.ParamHash
+                || hash == HtmlVoidElements.TrackHash
             )
         )
-        || (length == 6 && hash == VoidElementHashes.SourceHash);
+        || (length == 6 && hash == HtmlVoidElements.SourceHash);
 }

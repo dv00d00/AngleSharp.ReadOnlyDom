@@ -3,13 +3,89 @@ using System.Buffers;
 using System.IO.Pipelines;
 using System.Text;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
 
 namespace AngleSharp.Readonly.Tests;
 
 public sealed class BackpressuredQueryTests
 {
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task DirectPipeWriterOutputPreservesBackpressure(bool encoded)
+    {
+        var input = new Pipe(new PipeOptions(useSynchronizationContext: false));
+        var output = new Pipe(
+            new PipeOptions(
+                pauseWriterThreshold: 64,
+                resumeWriterThreshold: 32,
+                minimumSegmentSize: 16,
+                useSynchronizationContext: false
+            )
+        );
+        var state = new DirectOutput(output.Writer);
+        var plan = StreamQuery
+            .For<DirectOutput>("html")
+            .OnText(static (ref DirectOutput destination, ReadOnlySpan<byte> text) => destination.Append(text))
+            .Compile();
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        var expected = string.Concat(Enumerable.Repeat("abcdef café—uvwxyz012345", 128));
+        var sourceEncoding = encoded ? Encoding.GetEncoding(1252) : Encoding.UTF8;
+        var html = sourceEncoding.GetBytes($"<html><body><p>{expected}</p></body></html>");
+        var execution = ExecuteAndCompleteOutputAsync();
+
+        await input.Writer.WriteAsync(html);
+        await input.Writer.CompleteAsync();
+
+        var firstRead = await output.Reader.ReadAsync();
+        await Assert.That(execution.IsCompleted).IsFalse();
+
+        var received = new ArrayBufferWriter<byte>();
+        Copy(firstRead.Buffer, received);
+        output.Reader.AdvanceTo(firstRead.Buffer.End);
+        var completed = firstRead.IsCompleted;
+        while (!completed)
+        {
+            var read = await output.Reader.ReadAsync();
+            Copy(read.Buffer, received);
+            output.Reader.AdvanceTo(read.Buffer.End);
+            completed = read.IsCompleted;
+        }
+
+        await execution;
+        await input.Reader.CompleteAsync();
+        await output.Reader.CompleteAsync();
+
+        await Assert.That(Encoding.UTF8.GetString(received.WrittenSpan)).IsEqualTo(expected);
+
+        async Task<DirectOutput> ExecuteAndCompleteOutputAsync()
+        {
+            try
+            {
+                return encoded
+                    ? await plan.ExecuteEncodedAsync(
+                        input.Reader,
+                        output.Writer,
+                        HtmlInputEncoding.Known(sourceEncoding),
+                        state,
+                        flushThreshold: 32,
+                        inputSliceSize: 16
+                    )
+                    : await plan.ExecuteAsync(
+                        input.Reader,
+                        output.Writer,
+                        state,
+                        flushThreshold: 32,
+                        inputSliceSize: 16
+                    );
+            }
+            finally
+            {
+                await output.Writer.CompleteAsync();
+            }
+        }
+    }
+
     [Test]
     [Arguments(false)]
     [Arguments(true)]
@@ -57,7 +133,7 @@ public sealed class BackpressuredQueryTests
         await output.Reader.CompleteAsync();
 
         await Assert.That(Encoding.UTF8.GetString(received.WrittenSpan)).IsEqualTo(expected);
-        await Assert.That(finalState.MaximumCommittedBytes).IsLessThanOrEqualTo(48);
+        await Assert.That(finalState.MaximumPublishableBytes).IsLessThanOrEqualTo(48);
 
         async Task<TestOutput> ExecuteAndCompleteOutputAsync()
         {
@@ -96,26 +172,35 @@ public sealed class BackpressuredQueryTests
         }
     }
 
-    private sealed class TestOutput : ICommittedUtf8Output
+    private sealed class TestOutput : IUtf8PublishSource
     {
         private readonly ArrayBufferWriter<byte> _buffer = new();
 
-        public ReadOnlyMemory<byte> CommittedUtf8 => _buffer.WrittenMemory;
+        public ReadOnlyMemory<byte> PublishableUtf8 => _buffer.WrittenMemory;
 
-        internal int MaximumCommittedBytes { get; private set; }
+        internal int MaximumPublishableBytes { get; private set; }
 
         internal void Append(ReadOnlySpan<byte> value)
         {
             value.CopyTo(_buffer.GetSpan(value.Length));
             _buffer.Advance(value.Length);
-            MaximumCommittedBytes = Math.Max(MaximumCommittedBytes, _buffer.WrittenCount);
+            MaximumPublishableBytes = Math.Max(MaximumPublishableBytes, _buffer.WrittenCount);
         }
 
-        public void AdvanceCommitted(int bytes)
+        public void AdvancePublished(int bytes)
         {
             if (bytes != _buffer.WrittenCount)
-                throw new InvalidOperationException("The test output expects the complete committed prefix to flush.");
+                throw new InvalidOperationException("The test output expects the complete publishable prefix to flush.");
             _buffer.Clear();
+        }
+    }
+
+    private sealed class DirectOutput(PipeWriter writer)
+    {
+        internal void Append(ReadOnlySpan<byte> value)
+        {
+            value.CopyTo(writer.GetSpan(value.Length));
+            writer.Advance(value.Length);
         }
     }
 }

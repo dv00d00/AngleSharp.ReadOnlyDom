@@ -1,4 +1,4 @@
-﻿namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+﻿namespace AngleSharp.ReadOnlyDom.Streaming.Query;
 
 public sealed class QueryNode<TState>
 {
@@ -19,9 +19,9 @@ public sealed class QueryNode<TState>
         _root = parent?._root ?? this;
     }
 
-    public Selector Selector { get; }
-    public QueryRelation Relation { get; }
-    public QueryNode<TState>? Parent { get; }
+    internal Selector Selector { get; }
+    internal QueryRelation Relation { get; }
+    internal QueryNode<TState>? Parent { get; }
 
     internal IReadOnlyList<QueryNode<TState>> Children => _children;
     internal IReadOnlyCollection<string> ProjectedAttributes => _projectedAttributes;
@@ -32,49 +32,41 @@ public sealed class QueryNode<TState>
     internal CompletedTextMode CompletedTextMode => _completedTextMode;
     internal QueryNode<TState> RootNode => _root;
 
-    public static QueryNode<TState> Root(Selector selector) => new(selector, QueryRelation.Root, null);
+    internal static QueryNode<TState> Root(Selector selector) => new(selector, QueryRelation.Root, null);
 
-    public static QueryNode<TState> Root(string tagName) => Root(Selector.Tag(tagName));
+    internal static QueryNode<TState> Root(string tagName) => Root(Selector.Tag(tagName));
 
-    public QueryNode<TState> Descendant(Selector selector) => AddChild(selector, QueryRelation.Descendant);
+    internal QueryNode<TState> Descendant(Selector selector) => AddChild(selector, QueryRelation.Descendant);
 
     public QueryNode<TState> Descendant(string tagName) => Descendant(Selector.Tag(tagName));
 
-    public QueryNode<TState> Child(Selector selector) => AddChild(selector, QueryRelation.Child);
+    internal QueryNode<TState> Child(Selector selector) => AddChild(selector, QueryRelation.Child);
 
     public QueryNode<TState> Child(string tagName) => Child(Selector.Tag(tagName));
 
-    public QueryNode<TState> WithId(string value)
+    public QueryNode<TState> Id(string value)
     {
         Selector.WithId(value);
         return this;
     }
 
-    public QueryNode<TState> Id(string value) => WithId(value);
-
-    public QueryNode<TState> WithClass(string token)
+    public QueryNode<TState> Class(string token)
     {
         Selector.WithClass(token);
         return this;
     }
 
-    public QueryNode<TState> Class(string token) => WithClass(token);
-
-    public QueryNode<TState> WithAttribute(string name)
+    public QueryNode<TState> Attribute(string name)
     {
         Selector.WithAttribute(name);
         return this;
     }
 
-    public QueryNode<TState> Attribute(string name) => WithAttribute(name);
-
-    public QueryNode<TState> WithAttribute(string name, string value)
+    public QueryNode<TState> Attribute(string name, string value)
     {
         Selector.WithAttribute(name, value);
         return this;
     }
-
-    public QueryNode<TState> Attribute(string name, string value) => WithAttribute(name, value);
 
     public QueryNode<TState> OnStart(StartHandler<TState> handler, params string[] projectedAttributes)
     {
@@ -112,7 +104,7 @@ public sealed class QueryNode<TState>
         params string[] projectedAttributes
     ) => OnCompleted(CompletedTextMode.Normalized, handler, projectedAttributes);
 
-    public QueryPlan<TState> Compile() => QueryCompiler.Compile(_root);
+    public QueryPlan<TState> Compile() => QueryPlanCompiler.Compile(_root);
 
     private QueryNode<TState> AddChild(Selector selector, QueryRelation relation)
     {

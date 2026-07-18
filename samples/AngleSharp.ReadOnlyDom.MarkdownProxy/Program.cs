@@ -1,7 +1,7 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Net;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
+using AngleSharp.ReadOnlyDom.Streaming;
 
 var builder = WebApplication.CreateBuilder(args);
 builder

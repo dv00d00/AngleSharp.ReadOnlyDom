@@ -2,27 +2,27 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Text;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
+using AngleSharp.ReadOnlyDom.Streaming;
 
 namespace AngleSharp.Readonly.Tests;
 
 public sealed class HtmlTextExtractorTests
 {
     [Test]
-    public async Task CommittedBufferRetainsUncommittedSuffixWhenPrefixAdvances()
+    public async Task PublishableBufferRetainsTentativeSuffixWhenPublishedPrefixAdvances()
     {
-        var buffer = new CommittedUtf8Buffer(4);
+        var buffer = new PublishableUtf8Buffer(4);
         buffer.Write("abc"u8);
-        buffer.Commit();
+        buffer.MarkPublishable();
         buffer.Write("defgh"u8);
 
-        await Assert.That(Encoding.UTF8.GetString(buffer.CommittedUtf8.Span)).IsEqualTo("abc");
-        buffer.AdvanceCommitted(3);
+        await Assert.That(Encoding.UTF8.GetString(buffer.PublishableUtf8.Span)).IsEqualTo("abc");
+        buffer.AdvancePublished(3);
         await Assert.That(Encoding.UTF8.GetString(buffer.WrittenUtf8.Span)).IsEqualTo("defgh");
 
-        buffer.Commit();
-        buffer.AdvanceCommitted(2);
-        await Assert.That(Encoding.UTF8.GetString(buffer.CommittedUtf8.Span)).IsEqualTo("fgh");
+        buffer.MarkPublishable();
+        buffer.AdvancePublished(2);
+        await Assert.That(Encoding.UTF8.GetString(buffer.PublishableUtf8.Span)).IsEqualTo("fgh");
     }
 
     [Test]

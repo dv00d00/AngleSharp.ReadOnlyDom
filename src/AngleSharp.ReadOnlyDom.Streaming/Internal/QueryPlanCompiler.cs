@@ -1,16 +1,33 @@
 ﻿using System.Text;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+namespace AngleSharp.ReadOnlyDom.Streaming.Query;
 
-internal static class QueryCompiler
+internal static class QueryPlanCompiler
 {
-    public static QueryPlan<TState> Compile<TState>(QueryNode<TState> root)
+    internal static QueryPlan<TState> Compile<TState>(QueryNode<TState> root)
     {
         ArgumentNullException.ThrowIfNull(root);
         return Compile([root.RootNode]);
     }
 
-    public static QueryPlan<TState> Compile<TState>(IReadOnlyList<QueryNode<TState>> roots)
+    internal static QueryPlan<TState> CompileRoots<TState>(IReadOnlyList<QueryNode<TState>> queries)
+    {
+        ArgumentNullException.ThrowIfNull(queries);
+        if (queries.Count == 0)
+            throw new ArgumentException("At least one query is required.", nameof(queries));
+
+        var seen = new HashSet<QueryNode<TState>>(ReferenceEqualityComparer.Instance);
+        var roots = new List<QueryNode<TState>>(queries.Count);
+        foreach (var query in queries)
+        {
+            ArgumentNullException.ThrowIfNull(query);
+            if (seen.Add(query.RootNode))
+                roots.Add(query.RootNode);
+        }
+        return Compile(roots);
+    }
+
+    internal static QueryPlan<TState> Compile<TState>(IReadOnlyList<QueryNode<TState>> roots)
     {
         ArgumentNullException.ThrowIfNull(roots);
         if (roots.Count == 0)
@@ -25,7 +42,7 @@ internal static class QueryCompiler
             AddPreorder(root, sourceNodes);
         }
         if (sourceNodes.Count > 64)
-            throw new NotSupportedException("StreamingOnly plans support at most 64 query nodes.");
+            throw new NotSupportedException("Lexical streaming plans support at most 64 query nodes.");
 
         var attributeNames = sourceNodes
             .SelectMany(static node =>
@@ -34,9 +51,9 @@ internal static class QueryCompiler
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToArray();
-        var attributeNameUtf8 = attributeNames.Select(Encoding.UTF8.GetBytes).ToArray();
+        var attributeNamesUtf8 = attributeNames.Select(Encoding.UTF8.GetBytes).ToArray();
         if (attributeNames.Length > 64)
-            throw new NotSupportedException("StreamingOnly plans support at most 64 required attributes.");
+            throw new NotSupportedException("Lexical streaming plans support at most 64 required attributes.");
         var attributeIndexes = attributeNames
             .Select(static (name, index) => (name, index))
             .ToDictionary(static pair => pair.name, static pair => pair.index, StringComparer.Ordinal);
@@ -44,7 +61,7 @@ internal static class QueryCompiler
             .Select(static (node, index) => (node, index))
             .ToDictionary(static pair => pair.node, static pair => pair.index);
 
-        var nodes = new CompiledQueryNode<TState>[sourceNodes.Count];
+        var nodes = new QueryPlanNode<TState>[sourceNodes.Count];
         for (var index = 0; index < sourceNodes.Count; index++)
         {
             var source = sourceNodes[index];
@@ -67,7 +84,7 @@ internal static class QueryCompiler
                     .Concat(source.ProjectedAttributes)
                     .Distinct(StringComparer.Ordinal)
                     .ToArray();
-            nodes[index] = new CompiledQueryNode<TState>(
+            nodes[index] = new QueryPlanNode<TState>(
                 index,
                 source.Parent is null ? -1 : sourceIndexes[source.Parent],
                 source.Relation,
@@ -85,12 +102,12 @@ internal static class QueryCompiler
         }
 
         var tags = nodes
-            .Select(static node => Encoding.UTF8.GetString(node.TagName))
+            .Select(static node => Encoding.UTF8.GetString(node.TagNameUtf8))
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToArray();
         var tagDispatch = nodes
-            .GroupBy(static node => (node.TagHash, node.TagName.Length))
+            .GroupBy(static node => (node.TagHash, node.TagNameUtf8.Length))
             .Select(static group => new CompiledTagDispatch(
                 group.Key.TagHash,
                 group.Key.Length,
@@ -99,8 +116,14 @@ internal static class QueryCompiler
             .OrderBy(static entry => entry.Hash)
             .ThenBy(static entry => entry.Length)
             .ToArray();
-        var explanation = new QueryExplanation("StreamingOnly", tags, attributeNames, nodes.Length, 24, false, null);
-        return new QueryPlan<TState>(nodes, attributeNames, attributeNameUtf8, tagDispatch, explanation);
+        var explanation = new QueryExplanation(
+            QueryExecutionModel.LexicalStreaming,
+            tags,
+            attributeNames,
+            nodes.Length,
+            24
+        );
+        return new QueryPlan<TState>(nodes, attributeNames, attributeNamesUtf8, tagDispatch, explanation);
     }
 
     private static void AddPreorder<TState>(QueryNode<TState> node, List<QueryNode<TState>> nodes)

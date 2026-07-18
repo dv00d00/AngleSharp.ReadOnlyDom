@@ -1,19 +1,18 @@
 using System.Buffers;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Stream;
+namespace AngleSharp.ReadOnlyDom.Streaming;
 
 /// <summary>
-/// A reusable UTF-8 buffer whose committed prefix can be flushed and consumed without moving
-/// the uncommitted suffix.
+/// A reusable UTF-8 buffer whose publishable prefix can be consumed without moving its tentative suffix.
 /// </summary>
-public sealed class CommittedUtf8Buffer : IBufferWriter<byte>, ICommittedUtf8Output
+public sealed class PublishableUtf8Buffer : IBufferWriter<byte>, IUtf8PublishSource
 {
     private byte[] _buffer;
     private int _start;
-    private int _committedEnd;
+    private int _publishableEnd;
     private int _end;
 
-    public CommittedUtf8Buffer(int initialCapacity = 4 * 1024)
+    public PublishableUtf8Buffer(int initialCapacity = 4 * 1024)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(initialCapacity);
         _buffer = new byte[initialCapacity];
@@ -23,7 +22,7 @@ public sealed class CommittedUtf8Buffer : IBufferWriter<byte>, ICommittedUtf8Out
     public ReadOnlyMemory<byte> WrittenUtf8 => _buffer.AsMemory(_start, _end - _start);
 
     /// <inheritdoc />
-    public ReadOnlyMemory<byte> CommittedUtf8 => _buffer.AsMemory(_start, _committedEnd - _start);
+    public ReadOnlyMemory<byte> PublishableUtf8 => _buffer.AsMemory(_start, _publishableEnd - _start);
 
     public void Advance(int count)
     {
@@ -45,29 +44,29 @@ public sealed class CommittedUtf8Buffer : IBufferWriter<byte>, ICommittedUtf8Out
         return _buffer.AsSpan(_end);
     }
 
-    /// <summary>Appends bytes to the uncommitted suffix.</summary>
+    /// <summary>Appends bytes to the tentative suffix.</summary>
     public void Write(ReadOnlySpan<byte> value)
     {
         value.CopyTo(GetSpan(value.Length));
         Advance(value.Length);
     }
 
-    /// <summary>Marks every currently written byte as irrevocable.</summary>
-    public void Commit() => _committedEnd = _end;
+    /// <summary>Marks every currently written byte as final and safe to publish downstream.</summary>
+    public void MarkPublishable() => _publishableEnd = _end;
 
     /// <inheritdoc />
-    public void AdvanceCommitted(int bytes)
+    public void AdvancePublished(int bytes)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(bytes);
-        if (bytes > _committedEnd - _start)
+        if (bytes > _publishableEnd - _start)
             throw new ArgumentOutOfRangeException(nameof(bytes));
         _start += bytes;
         if (_start == _end)
-            _start = _committedEnd = _end = 0;
+            _start = _publishableEnd = _end = 0;
     }
 
     /// <summary>Discards all buffered bytes.</summary>
-    public void Clear() => _start = _committedEnd = _end = 0;
+    public void Clear() => _start = _publishableEnd = _end = 0;
 
     private void EnsureCapacity(int sizeHint)
     {
@@ -81,7 +80,7 @@ public sealed class CommittedUtf8Buffer : IBufferWriter<byte>, ICommittedUtf8Out
         if (sizeHint <= _buffer.Length - liveLength)
         {
             _buffer.AsSpan(_start, liveLength).CopyTo(_buffer);
-            _committedEnd -= _start;
+            _publishableEnd -= _start;
             _end = liveLength;
             _start = 0;
             return;
@@ -90,7 +89,7 @@ public sealed class CommittedUtf8Buffer : IBufferWriter<byte>, ICommittedUtf8Out
         var newLength = Math.Max(_buffer.Length * 2, checked(liveLength + sizeHint));
         var replacement = new byte[newLength];
         _buffer.AsSpan(_start, liveLength).CopyTo(replacement);
-        _committedEnd -= _start;
+        _publishableEnd -= _start;
         _end = liveLength;
         _start = 0;
         _buffer = replacement;
