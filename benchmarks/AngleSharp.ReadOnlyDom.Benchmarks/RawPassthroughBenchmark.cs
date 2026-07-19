@@ -21,20 +21,42 @@ public class RawPassthroughBenchmark
     private readonly MaterializingCommentSink _materializingCommentSink = new();
     private readonly DiscardingCommentSink _discardingCommentSink = new();
     private readonly RangeTrackingSink _rangeTrackingSink = new();
+    private readonly TextCapturingSink _textCapturingSink = new();
     private byte[] _input = null!;
     private QueryPlan<int> _matchQuery = null!;
     private QueryPlan<int> _rewriteQuery = null!;
 
-    [Params("html5test-full", "html5test-no-payload", "qq")]
+    [Params(
+        "html5test-full",
+        "html5test-no-comments",
+        "html5test-no-scripts",
+        "html5test-no-comments-or-scripts",
+        "html5test-no-payload",
+        "qq"
+    )]
     public string Page { get; set; } = null!;
 
     [GlobalSetup]
     public void Setup()
     {
+        var fullHtml5 = Page.StartsWith("html5test-", StringComparison.Ordinal)
+            ? ReadRequiredFile("ANGLE_HTML5_FULL")
+            : null;
         (_input, _matchQuery, _rewriteQuery) = Page switch
         {
-            "html5test-full" => (
-                ReadRequiredFile("ANGLE_HTML5_FULL"),
+            "html5test-full" => (fullHtml5!, Html5MatchQuery, Html5RewriteQuery),
+            "html5test-no-comments" => (
+                StripPayloads(fullHtml5!, stripComments: true, stripScripts: false),
+                Html5MatchQuery,
+                Html5RewriteQuery
+            ),
+            "html5test-no-scripts" => (
+                StripPayloads(fullHtml5!, stripComments: false, stripScripts: true),
+                Html5MatchQuery,
+                Html5RewriteQuery
+            ),
+            "html5test-no-comments-or-scripts" => (
+                StripPayloads(fullHtml5!, stripComments: true, stripScripts: true),
                 Html5MatchQuery,
                 Html5RewriteQuery
             ),
@@ -119,6 +141,14 @@ public class RawPassthroughBenchmark
     }
 
     [Benchmark]
+    public int TokenizeCapturingText()
+    {
+        _textCapturingSink.Reset();
+        Tokenize(_textCapturingSink);
+        return _textCapturingSink.Checksum;
+    }
+
+    [Benchmark]
     public int QueryMatchOnly() => MatchOnly();
 
     [Benchmark]
@@ -174,6 +204,74 @@ public class RawPassthroughBenchmark
         if (string.IsNullOrWhiteSpace(path))
             throw new InvalidOperationException($"Environment variable {variable} must name the comparison fixture.");
         return File.ReadAllBytes(path);
+    }
+
+    private static byte[] StripPayloads(byte[] input, bool stripComments, bool stripScripts)
+    {
+        var output = new ArrayBufferWriter<byte>(input.Length);
+        var remaining = input.AsSpan();
+        while (!remaining.IsEmpty)
+        {
+            var commentStart = stripComments ? remaining.IndexOf("<!--"u8) : -1;
+            var scriptStart = remaining.IndexOf("<script"u8);
+            var nextStart = FirstNonNegative(commentStart, scriptStart);
+            if (nextStart < 0)
+            {
+                Write(output, remaining);
+                break;
+            }
+
+            Write(output, remaining[..nextStart]);
+            remaining = remaining[nextStart..];
+            if (scriptStart == nextStart)
+            {
+                var openingEnd = remaining.IndexOf((byte)'>');
+                if (openingEnd < 0)
+                    throw new InvalidOperationException("The benchmark fixture contains an unterminated script tag.");
+
+                openingEnd++;
+                var closingStart = remaining[openingEnd..].IndexOf("</script"u8);
+                if (closingStart < 0)
+                    throw new InvalidOperationException("The benchmark fixture contains an unterminated script body.");
+
+                closingStart += openingEnd;
+                var closingEnd = remaining[closingStart..].IndexOf((byte)'>');
+                if (closingEnd < 0)
+                    throw new InvalidOperationException("The benchmark fixture contains an unterminated script end tag.");
+
+                closingEnd += closingStart + 1;
+                if (stripScripts)
+                {
+                    Write(output, remaining[..openingEnd]);
+                    Write(output, remaining[closingStart..closingEnd]);
+                }
+                else
+                {
+                    Write(output, remaining[..closingEnd]);
+                }
+
+                remaining = remaining[closingEnd..];
+                continue;
+            }
+
+            var commentEnd = remaining.IndexOf("-->"u8);
+            if (commentEnd < 0)
+                throw new InvalidOperationException("The benchmark fixture contains an unterminated comment.");
+
+            Write(output, "<!---->"u8);
+            remaining = remaining[(commentEnd + 3)..];
+        }
+
+        return output.WrittenSpan.ToArray();
+    }
+
+    private static int FirstNonNegative(int left, int right) =>
+        left < 0 ? right : right < 0 ? left : Math.Min(left, right);
+
+    private static void Write(ArrayBufferWriter<byte> output, ReadOnlySpan<byte> value)
+    {
+        value.CopyTo(output.GetSpan(value.Length));
+        output.Advance(value.Length);
     }
 
     private sealed class MaterializingCommentSink : IUtf8HtmlTokenSink
@@ -260,6 +358,37 @@ public class RawPassthroughBenchmark
 
         public void StartTagSourceRange(long sourceStart, long sourceEnd) =>
             Checksum += unchecked((int)(sourceEnd - sourceStart));
+
+        public void EndTag(Utf8HtmlName name) => Checksum++;
+
+        public bool WantsAttribute(Utf8HtmlName name) => false;
+
+        public bool BeginComment() => false;
+
+        public void CommentChunk(ReadOnlySpan<byte> utf8) => throw new InvalidOperationException();
+
+        public void EndComment() { }
+    }
+
+    private sealed class TextCapturingSink : IUtf8HtmlTokenSink, IUtf8HtmlStreamingCommentSink
+    {
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
+        public int Checksum { get; private set; }
+
+        public void Reset() => Checksum = 0;
+
+        public void Text(ReadOnlySpan<byte> utf8) => Checksum += utf8.Length;
+
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
+        {
+            Checksum++;
+            return Utf8HtmlStartTagCapture.None;
+        }
+
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) =>
+            throw new InvalidOperationException();
+
+        public void StartTagEnd(bool selfClosing) => Checksum += selfClosing ? 2 : 1;
 
         public void EndTag(Utf8HtmlName name) => Checksum++;
 
