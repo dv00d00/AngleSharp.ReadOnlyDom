@@ -42,22 +42,18 @@ internal static class EncodedHtmlInput
         }
 
         var sourceEncoding = inputEncoding.Encoding!;
-        var inputContract =
-            sourceEncoding.CodePage == Encoding.UTF8.CodePage
-                ? Utf8InputContract.ArbitraryBytes
-                : Utf8InputContract.WellFormedUtf8;
         var tokenizer = new Utf8HtmlTokenizer(
             sink,
             stateMetrics: null,
             limits,
-            countInputBytes: false,
-            inputContract
+            countInputBytes: false
         );
         if (sourceEncoding.CodePage == Encoding.UTF8.CodePage)
         {
+            var input = new Utf8HtmlTokenizerInput(tokenizer, limits: limits);
             await PumpUtf8Async(
                     reader,
-                    tokenizer,
+                    input,
                     cancellationToken,
                     inputSliceSize,
                     afterInputSlice,
@@ -65,22 +61,22 @@ internal static class EncodedHtmlInput
                     limits.MaximumInputBytes
                 )
                 .ConfigureAwait(false);
+            input.Complete();
+            return input.Counters;
         }
-        else
-        {
-            using var transcoder = new Transcoder(sourceEncoding, tokenizer);
-            await PumpEncodedAsync(
-                    reader,
-                    transcoder,
-                    cancellationToken,
-                    inputSliceSize,
-                    afterInputSlice,
-                    inputBytesConsumed: 0,
-                    limits.MaximumInputBytes
-                )
-                .ConfigureAwait(false);
-            transcoder.Complete();
-        }
+
+        using var transcoder = new Transcoder(sourceEncoding, tokenizer);
+        await PumpEncodedAsync(
+                reader,
+                transcoder,
+                cancellationToken,
+                inputSliceSize,
+                afterInputSlice,
+                inputBytesConsumed: 0,
+                limits.MaximumInputBytes
+            )
+            .ConfigureAwait(false);
+        transcoder.Complete();
 
         tokenizer.Complete();
         return tokenizer.Counters;
@@ -107,26 +103,22 @@ internal static class EncodedHtmlInput
                 )
                 .ConfigureAwait(false);
             var detection = HtmlEncodingSniffer.Detect(prefix.AsSpan(0, count), fallback);
-            var inputContract =
-                detection.Encoding.CodePage == Encoding.UTF8.CodePage
-                    ? Utf8InputContract.ArbitraryBytes
-                    : Utf8InputContract.WellFormedUtf8;
             var tokenizer = new Utf8HtmlTokenizer(
                 sink,
                 stateMetrics: null,
                 limits,
-                countInputBytes: false,
-                inputContract
+                countInputBytes: false
             );
 
             if (detection.Encoding.CodePage == Encoding.UTF8.CodePage)
             {
-                tokenizer.Write(prefix.AsSpan(detection.PreambleLength, count - detection.PreambleLength));
+                var input = new Utf8HtmlTokenizerInput(tokenizer, limits: limits);
+                input.Write(prefix.AsSpan(detection.PreambleLength, count - detection.PreambleLength));
                 if (afterInputSlice is not null)
                     await afterInputSlice().ConfigureAwait(false);
                 await PumpUtf8Async(
                         reader,
-                        tokenizer,
+                        input,
                         cancellationToken,
                         inputSliceSize,
                         afterInputSlice,
@@ -134,8 +126,8 @@ internal static class EncodedHtmlInput
                         limits.MaximumInputBytes
                     )
                     .ConfigureAwait(false);
-                tokenizer.Complete();
-                return tokenizer.Counters;
+                input.Complete();
+                return input.Counters;
             }
 
             using var transcoder = new Transcoder(detection.Encoding, tokenizer);
@@ -214,7 +206,7 @@ internal static class EncodedHtmlInput
 
     private static async ValueTask PumpUtf8Async(
         PipeReader reader,
-        Utf8HtmlTokenizer tokenizer,
+        Utf8HtmlTokenizerInput input,
         CancellationToken cancellationToken,
         int inputSliceSize,
         Func<ValueTask>? afterInputSlice,
@@ -240,7 +232,7 @@ internal static class EncodedHtmlInput
                     {
                         var length = Math.Min(inputSliceSize, segment.Length - offset);
                         inputBytesConsumed = EnsureInputBudget(inputBytesConsumed, length, maximumInputBytes);
-                        tokenizer.Write(segment.Span.Slice(offset, length));
+                        input.Write(segment.Span.Slice(offset, length));
                         if (afterInputSlice is not null)
                             await afterInputSlice().ConfigureAwait(false);
                     }

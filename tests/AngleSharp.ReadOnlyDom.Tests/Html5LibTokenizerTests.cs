@@ -117,6 +117,7 @@ public sealed class Html5LibTokenizerTests
     {
         var sink = new SpecSink();
         var tokenizer = new Utf8HtmlTokenizer(sink);
+        var input = new Utf8HtmlTokenizerInput(tokenizer);
         switch (initialState)
         {
             case "Data state":
@@ -141,8 +142,8 @@ public sealed class Html5LibTokenizerTests
         }
 
         for (var offset = 0; offset < utf8.Length; offset += segmentSize)
-            tokenizer.Write(utf8.AsMemory(offset, Math.Min(segmentSize, utf8.Length - offset)));
-        tokenizer.Complete();
+            input.Write(utf8.AsMemory(offset, Math.Min(segmentSize, utf8.Length - offset)));
+        input.Complete();
         return sink.Tokens.Select(static token => token.Canonical()).ToArray();
     }
 

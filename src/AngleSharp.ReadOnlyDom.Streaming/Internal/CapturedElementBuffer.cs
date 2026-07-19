@@ -62,24 +62,27 @@ internal sealed class CapturedElementBuffer : IDisposable
             AppendBytes(utf8);
             return;
         }
-        while (!utf8.IsEmpty)
+        var offset = 0;
+        while (offset < utf8.Length)
         {
-            var status = Rune.DecodeFromUtf8(utf8, out var rune, out var consumed);
-            if (status != OperationStatus.Done)
-                throw new InvalidOperationException("The tokenizer emitted incomplete UTF-8 text.");
-            var scalar = utf8[..consumed];
-            utf8 = utf8[consumed..];
-            if (Rune.IsWhiteSpace(rune))
+            var remaining = utf8[offset..];
+            var runLength = TrustedUtf8.IndexOfWhiteSpace(remaining, out var whitespaceLength);
+            if (runLength < 0)
+                runLength = remaining.Length;
+            if (runLength != 0)
             {
-                _pendingSpace = _length != _textStart;
+                if (_pendingSpace)
+                {
+                    AppendByte((byte)' ');
+                    _pendingSpace = false;
+                }
+                AppendBytes(remaining[..runLength]);
+                offset += runLength;
                 continue;
             }
-            if (_pendingSpace)
-            {
-                AppendByte((byte)' ');
-                _pendingSpace = false;
-            }
-            AppendBytes(scalar);
+
+            offset += whitespaceLength;
+            _pendingSpace = _length != _textStart;
         }
     }
 

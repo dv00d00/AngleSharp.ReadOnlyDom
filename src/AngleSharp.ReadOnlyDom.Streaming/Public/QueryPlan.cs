@@ -52,6 +52,10 @@ public sealed class QueryPlan<TState>
     internal QueryExecution<TState> CreateExecution(TState state, HtmlStreamingLimits? limits = null) =>
         new(this, state, limits ?? HtmlStreamingLimits.Default);
 
+    /// <summary>
+    /// Executes the plan over complete, well-formed UTF-8. Use a streaming overload when arbitrary
+    /// byte chunks require ingress validation and malformed-input replacement.
+    /// </summary>
     public TState Execute(ReadOnlySpan<byte> utf8, TState state, HtmlStreamingLimits? limits = null)
     {
         limits ??= HtmlStreamingLimits.Default;
@@ -86,7 +90,7 @@ public sealed class QueryPlan<TState>
         limits ??= HtmlStreamingLimits.Default;
         var collector = new Utf8RewriteCollector();
         using var execution = new QueryExecution<TState>(this, state, limits, handler, collector);
-        var tokenizer = new Utf8HtmlTokenizer(execution, limits, Utf8InputContract.WellFormedUtf8);
+        var tokenizer = new Utf8HtmlTokenizer(execution, limits);
         tokenizer.Write(utf8);
         tokenizer.Complete();
         collector.WriteTo(utf8, output);
