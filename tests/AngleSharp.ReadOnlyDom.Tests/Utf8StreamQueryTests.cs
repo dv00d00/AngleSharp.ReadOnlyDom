@@ -345,6 +345,35 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task RewriteDoesNotMaterializeDiscardedCommentPayloads()
+    {
+        var comment = new string('x', 4096);
+        var source = Encoding.UTF8.GetBytes($"<main><!--{comment}--><a href=x>text</a></main>");
+        var expected = Encoding.UTF8.GetBytes(
+            $"<main><!--{comment}--><a href=x data-query-hit=\"1\">text</a></main>"
+        );
+        var output = new ArrayBufferWriter<byte>();
+        var limits = new HtmlStreamingLimits(maximumBufferedTokenBytes: 64);
+        var query = StreamQuery.For<int>("a").Attribute("href").Compile();
+
+        var matches = query.Rewrite(
+            source,
+            output,
+            0,
+            static (ref int count, in Element _, ref StartTagEditor tag) =>
+            {
+                count++;
+                tag.AppendAttribute("data-query-hit"u8, "1"u8);
+            },
+            Utf8InputContract.WellFormedUtf8,
+            limits
+        );
+
+        await Assert.That(matches).IsEqualTo(1);
+        await Assert.That(output.WrittenSpan.SequenceEqual(expected)).IsTrue();
+    }
+
+    [Test]
     public async Task RewriteEscapesAttributeValueAndRejectsMalformedUtf8ByDefault()
     {
         var query = StreamQuery.For<int>("a").Compile();
