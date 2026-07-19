@@ -68,6 +68,8 @@ public class Utf8TokenizerBenchmark
 
     private sealed class CountingSink : IUtf8HtmlTokenSink
     {
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
+
         public int Events { get; private set; }
 
         public void Reset() => Events = 0;

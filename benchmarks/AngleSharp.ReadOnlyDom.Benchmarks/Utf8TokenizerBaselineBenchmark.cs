@@ -103,6 +103,8 @@ public class Utf8TokenizerBaselineBenchmark
 
     internal sealed class FingerprintSink : IUtf8HtmlTokenSink
     {
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
+
         private const ulong Offset = 14695981039346656037UL;
         private const ulong Prime = 1099511628211UL;
         private bool _inText;

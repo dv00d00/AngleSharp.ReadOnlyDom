@@ -270,6 +270,8 @@ public sealed class Html5LibTokenizerTests
 
     private sealed class SpecSink : IUtf8HtmlTokenSink
     {
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
+
         private readonly List<SpecToken> _tokens = [];
         private SpecToken? _startTag;
 

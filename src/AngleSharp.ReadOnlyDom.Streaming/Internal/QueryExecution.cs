@@ -29,6 +29,8 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IUtf8HtmlStar
     private long _startTagSourceStart = -1;
     private long _startTagSourceEnd = -1;
     private long _queryCaptureBytes;
+    private int _activeTextNodes;
+    private int _activeCompletedTextCaptures;
 
     internal QueryExecution(
         QueryPlan<TState> plan,
@@ -57,6 +59,11 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IUtf8HtmlStar
     }
 
     public TState State => _state;
+
+    public Utf8HtmlTokenCapture Capture =>
+        _activeTextNodes != 0 || _activeCompletedTextCaptures != 0
+            ? Utf8HtmlTokenCapture.Text
+            : Utf8HtmlTokenCapture.None;
 
     public bool WantsStartTagSourceRanges => _rewriteHandler is not null;
 
@@ -347,6 +354,8 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IUtf8HtmlStar
             capture.BeginText();
             var captures = _completedCaptures[index] ??= [];
             captures.Add(capture);
+            if (node.CompletedTextMode != CompletedTextMode.None)
+                _activeCompletedTextCaptures++;
         }
     }
 
@@ -380,6 +389,8 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IUtf8HtmlStar
         var captureIndex = captures.Count - 1;
         var capture = captures[captureIndex];
         captures.RemoveAt(captureIndex);
+        if (node.CompletedTextMode != CompletedTextMode.None)
+            _activeCompletedTextCaptures--;
         _queryCaptureBytes -= capture.BufferedByteCount;
         try
         {
@@ -403,6 +414,8 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IUtf8HtmlStar
         {
             var index = BitOperations.TrailingZeroCount(matches);
             matches &= matches - 1;
+            if (_activeCounts[index] == 0 && (_plan.TextHandlerMask & (1UL << index)) != 0)
+                _activeTextNodes++;
             _activeCounts[index]++;
         }
     }
@@ -414,6 +427,8 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IUtf8HtmlStar
             var index = BitOperations.TrailingZeroCount(matches);
             matches &= matches - 1;
             _activeCounts[index]--;
+            if (_activeCounts[index] == 0 && (_plan.TextHandlerMask & (1UL << index)) != 0)
+                _activeTextNodes--;
         }
     }
 
