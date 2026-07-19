@@ -1,6 +1,4 @@
 using System.Buffers;
-using System.Text;
-
 namespace AngleSharp.ReadOnlyDom.Streaming;
 
 /// <summary>
@@ -36,26 +34,27 @@ internal sealed class NormalizedUtf8Writer
         _cellSeparator = cellSeparator;
     }
 
-    /// <summary>Appends UTF-8 text, collapsing every Unicode whitespace run.</summary>
+    /// <summary>Appends UTF-8 text, collapsing HTML ASCII whitespace and NBSP runs.</summary>
     internal void Append(ReadOnlySpan<byte> utf8)
     {
-        while (!utf8.IsEmpty)
+        var offset = 0;
+        while (offset < utf8.Length)
         {
-            var status = Rune.DecodeFromUtf8(utf8, out var rune, out var consumed);
-            if (status != OperationStatus.Done)
-                throw new ArgumentException("The value contains incomplete or invalid UTF-8.", nameof(utf8));
-
-            var scalar = utf8[..consumed];
-            utf8 = utf8[consumed..];
-            if (Rune.IsWhiteSpace(rune))
+            var remaining = utf8[offset..];
+            var runLength = TrustedUtf8.IndexOfWhiteSpace(remaining, out var whitespaceLength);
+            if (runLength < 0)
+                runLength = remaining.Length;
+            if (runLength != 0)
             {
-                Request(PendingSeparator.Space);
+                FlushPending();
+                Write(remaining[..runLength]);
+                _hasContent = true;
+                offset += runLength;
                 continue;
             }
 
-            FlushPending();
-            Write(scalar);
-            _hasContent = true;
+            offset += whitespaceLength;
+            Request(PendingSeparator.Space);
         }
     }
 

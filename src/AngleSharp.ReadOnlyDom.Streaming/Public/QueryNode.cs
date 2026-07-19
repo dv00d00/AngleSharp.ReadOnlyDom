@@ -99,6 +99,10 @@ public sealed class QueryNode<TState>
         params string[] projectedAttributes
     ) => OnCompleted(CompletedTextMode.Raw, handler, projectedAttributes);
 
+    /// <summary>
+    /// Invokes <paramref name="handler"/> with runs of HTML ASCII whitespace and NBSP collapsed
+    /// to a single ASCII space. Other Unicode whitespace is preserved.
+    /// </summary>
     public QueryNode<TState> OnNormalizedText(
         CompletedElementHandler<TState> handler,
         params string[] projectedAttributes
