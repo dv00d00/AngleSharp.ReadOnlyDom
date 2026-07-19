@@ -58,7 +58,7 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
         }
     }
 
-    public void StartTag(Utf8HtmlName name)
+    public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
     {
         _pendingTagHash = name.SemanticHash;
         _pendingTagLength = name.Verbatim.Length;
@@ -69,6 +69,9 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
         _pendingClassHash = OffsetBasis;
         _pendingHasId = false;
         _pendingHasClass = false;
+        return _pendingIsDiv
+            ? Utf8HtmlStartTagCapture.Attributes
+            : Utf8HtmlStartTagCapture.None;
     }
 
     public bool WantsAttribute(Utf8HtmlName name) =>

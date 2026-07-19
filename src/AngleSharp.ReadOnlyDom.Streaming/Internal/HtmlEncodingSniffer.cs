@@ -40,12 +40,15 @@ internal static class HtmlEncodingSniffer
 
         public void Text(ReadOnlySpan<byte> utf8) { }
 
-        public void StartTag(Utf8HtmlName name)
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
         {
             _isMeta = name.SemanticEquals("meta"u8);
             _charset = null;
             _content = null;
             _httpEquiv = null;
+            return _isMeta
+                ? Utf8HtmlStartTagCapture.Attributes
+                : Utf8HtmlStartTagCapture.None;
         }
 
         public bool WantsAttribute(Utf8HtmlName name) =>

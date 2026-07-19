@@ -66,9 +66,13 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
             }
 #endif
 
+            var job =
+                Environment.GetEnvironmentVariable("AS_BENCH_LONG") == "1"
+                    ? Job.Default.WithId("Sustained").WithLaunchCount(1).WithWarmupCount(10).WithIterationCount(10)
+                    : Job.ShortRun;
             var config = ManualConfig
                 .Create(DefaultConfig.Instance)
-                .AddJob(Job.ShortRun.WithGcServer(true))
+                .AddJob(job.WithGcServer(true))
                 .AddColumn(StatisticColumn.OperationsPerSecond);
             if (Environment.GetEnvironmentVariable("AS_BENCH_HARDWARE_COUNTERS") == "1")
                 config.AddHardwareCounters(HardwareCounter.TotalCycles);

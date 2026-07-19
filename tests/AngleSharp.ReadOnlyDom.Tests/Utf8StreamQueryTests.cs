@@ -1,4 +1,5 @@
 #if NET10_0
+using System.Buffers;
 using System.Text;
 using System.IO.Pipelines;
 using AngleSharp.Html.Parser;
@@ -147,6 +148,33 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task QueryTokenizerDoesNotCaptureAttributeSyntaxForIrrelevantTags()
+    {
+        var root = StreamQuery
+            .For<QueryState>("article")
+            .Id("story")
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("match"));
+        var state = new QueryState();
+        var ignoredName = new string('a', 4096);
+        var html = Encoding.UTF8.GetBytes(
+            $"<aside {ignoredName}='&amp;&#x1F642;&notit;\r\n{new string('x', 4096)}'>"
+                + "<article id=story></article></aside>"
+        );
+        Utf8HtmlTokenizerCounters counters;
+        using (var execution = root.Compile().CreateExecution(state))
+        {
+            var tokenizer = new Utf8HtmlTokenizer(execution);
+            foreach (var value in html)
+                tokenizer.Write([value]);
+            tokenizer.Complete();
+            counters = tokenizer.Counters;
+        }
+
+        await Assert.That(state.Events).IsEquivalentTo(["match"]);
+        await Assert.That(counters.MaximumBufferedTokenBytes).IsLessThan(256);
+    }
+
+    [Test]
     public async Task CompletedElementCallbackCapturesNestedTextAndAttributesOnce()
     {
         var root = StreamQuery.For<QueryState>("main");
@@ -241,6 +269,69 @@ public sealed class QueryTests
             rejected = true;
         }
         await Assert.That(rejected).IsTrue();
+    }
+
+    [Test]
+    public async Task RewritePreservesUntouchedUtf8AndEditsOnlyTerminalMatches()
+    {
+        var root = StreamQuery.For<int>("main");
+        root.Descendant("a").Attribute("href");
+        var source = "<main>é<!--keep--><a href='x'>text</a><a href=y /></main>"u8;
+        var output = new ArrayBufferWriter<byte>();
+
+        var matches = root.Compile()
+            .Rewrite(
+                source,
+                output,
+                0,
+                static (ref int count, in Element _, ref StartTagEditor tag) =>
+                {
+                    count++;
+                    tag.AppendAttribute("data-query-hit"u8, "1"u8);
+                },
+                Utf8InputContract.WellFormedUtf8
+            );
+
+        await Assert.That(matches).IsEqualTo(2);
+        await Assert.That(Encoding.UTF8.GetString(output.WrittenSpan))
+            .IsEqualTo(
+                "<main>é<!--keep--><a href='x' data-query-hit=\"1\">text</a><a href=y data-query-hit=\"1\"/></main>"
+            );
+    }
+
+    [Test]
+    public async Task RewriteEscapesAttributeValueAndRejectsMalformedUtf8ByDefault()
+    {
+        var query = StreamQuery.For<int>("a").Compile();
+        var output = new ArrayBufferWriter<byte>();
+        query.Rewrite(
+            "<a>"u8,
+            output,
+            0,
+            static (ref int _, in Element _, ref StartTagEditor tag) =>
+                tag.AppendAttribute("data-value"u8, "a&\"b"u8)
+        );
+        await Assert.That(Encoding.UTF8.GetString(output.WrittenSpan))
+            .IsEqualTo("<a data-value=\"a&amp;&quot;b\">");
+
+        var rejected = false;
+        output = new ArrayBufferWriter<byte>();
+        try
+        {
+            query.Rewrite(
+                [(byte)'<', (byte)'a', (byte)'>', 0xff],
+                output,
+                0,
+                static (ref int _, in Element _, ref StartTagEditor _) => { }
+            );
+        }
+        catch (DecoderFallbackException)
+        {
+            rejected = true;
+        }
+
+        await Assert.That(rejected).IsTrue();
+        await Assert.That(output.WrittenCount).IsEqualTo(0);
     }
 
     private static ReadOnlySpan<byte> Get(in Element element, string name)

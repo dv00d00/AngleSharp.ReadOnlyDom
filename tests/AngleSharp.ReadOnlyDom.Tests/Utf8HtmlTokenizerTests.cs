@@ -402,7 +402,11 @@ public sealed class Utf8HtmlTokenizerTests
                 _events.Add("text:" + text);
         }
 
-        public void StartTag(Utf8HtmlName name) => StartTag(name.Verbatim);
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
+        {
+            StartTag(name.Verbatim);
+            return Utf8HtmlStartTagCapture.Attributes;
+        }
 
         public void StartTag(ReadOnlySpan<byte> name) => _events.Add("start:" + DecodeSemanticName(name));
 

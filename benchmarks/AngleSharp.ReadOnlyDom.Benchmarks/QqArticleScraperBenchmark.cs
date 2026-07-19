@@ -686,7 +686,7 @@ public class QqArticleScraperBenchmark
         private List<Article> _results = new(128);
         private bool _disposed;
 
-        public void StartTag(Utf8HtmlName name)
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
         {
             _pendingKind = Kind(name);
             _pendingHash = name.SemanticHash;
@@ -697,6 +697,14 @@ public class QqArticleScraperBenchmark
             _pendingHref = null;
             _pendingImageUrl = null;
             _pendingImageAlt = null;
+            return _pendingKind switch
+            {
+                TagKind.Ul => Utf8HtmlStartTagCapture.Attributes,
+                TagKind.Li when _newsListDepth != 0 => Utf8HtmlStartTagCapture.Attributes,
+                TagKind.A when _cardDepth != 0 => Utf8HtmlStartTagCapture.Attributes,
+                TagKind.Img when _activeHref is not null => Utf8HtmlStartTagCapture.Attributes,
+                _ => Utf8HtmlStartTagCapture.None,
+            };
         }
 
         public bool WantsAttribute(Utf8HtmlName name) =>

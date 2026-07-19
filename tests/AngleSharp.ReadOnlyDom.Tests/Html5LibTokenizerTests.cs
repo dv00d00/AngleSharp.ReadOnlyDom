@@ -284,8 +284,15 @@ public sealed class Html5LibTokenizerTests
                 _tokens.Add(SpecToken.Text(value));
         }
 
-        public void StartTag(Utf8HtmlName name) =>
-            _startTag = SpecToken.StartTag(DecodeSemanticName(name), new Dictionary<string, string>(), false);
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
+        {
+            _startTag = SpecToken.StartTag(
+                DecodeSemanticName(name),
+                new Dictionary<string, string>(),
+                false
+            );
+            return Utf8HtmlStartTagCapture.Attributes;
+        }
 
         public bool WantsAttribute(Utf8HtmlName name) => true;
 
