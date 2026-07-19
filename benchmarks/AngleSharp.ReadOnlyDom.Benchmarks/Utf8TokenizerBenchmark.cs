@@ -74,7 +74,11 @@ public class Utf8TokenizerBenchmark
 
         public void Text(ReadOnlySpan<byte> utf8) => Events++;
 
-        public void StartTag(Utf8HtmlName name) => Events++;
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
+        {
+            Events++;
+            return Utf8HtmlStartTagCapture.Attributes;
+        }
 
         public bool WantsAttribute(Utf8HtmlName name) => true;
 

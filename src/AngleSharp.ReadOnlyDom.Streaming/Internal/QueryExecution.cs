@@ -3,7 +3,7 @@ using System.Numerics;
 
 namespace AngleSharp.ReadOnlyDom.Streaming;
 
-internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
+internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IUtf8HtmlStartTagSourceRangeSink, IDisposable
 {
     private readonly QueryPlan<TState> _plan;
     private readonly int[] _activeCounts;
@@ -24,15 +24,27 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
     private bool _disposed;
     private readonly int _maximumNestingDepth;
     private readonly long _maximumQueryCaptureBytes;
+    private readonly RewriteHandler<TState>? _rewriteHandler;
+    private readonly Utf8RewriteCollector? _rewriteCollector;
+    private long _startTagSourceStart = -1;
+    private long _startTagSourceEnd = -1;
     private long _queryCaptureBytes;
 
-    internal QueryExecution(QueryPlan<TState> plan, TState state, HtmlStreamingLimits limits)
+    internal QueryExecution(
+        QueryPlan<TState> plan,
+        TState state,
+        HtmlStreamingLimits limits,
+        RewriteHandler<TState>? rewriteHandler = null,
+        Utf8RewriteCollector? rewriteCollector = null
+    )
     {
         ArgumentNullException.ThrowIfNull(limits);
         _plan = plan;
         _state = state;
         _maximumNestingDepth = limits.MaximumNestingDepth;
         _maximumQueryCaptureBytes = limits.MaximumQueryCaptureBytes;
+        _rewriteHandler = rewriteHandler;
+        _rewriteCollector = rewriteCollector;
         _activeCounts = ArrayPool<int>.Shared.Rent(Math.Max(plan.Nodes.Length, 1));
         _activeCounts.AsSpan(0, plan.Nodes.Length).Clear();
         _frames = ArrayPool<QueryFrame>.Shared.Rent(64);
@@ -46,7 +58,9 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
 
     public TState State => _state;
 
-    public void StartTag(Utf8HtmlName name)
+    public bool WantsStartTagSourceRanges => _rewriteHandler is not null;
+
+    public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
     {
         var hash = name.SemanticHash;
         _pendingTagHash = hash;
@@ -65,6 +79,9 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
             _pendingAttributeBits |= node.RequestedAttributeMask;
         }
         ResetAttributes();
+        return _pendingAttributeBits == 0
+            ? Utf8HtmlStartTagCapture.None
+            : Utf8HtmlStartTagCapture.Attributes;
     }
 
     public bool WantsAttribute(Utf8HtmlName name)
@@ -103,7 +120,20 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
         }
     }
 
+    public void StartTagSourceRange(long sourceStart, long sourceEnd)
+    {
+        _startTagSourceStart = sourceStart;
+        _startTagSourceEnd = sourceEnd;
+    }
+
     public void StartTagEnd(bool selfClosing)
+    {
+        StartTagEndCore(selfClosing, _startTagSourceStart, _startTagSourceEnd);
+        _startTagSourceStart = -1;
+        _startTagSourceEnd = -1;
+    }
+
+    private void StartTagEndCore(bool selfClosing, long sourceStart, long sourceEnd)
     {
         var matches = 0UL;
         var candidates = _pendingCandidateBits;
@@ -140,6 +170,13 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
             starts &= starts - 1;
             _plan.Nodes[index].Start?.Invoke(ref _state, in element);
         }
+        if (_rewriteHandler is not null && (matches & _plan.TerminalNodeMask) != 0)
+        {
+            if (sourceStart < 0 || sourceEnd <= sourceStart)
+                throw new InvalidOperationException("The tokenizer did not provide a valid start-tag source range.");
+            var editor = new StartTagEditor(_rewriteCollector!, sourceStart, sourceEnd, selfClosing);
+            _rewriteHandler.Invoke(ref _state, in element, ref editor);
+        }
         StartCompletedCaptures(matches);
 
         if (closesImmediately)
@@ -155,6 +192,8 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
 
     public void Text(ReadOnlySpan<byte> utf8)
     {
+        if (_plan.TextHandlerMask == 0 && _plan.CompletedHandlerMask == 0)
+            return;
         EnsureQueryCaptureCapacity(GetCompletedTextUpperBound(utf8.Length));
         var handlers = _plan.TextHandlerMask;
         while (handlers != 0)

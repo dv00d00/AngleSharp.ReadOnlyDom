@@ -158,7 +158,11 @@ internal static class Utf8TokenSmoke
             _text.Advance(utf8.Length);
         }
 
-        public void StartTag(Utf8HtmlName name) => StartTag(name.Verbatim);
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
+        {
+            StartTag(name.Verbatim);
+            return Utf8HtmlStartTagCapture.Attributes;
+        }
 
         public void StartTag(ReadOnlySpan<byte> name)
         {

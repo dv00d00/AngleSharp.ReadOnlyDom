@@ -123,7 +123,11 @@ public class Utf8TokenizerBaselineBenchmark
             _inText = true;
         }
 
-        public void StartTag(Utf8HtmlName name) => AddSemanticToken(2, name);
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
+        {
+            AddSemanticToken(2, name);
+            return Utf8HtmlStartTagCapture.Attributes;
+        }
 
         public bool WantsAttribute(Utf8HtmlName name) => true;
 

@@ -1,5 +1,8 @@
 ﻿using System.IO.Pipelines;
 
+using System.Buffers;
+using System.Text;
+
 namespace AngleSharp.ReadOnlyDom.Streaming;
 
 public sealed class QueryPlan<TState>
@@ -24,6 +27,12 @@ public sealed class QueryPlan<TState>
             0UL,
             static (bits, node) => node.Completed is null ? bits : bits | (1UL << node.Index)
         );
+        var parentMask = nodes.Aggregate(
+            0UL,
+            static (bits, node) => node.ParentIndex < 0 ? bits : bits | (1UL << node.ParentIndex)
+        );
+        var nodeMask = nodes.Length == 64 ? UInt64.MaxValue : (1UL << nodes.Length) - 1;
+        TerminalNodeMask = nodeMask & ~parentMask;
         Explanation = explanation;
     }
 
@@ -33,6 +42,7 @@ public sealed class QueryPlan<TState>
     internal CompiledTagDispatch[] TagDispatch { get; }
     internal ulong TextHandlerMask { get; }
     internal ulong CompletedHandlerMask { get; }
+    internal ulong TerminalNodeMask { get; }
 
     public QueryExplanation Explanation { get; }
 
@@ -49,6 +59,37 @@ public sealed class QueryPlan<TState>
         var tokenizer = new Utf8HtmlTokenizer(execution, limits);
         tokenizer.Write(utf8);
         tokenizer.Complete();
+        return execution.State;
+    }
+
+    /// <summary>
+    /// Rewrites matching terminal query nodes into <paramref name="output"/> while copying every untouched source
+    /// byte verbatim. Arbitrary input is validated once before tokenization; callers that already guarantee valid
+    /// UTF-8 can explicitly select <see cref="Utf8InputContract.WellFormedUtf8"/> to skip that pass.
+    /// </summary>
+    public TState Rewrite(
+        ReadOnlySpan<byte> utf8,
+        IBufferWriter<byte> output,
+        TState state,
+        RewriteHandler<TState> handler,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes,
+        HtmlStreamingLimits? limits = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(handler);
+        if (inputContract == Utf8InputContract.ArbitraryBytes && !System.Text.Unicode.Utf8.IsValid(utf8))
+            throw new DecoderFallbackException("Query rewriting requires well-formed UTF-8 input.");
+        if (inputContract is not (Utf8InputContract.ArbitraryBytes or Utf8InputContract.WellFormedUtf8))
+            throw new ArgumentOutOfRangeException(nameof(inputContract));
+
+        limits ??= HtmlStreamingLimits.Default;
+        var collector = new Utf8RewriteCollector();
+        using var execution = new QueryExecution<TState>(this, state, limits, handler, collector);
+        var tokenizer = new Utf8HtmlTokenizer(execution, limits, Utf8InputContract.WellFormedUtf8);
+        tokenizer.Write(utf8);
+        tokenizer.Complete();
+        collector.WriteTo(utf8, output);
         return execution.State;
     }
 
