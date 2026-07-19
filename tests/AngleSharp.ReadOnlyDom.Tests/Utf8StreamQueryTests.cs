@@ -106,6 +106,51 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task PipeReaderPreservesRuneBoundariesForCompletedNormalizedText()
+    {
+        var root = StreamQuery
+            .For<QueryState>("p")
+            .OnNormalizedText(
+                static (ref QueryState state, in CompletedElement element) =>
+                    state.Events.Add(element.GetText())
+            );
+        var pipe = new Pipe(new PipeOptions(minimumSegmentSize: 1, useSynchronizationContext: false));
+        var execute = root.Compile().ExecuteAsync(pipe.Reader, new QueryState()).AsTask();
+        var html = "<p>A\u00a0B © C</p>"u8.ToArray();
+
+        foreach (var value in html)
+            await pipe.Writer.WriteAsync(new byte[] { value });
+        await pipe.Writer.CompleteAsync();
+        var state = await execute;
+        await pipe.Reader.CompleteAsync();
+
+        await Assert.That(state.Events).IsEquivalentTo(["A B © C"]);
+    }
+
+    [Test]
+    public async Task SynchronousExecutionRepairsMalformedUtf8ByDefaultAndAllowsExplicitTrust()
+    {
+        var root = StreamQuery
+            .For<QueryState>("p")
+            .OnText(
+                static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                    state.Text.Append(Encoding.UTF8.GetString(text))
+            );
+        var plan = root.Compile();
+        byte[] malformed = [.. "<p>A"u8, 0xC2, .. "B</p>"u8];
+
+        var repaired = plan.Execute(malformed, new QueryState());
+        var trusted = plan.Execute(
+            "<p>A\u00a0B</p>"u8,
+            new QueryState(),
+            Utf8InputContract.WellFormedUtf8
+        );
+
+        await Assert.That(repaired.Text.ToString()).IsEqualTo("A\uFFFDB");
+        await Assert.That(trusted.Text.ToString()).IsEqualTo("A\u00a0B");
+    }
+
+    [Test]
     public async Task OptimizedTagHashMatchesNormalizedNamesAcrossChunks()
     {
         var root = StreamQuery

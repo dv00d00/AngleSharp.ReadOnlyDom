@@ -18,9 +18,7 @@ public class TrustedUtf8ProjectionBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        var fragment = Payload == "Ascii"
-            ? "  Alpha beta gamma delta\n"
-            : "  Alpha\u00a0Ж\u2003東京 🙂 delta\n";
+        var fragment = Payload == "Ascii" ? "  Alpha beta gamma delta\n" : "  Alpha\u00a0Ж\u2003東京 🙂 delta\n";
         _input = Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat(fragment, 1024)));
 
         var expected = RuneValidatedCore();

@@ -113,7 +113,7 @@ public sealed class HtmlTextExtractorTests
     public async Task BufferedAndBackpressuredExtractionProduceIdenticalBytes()
     {
         var html = Encoding.UTF8.GetBytes(
-            "<html><body><h1>Hello</h1><p>From <b>streaming</b>.</p><table><tr><td>A</td><td>B</td></tr></table></body></html>"
+            "<html><body><h1>Hello\u00a0world</h1><p>From <b>streaming</b>.</p><table><tr><td>A</td><td>B</td></tr></table></body></html>"
         );
         var buffered = HtmlTextExtractor.Default.ExtractUtf8(html);
         await using var inputStream = new MemoryStream(html);
@@ -121,10 +121,11 @@ public sealed class HtmlTextExtractorTests
         var reader = PipeReader.Create(inputStream, new StreamPipeReaderOptions(leaveOpen: true));
         var writer = PipeWriter.Create(outputStream, new StreamPipeWriterOptions(leaveOpen: true));
 
-        await HtmlTextExtractor.Default.ExtractAsync(reader, writer, flushThreshold: 8, inputSliceSize: 3);
+        await HtmlTextExtractor.Default.ExtractAsync(reader, writer, flushThreshold: 8, inputSliceSize: 1);
         await reader.CompleteAsync();
         await writer.CompleteAsync();
 
+        await Assert.That(Encoding.UTF8.GetString(buffered)).IsEqualTo("Hello world\n\nFrom streaming.\n\nA\tB");
         await Assert.That(outputStream.ToArray().SequenceEqual(buffered)).IsTrue();
     }
 }

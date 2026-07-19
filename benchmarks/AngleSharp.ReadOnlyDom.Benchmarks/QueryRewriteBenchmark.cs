@@ -43,7 +43,9 @@ public class QueryRewriteBenchmark
             Directory.CreateDirectory(outputDirectory);
             File.WriteAllBytes(Path.Combine(outputDirectory, $"csharp-{Page}.html"), output.WrittenSpan.ToArray());
         }
-        Console.WriteLine($"{Page}: {_input.Length:N0} bytes, {matches:N0} rewrites, {output.WrittenCount:N0} output bytes.");
+        Console.WriteLine(
+            $"{Page}: {_input.Length:N0} bytes, {matches:N0} rewrites, {output.WrittenCount:N0} output bytes."
+        );
     }
 
     [Benchmark]
