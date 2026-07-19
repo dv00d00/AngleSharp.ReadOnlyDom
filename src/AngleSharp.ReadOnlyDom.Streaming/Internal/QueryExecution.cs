@@ -3,7 +3,11 @@ using System.Numerics;
 
 namespace AngleSharp.ReadOnlyDom.Streaming;
 
-internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IUtf8HtmlStartTagSourceRangeSink, IDisposable
+internal sealed class QueryExecution<TState>
+    : IUtf8HtmlTokenSink,
+        IUtf8HtmlStartTagSourceRangeSink,
+        IUtf8HtmlStreamingCommentSink,
+        IDisposable
 {
     private readonly QueryPlan<TState> _plan;
     private readonly int[] _activeCounts;
@@ -213,6 +217,12 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IUtf8HtmlStar
         }
         AppendCompletedText(utf8);
     }
+
+    bool IUtf8HtmlStreamingCommentSink.BeginComment() => false;
+
+    void IUtf8HtmlStreamingCommentSink.CommentChunk(ReadOnlySpan<byte> utf8) { }
+
+    void IUtf8HtmlStreamingCommentSink.EndComment() { }
 
     public void EndTag(Utf8HtmlName name)
     {
