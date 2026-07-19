@@ -423,14 +423,14 @@ public class QqArticleScraperBenchmark
     [Benchmark]
     public List<Article> QueryCompiledUtf8Fold()
     {
-        var state = ArticleQuery.Execute(_utf8, new CompiledArticleState());
+        var state = ArticleQuery.Execute(_utf8, new CompiledArticleState(), Utf8InputContract.WellFormedUtf8);
         return state.DetachResults();
     }
 
     [Benchmark]
     public List<Article> QueryCompletedElementFold()
     {
-        var state = CompletedArticleQuery.Execute(_utf8, new CompiledArticleState());
+        var state = CompletedArticleQuery.Execute(_utf8, new CompiledArticleState(), Utf8InputContract.WellFormedUtf8);
         return state.DetachResults();
     }
 
@@ -476,15 +476,16 @@ public class QqArticleScraperBenchmark
     private static QueryPlan<CompiledArticleState> CreateArticleQuery()
     {
         var list = StreamQuery.For<CompiledArticleState>("ul").Class("news-list");
-        var card = list.Descendant("li").Attribute("dt-eid", "em_item_article")
+        var card = list.Descendant("li")
+            .Attribute("dt-eid", "em_item_article")
             .OnStart(static (ref state, in element) => state.StartCard(element), "dt-params")
             .OnEnd(static (ref state) => state.EndCard());
-        var link = card.Descendant("a").Attribute("href")
+        var link = card.Descendant("a")
+            .Attribute("href")
             .OnStart(static (ref state, in element) => state.StartLink(element), "href")
             .OnText(static (ref state, text) => state.AppendText(text))
             .OnEnd(static (ref state) => state.EndLink());
-        link.Descendant("img")
-            .OnStart(static (ref state, in element) => state.Image(element), "src", "alt");
+        link.Descendant("img").OnStart(static (ref state, in element) => state.Image(element), "src", "alt");
         return list.Compile();
     }
 
@@ -713,11 +714,11 @@ public class QqArticleScraperBenchmark
             _pendingKind switch
             {
                 TagKind.Ul => name.SemanticEquals("class"u8),
-                TagKind.Li when _newsListDepth != 0 =>
-                    name.SemanticEquals("dt-eid"u8) || name.SemanticEquals("dt-params"u8),
+                TagKind.Li when _newsListDepth != 0 => name.SemanticEquals("dt-eid"u8)
+                    || name.SemanticEquals("dt-params"u8),
                 TagKind.A when _cardDepth != 0 => name.SemanticEquals("href"u8),
-                TagKind.Img when _activeHref is not null =>
-                    name.SemanticEquals("src"u8) || name.SemanticEquals("alt"u8),
+                TagKind.Img when _activeHref is not null => name.SemanticEquals("src"u8)
+                    || name.SemanticEquals("alt"u8),
                 _ => false,
             };
 

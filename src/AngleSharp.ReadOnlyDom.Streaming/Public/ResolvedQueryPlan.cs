@@ -22,6 +22,13 @@ public sealed class ResolvedQueryPlan<TState, TResult>
     public TResult Execute(ReadOnlySpan<byte> utf8, TState state, HtmlStreamingLimits? limits = null) =>
         _resolver(_plan.Execute(utf8, state, limits));
 
+    public TResult Execute(
+        ReadOnlySpan<byte> utf8,
+        TState state,
+        Utf8InputContract inputContract,
+        HtmlStreamingLimits? limits = null
+    ) => _resolver(_plan.Execute(utf8, state, inputContract, limits));
+
     public async ValueTask<TResult> ExecuteAsync(
         PipeReader reader,
         TState state,

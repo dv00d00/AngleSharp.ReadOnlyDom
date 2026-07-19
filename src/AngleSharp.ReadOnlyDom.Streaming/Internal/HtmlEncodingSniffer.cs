@@ -23,8 +23,9 @@ internal static class HtmlEncodingSniffer
 
         var sink = new EncodingDeclarationSink();
         var tokenizer = new Utf8HtmlTokenizer(sink);
-        tokenizer.Write(source);
-        tokenizer.Complete();
+        var input = new Utf8HtmlTokenizerInput(tokenizer);
+        input.Write(source);
+        input.Complete();
 
         return new Detection(sink.DetectedEncoding ?? fallback ?? Encoding.GetEncoding(1252), 0);
     }

@@ -52,17 +52,38 @@ public sealed class QueryPlan<TState>
     internal QueryExecution<TState> CreateExecution(TState state, HtmlStreamingLimits? limits = null) =>
         new(this, state, limits ?? HtmlStreamingLimits.Default);
 
+    /// <summary>Executes the plan over UTF-8, replacing malformed input with U+FFFD.</summary>
+    public TState Execute(ReadOnlySpan<byte> utf8, TState state, HtmlStreamingLimits? limits = null) =>
+        Execute(utf8, state, Utf8InputContract.ArbitraryBytes, limits);
+
     /// <summary>
-    /// Executes the plan over complete, well-formed UTF-8. Use a streaming overload when arbitrary
-    /// byte chunks require ingress validation and malformed-input replacement.
+    /// Executes the plan with an explicit input contract. Select <see cref="Utf8InputContract.WellFormedUtf8"/>
+    /// only when the complete input is guaranteed to be valid UTF-8.
     /// </summary>
-    public TState Execute(ReadOnlySpan<byte> utf8, TState state, HtmlStreamingLimits? limits = null)
+    public TState Execute(
+        ReadOnlySpan<byte> utf8,
+        TState state,
+        Utf8InputContract inputContract,
+        HtmlStreamingLimits? limits = null
+    )
     {
+        if (inputContract is not (Utf8InputContract.ArbitraryBytes or Utf8InputContract.WellFormedUtf8))
+            throw new ArgumentOutOfRangeException(nameof(inputContract));
+
         limits ??= HtmlStreamingLimits.Default;
         using var execution = CreateExecution(state, limits);
         var tokenizer = new Utf8HtmlTokenizer(execution, limits);
-        tokenizer.Write(utf8);
-        tokenizer.Complete();
+        if (inputContract == Utf8InputContract.WellFormedUtf8)
+        {
+            tokenizer.Write(utf8);
+            tokenizer.Complete();
+        }
+        else
+        {
+            var input = new Utf8HtmlTokenizerInput(tokenizer, limits: limits);
+            input.Write(utf8);
+            input.Complete();
+        }
         return execution.State;
     }
 
@@ -132,6 +153,7 @@ public sealed class QueryPlan<TState>
         limits ??= HtmlStreamingLimits.Default;
         using var execution = CreateExecution(state, limits);
         var tokenizer = new Utf8HtmlTokenizer(execution, limits);
+        var input = new Utf8HtmlTokenizerInput(tokenizer, limits: limits);
 
         while (true)
         {
@@ -149,7 +171,7 @@ public sealed class QueryPlan<TState>
                     for (var offset = 0; offset < segment.Length; offset += inputSliceSize)
                     {
                         var length = Math.Min(inputSliceSize, segment.Length - offset);
-                        tokenizer.Write(segment.Slice(offset, length));
+                        input.Write(segment.Slice(offset, length));
                         if (!writer.CanGetUnflushedBytes || writer.UnflushedBytes >= flushThreshold)
                             await FlushOutputAsync(writer, cancellationToken).ConfigureAwait(false);
                     }
@@ -164,7 +186,7 @@ public sealed class QueryPlan<TState>
                 break;
         }
 
-        tokenizer.Complete();
+        input.Complete();
         await FlushOutputAsync(writer, cancellationToken).ConfigureAwait(false);
         return execution.State;
     }

@@ -79,7 +79,7 @@ public class QueryHeadroomBenchmark
     }
 
     [Benchmark]
-    public int QueryExecuteTrusted() => ObservedQuery.Execute(_input, 0);
+    public int QueryExecuteTrusted() => ObservedQuery.Execute(_input, 0, Utf8InputContract.WellFormedUtf8);
 
     [Benchmark]
     public int QueryExecuteValidated()
@@ -167,11 +167,9 @@ public class QueryHeadroomBenchmark
         public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) =>
             throw new InvalidOperationException("The structure-only tokenizer emitted an attribute.");
 
-        public void StartTagEnd(bool selfClosing) =>
-            Checksum = unchecked((Checksum * 31) ^ (selfClosing ? 1 : 0));
+        public void StartTagEnd(bool selfClosing) => Checksum = unchecked((Checksum * 31) ^ (selfClosing ? 1 : 0));
 
-        public void EndTag(Utf8HtmlName name) =>
-            Checksum = unchecked((Checksum * 31) ^ (int)name.SemanticHash);
+        public void EndTag(Utf8HtmlName name) => Checksum = unchecked((Checksum * 31) ^ (int)name.SemanticHash);
 
         public void EndOfFile() => Checksum = unchecked((Checksum * 31) ^ -1);
     }

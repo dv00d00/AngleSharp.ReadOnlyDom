@@ -42,7 +42,7 @@ internal static class Utf8TokenSmoke
                 }
             }
             if (difference is null)
-                Console.WriteLine($"PASS {document.Name,-28} {utf8.Length,12:N0} bytes");
+                Console.WriteLine($"PASS {document.Name, -28} {utf8.Length, 12:N0} bytes");
             else
             {
                 failures++;

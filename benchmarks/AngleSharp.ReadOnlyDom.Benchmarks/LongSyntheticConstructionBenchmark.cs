@@ -91,14 +91,14 @@ public class LongSyntheticConstructionBenchmark
     [Benchmark]
     public string NativeUtf8RawFold()
     {
-        var state = _rawUtf8Plan.Execute(_utf8, new RawFoldState());
+        var state = _rawUtf8Plan.Execute(_utf8, new RawFoldState(), Utf8InputContract.WellFormedUtf8);
         return Normalize(state.Text.ToString());
     }
 
     [Benchmark]
     public string NativeUtf8CompletedElementFold()
     {
-        var state = _completedUtf8Plan.Execute(_utf8, new CompletedFoldState());
+        var state = _completedUtf8Plan.Execute(_utf8, new CompletedFoldState(), Utf8InputContract.WellFormedUtf8);
         return state.Text;
     }
 
