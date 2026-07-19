@@ -18,6 +18,6 @@ internal readonly record struct CompiledAttributePredicate(int AttributeIndex, A
 
 internal sealed record AttributePredicate(string Name, AttributePredicateKind Kind, string? Value);
 
-internal readonly record struct QueryFrame(ulong TagHash, int TagLength, ulong Matches);
+internal readonly record struct QueryFrame(ulong TagIdentity, int TagIdentityLength, ulong Matches);
 
-internal readonly record struct CompiledTagDispatch(ulong Hash, int Length, ulong CandidateBits);
+internal readonly record struct CompiledTagDispatch(ulong Identity, int IdentityLength, ulong CandidateBits);

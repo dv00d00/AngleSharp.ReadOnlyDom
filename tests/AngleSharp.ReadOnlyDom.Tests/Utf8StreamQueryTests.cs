@@ -151,7 +151,7 @@ public sealed class QueryTests
     }
 
     [Test]
-    public async Task OptimizedTagHashMatchesNormalizedNamesAcrossChunks()
+    public async Task CompactTagIdentityMatchesNormalizedNamesAcrossChunks()
     {
         var root = StreamQuery
             .For<QueryState>("article")
@@ -167,6 +167,22 @@ public sealed class QueryTests
                 tokenizer.Write([value]);
             tokenizer.Complete();
         }
+
+        await Assert.That(state.Events).IsEquivalentTo(["start", "end"]);
+    }
+
+    [Test]
+    public async Task NonCompactTagIdentityFallsBackToCaseInsensitiveBytes()
+    {
+        var root = StreamQuery
+            .For<QueryState>("custom-element")
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("start"))
+            .OnEnd(static (ref QueryState state) => state.Events.Add("end"));
+        var state = root.Compile().Execute(
+            "<CuStOm-ElEmEnT></cUsToM-eLeMeNt>"u8,
+            new QueryState(),
+            Utf8InputContract.WellFormedUtf8
+        );
 
         await Assert.That(state.Events).IsEquivalentTo(["start", "end"]);
     }

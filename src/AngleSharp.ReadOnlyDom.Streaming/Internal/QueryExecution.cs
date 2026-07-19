@@ -20,8 +20,9 @@ internal sealed class QueryExecution<TState>
     private TState _state;
     private int _frameCount;
     private int _attributeValueLength;
-    private ulong _pendingTagHash;
-    private int _pendingTagLength;
+    private ulong _pendingTagIdentity;
+    private int _pendingTagIdentityLength;
+    private int _pendingTagNameLength;
     private ulong _pendingCandidateBits;
     private ulong _pendingAttributeBits;
     private ulong _seenAttributeBits;
@@ -73,18 +74,27 @@ internal sealed class QueryExecution<TState>
 
     public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
     {
-        var hash = name.SemanticHash;
-        _pendingTagHash = hash;
-        _pendingTagLength = name.Verbatim.Length;
+        var identityLength = 0;
+        if (!name.TryGetCompactKey(out var identity))
+        {
+            identity = name.SemanticHash;
+            identityLength = name.Verbatim.Length;
+        }
+        _pendingTagIdentity = identity;
+        _pendingTagIdentityLength = identityLength;
+        _pendingTagNameLength = name.Verbatim.Length;
         _pendingCandidateBits = 0;
         _pendingAttributeBits = 0;
-        var candidates = FindTagCandidates(hash, name.Verbatim.Length);
+        var candidates = FindTagCandidates(identity, identityLength);
         while (candidates != 0)
         {
             var index = BitOperations.TrailingZeroCount(candidates);
             candidates &= candidates - 1;
             var node = _plan.Nodes[index];
-            if (!name.SemanticEquals(node.TagNameUtf8) || !ParentMatches(node))
+            if (
+                (identityLength != 0 && !name.SemanticEquals(node.TagNameUtf8))
+                || !ParentMatches(node)
+            )
                 continue;
             _pendingCandidateBits |= 1UL << node.Index;
             _pendingAttributeBits |= node.RequestedAttributeMask;
@@ -158,7 +168,13 @@ internal sealed class QueryExecution<TState>
             matches |= 1UL << node.Index;
         }
 
-        var closesImmediately = selfClosing || IsVoidTag(_pendingTagHash, _pendingTagLength);
+        var closesImmediately =
+            selfClosing
+            || IsVoidTag(
+                _pendingTagIdentity,
+                _pendingTagIdentityLength,
+                _pendingTagNameLength
+            );
         if (!closesImmediately && _frameCount >= _maximumNestingDepth)
             throw new HtmlStreamingLimitExceededException(
                 HtmlStreamingLimit.NestingDepth,
@@ -197,7 +213,11 @@ internal sealed class QueryExecution<TState>
         }
 
         EnsureFrameCapacity();
-        _frames[_frameCount++] = new QueryFrame(_pendingTagHash, _pendingTagLength, matches);
+        _frames[_frameCount++] = new QueryFrame(
+            _pendingTagIdentity,
+            _pendingTagIdentityLength,
+            matches
+        );
         IncrementActive(matches);
     }
 
@@ -226,10 +246,18 @@ internal sealed class QueryExecution<TState>
 
     public void EndTag(Utf8HtmlName name)
     {
-        var hash = name.SemanticHash;
+        var identityLength = 0;
+        if (!name.TryGetCompactKey(out var identity))
+        {
+            identity = name.SemanticHash;
+            identityLength = name.Verbatim.Length;
+        }
         for (var index = _frameCount - 1; index >= 0; index--)
         {
-            if (_frames[index].TagHash != hash || _frames[index].TagLength != name.Verbatim.Length)
+            if (
+                _frames[index].TagIdentity != identity
+                || _frames[index].TagIdentityLength != identityLength
+            )
                 continue;
             for (var popped = _frameCount - 1; popped >= index; popped--)
                 CloseFrame(_frames[popped]);
@@ -238,7 +266,7 @@ internal sealed class QueryExecution<TState>
         }
     }
 
-    private ulong FindTagCandidates(ulong hash, int length)
+    private ulong FindTagCandidates(ulong identity, int identityLength)
     {
         var entries = _plan.TagDispatch;
         var low = 0;
@@ -247,9 +275,9 @@ internal sealed class QueryExecution<TState>
         {
             var middle = (low + high) >>> 1;
             var entry = entries[middle];
-            var comparison = entry.Hash.CompareTo(hash);
+            var comparison = entry.Identity.CompareTo(identity);
             if (comparison == 0)
-                comparison = entry.Length.CompareTo(length);
+                comparison = entry.IdentityLength.CompareTo(identityLength);
             if (comparison < 0)
                 low = middle + 1;
             else if (comparison > 0)
@@ -542,33 +570,36 @@ internal sealed class QueryExecution<TState>
 
     private static bool IsHtmlSpace(byte value) => value is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\r' or 0x0C;
 
-    private static bool IsVoidTag(ulong hash, int length) =>
-        (length == 2 && (hash == HtmlVoidElements.BrHash || hash == HtmlVoidElements.HrHash))
-        || (
-            length == 3
-            && (
-                hash == HtmlVoidElements.ImgHash
-                || hash == HtmlVoidElements.WbrHash
-                || hash == HtmlVoidElements.ColHash
+    private static bool IsVoidTag(ulong identity, int identityLength, int nameLength) =>
+        identityLength == 0
+        && (
+            (nameLength == 2 && (identity == HtmlVoidElements.Br || identity == HtmlVoidElements.Hr))
+            || (
+                nameLength == 3
+                && (
+                    identity == HtmlVoidElements.Img
+                    || identity == HtmlVoidElements.Wbr
+                    || identity == HtmlVoidElements.Col
+                )
             )
-        )
-        || (
-            length == 4
-            && (
-                hash == HtmlVoidElements.AreaHash
-                || hash == HtmlVoidElements.BaseHash
-                || hash == HtmlVoidElements.LinkHash
-                || hash == HtmlVoidElements.MetaHash
+            || (
+                nameLength == 4
+                && (
+                    identity == HtmlVoidElements.Area
+                    || identity == HtmlVoidElements.Base
+                    || identity == HtmlVoidElements.Link
+                    || identity == HtmlVoidElements.Meta
+                )
             )
-        )
-        || (
-            length == 5
-            && (
-                hash == HtmlVoidElements.EmbedHash
-                || hash == HtmlVoidElements.InputHash
-                || hash == HtmlVoidElements.ParamHash
-                || hash == HtmlVoidElements.TrackHash
+            || (
+                nameLength == 5
+                && (
+                    identity == HtmlVoidElements.Embed
+                    || identity == HtmlVoidElements.Input
+                    || identity == HtmlVoidElements.Param
+                    || identity == HtmlVoidElements.Track
+                )
             )
-        )
-        || (length == 6 && hash == HtmlVoidElements.SourceHash);
+            || (nameLength == 6 && identity == HtmlVoidElements.Source)
+        );
 }
