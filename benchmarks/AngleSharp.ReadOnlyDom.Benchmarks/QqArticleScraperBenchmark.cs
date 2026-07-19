@@ -665,6 +665,8 @@ public class QqArticleScraperBenchmark
 
     private sealed class NativeArticleSink : IUtf8HtmlTokenSink, IDisposable
     {
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
+
         private Frame[] _frames = ArrayPool<Frame>.Shared.Rent(64);
         private int _frameCount;
         private int _newsListDepth;

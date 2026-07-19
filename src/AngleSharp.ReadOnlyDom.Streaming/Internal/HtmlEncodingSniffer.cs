@@ -31,6 +31,8 @@ internal static class HtmlEncodingSniffer
 
     private sealed class EncodingDeclarationSink : IUtf8HtmlTokenSink
     {
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.None;
+
         private bool _isMeta;
         private string? _charset;
         private string? _content;

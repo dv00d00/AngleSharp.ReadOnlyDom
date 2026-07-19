@@ -16,6 +16,8 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
     public const ulong OffsetBasis = 14695981039346656037UL;
     public const ulong Prime = 1099511628211UL;
 
+    public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
+
     private Frame[] _frames = ArrayPool<Frame>.Shared.Rent(32);
     private DivResult[] _results = ArrayPool<DivResult>.Shared.Rent(64);
     private int _frameCount;

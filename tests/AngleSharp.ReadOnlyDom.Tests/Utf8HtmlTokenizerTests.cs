@@ -388,6 +388,8 @@ public sealed class Utf8HtmlTokenizerTests
 
     private sealed class RecordingSink : IUtf8HtmlTokenSink
     {
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
+
         private readonly List<string> _events = [];
 
         public IReadOnlyList<string> Events => _events;
