@@ -153,34 +153,19 @@ public static class CompactQuery
         }
 
         /// <summary>Filters by a whitespace-separated class token.</summary>
-        public ElementQuery WithClass(string token) =>
-            new(
-                _document,
-                _tagId,
-                _start,
-                _endExclusive,
-                true,
-                _document.ResolveNameId("class"),
-                token,
-                _hasAttr,
-                _attrId,
-                _attrValue
-            );
+        public ElementQuery WithClass(string token) => WithClass(_document.ResolveNameId("class"), token);
+
+        /// <summary>Filters by a class token using a previously resolved <c>class</c> attribute name ID.</summary>
+        public ElementQuery WithClass(ushort classNameId, string token) =>
+            new(_document, _tagId, _start, _endExclusive, true, classNameId, token, _hasAttr, _attrId, _attrValue);
 
         /// <summary>Filters by attribute presence or value equality.</summary>
         public ElementQuery WithAttribute(string name, string? value = null) =>
-            new(
-                _document,
-                _tagId,
-                _start,
-                _endExclusive,
-                _hasClass,
-                _classId,
-                _classToken,
-                true,
-                _document.ResolveNameId(name),
-                value
-            );
+            WithAttribute(_document.ResolveNameId(name), value);
+
+        /// <summary>Filters by a previously resolved attribute name ID.</summary>
+        public ElementQuery WithAttribute(ushort nameId, string? value = null) =>
+            new(_document, _tagId, _start, _endExclusive, _hasClass, _classId, _classToken, true, nameId, value);
 
         public Enumerator GetEnumerator() => new(this);
 

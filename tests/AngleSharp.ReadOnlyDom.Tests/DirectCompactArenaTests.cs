@@ -56,6 +56,26 @@ public sealed class CompactParserTests
     }
 
     [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task ResolvedNameIdsCanBeReusedAcrossQueriesAndAttributeReads(CompactDocumentLayout layout)
+    {
+        using var document = CompactParser
+            .CreateParser(layout: layout)
+            .ParseCompactDocument("<main class='selected wide' data-kind=sample>text</main>");
+        var mainName = document.Name("main");
+        var className = document.Name("class");
+        var dataKind = document.Name("data-kind");
+
+        var main = document.Elements(mainName).WithClass(className, "wide").WithAttribute(dataKind, "sample").First();
+
+        await Assert.That(main.Exists).IsTrue();
+        await Assert.That(main.HasClass(className, "selected")).IsTrue();
+        await Assert.That(main.HasAttr(dataKind)).IsTrue();
+        await Assert.That(main.Attr(dataKind).ToString()).IsEqualTo("sample");
+    }
+
+    [Test]
     public async Task Utf8StreamConstructsCompactDocumentThroughBoundedSource()
     {
         var source = Encoding.UTF8.GetBytes("<main data-kind=stream>café</main>");

@@ -75,6 +75,7 @@ public class QqArticleScraperBenchmark
         AssertEqual(nameof(ReadOnlyMinimalBodyFiltered), ReadOnlyMinimalBodyFiltered());
         AssertEqual(nameof(ReadOnlySourceMappedBodyFiltered), ReadOnlySourceMappedBodyFiltered());
         AssertEqual(nameof(CompactFrozenBodyFiltered), CompactFrozenBodyFiltered());
+        AssertEqual(nameof(CompactFrozenResolvedIds), CompactFrozenResolvedIds());
         AssertEqual(nameof(NativeUtf8Fold), NativeUtf8Fold());
         AssertEqual(nameof(QueryCompiledUtf8Fold), QueryCompiledUtf8Fold());
         AssertEqual(nameof(QueryCompletedElementFold), QueryCompletedElementFold());
@@ -401,6 +402,49 @@ public class QqArticleScraperBenchmark
                         link.Attr("href").ToString(),
                         image.Exists ? image.Attr("src").ToString() : null,
                         image.Exists ? image.Attr("alt").ToString() : null,
+                        metadata
+                    );
+                }
+            }
+        }
+
+        return output;
+    }
+
+    [Benchmark]
+    public List<Article> CompactFrozenResolvedIds()
+    {
+        var filter = new FirstTagAndAllChildren("body");
+        using var document = _compact.ParseCompactDocument(_html, filter.Loop);
+        var ul = document.Name("ul");
+        var li = document.Name("li");
+        var anchor = document.Name("a");
+        var image = document.Name("img");
+        var className = document.Name("class");
+        var cardKind = document.Name("dt-eid");
+        var metadataName = document.Name("dt-params");
+        var href = document.Name("href");
+        var source = document.Name("src");
+        var alternateText = document.Name("alt");
+        var output = new List<Article>(128);
+        var text = new StringBuilder();
+
+        foreach (var list in document.Elements(ul).WithClass(className, "news-list"))
+        {
+            foreach (var card in list.Elements(li).WithAttribute(cardKind, "em_item_article"))
+            {
+                var metadata = card.Attr(metadataName).ToString();
+                foreach (var link in card.Elements(anchor).WithAttribute(href))
+                {
+                    var linkImage = link.Elements(image).First();
+                    text.Clear();
+                    link.AppendText(text);
+                    AddArticle(
+                        output,
+                        text.ToString(),
+                        link.Attr(href).ToString(),
+                        linkImage.Exists ? linkImage.Attr(source).ToString() : null,
+                        linkImage.Exists ? linkImage.Attr(alternateText).ToString() : null,
                         metadata
                     );
                 }
