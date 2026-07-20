@@ -6,11 +6,19 @@ namespace AngleSharp.ReadOnlyDom.Streaming;
 internal static class HtmlEncodingSniffer
 {
     internal const int PrefixSize = 1024;
+    private static readonly ulong CharsetKey = CompactKey("charset"u8);
+    private static readonly ulong ContentKey = CompactKey("content"u8);
+    private static readonly ulong MetaKey = CompactKey("meta"u8);
 
     static HtmlEncodingSniffer()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
     }
+
+    private static ulong CompactKey(ReadOnlySpan<byte> name) =>
+        Utf8HtmlName.TryGetCompactKey(name, out var key)
+            ? key
+            : throw new InvalidOperationException("The encoding-sniffer name has no compact identity.");
 
     internal static Detection Detect(ReadOnlySpan<byte> source, Encoding? fallback)
     {
@@ -32,12 +40,21 @@ internal static class HtmlEncodingSniffer
 
     private sealed class EncodingDeclarationSink : IUtf8HtmlTokenSink
     {
+        private enum AttributeKind : byte
+        {
+            None,
+            Charset,
+            Content,
+            HttpEquiv,
+        }
+
         public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.None;
 
         private bool _isMeta;
         private string? _charset;
         private string? _content;
         private string? _httpEquiv;
+        private AttributeKind _pendingAttribute;
 
         internal Encoding? DetectedEncoding { get; private set; }
 
@@ -45,34 +62,53 @@ internal static class HtmlEncodingSniffer
 
         public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
         {
-            _isMeta = name.SemanticEquals("meta"u8);
+            _isMeta = name.TryGetCompactKey(out var key) && key == MetaKey;
             _charset = null;
             _content = null;
             _httpEquiv = null;
-            return _isMeta
-                ? Utf8HtmlStartTagCapture.Attributes
-                : Utf8HtmlStartTagCapture.None;
+            _pendingAttribute = AttributeKind.None;
+            return _isMeta ? Utf8HtmlStartTagCapture.Attributes : Utf8HtmlStartTagCapture.None;
         }
 
-        public bool WantsAttribute(Utf8HtmlName name) =>
-            _isMeta
-            && (
-                name.SemanticEquals("charset"u8)
-                || name.SemanticEquals("content"u8)
-                || name.SemanticEquals("http-equiv"u8)
-            );
+        public bool WantsAttribute(Utf8HtmlName name)
+        {
+            _pendingAttribute = AttributeKind.None;
+            if (!_isMeta)
+                return false;
+
+            if (name.TryGetCompactKey(out var key))
+            {
+                _pendingAttribute =
+                    key == CharsetKey ? AttributeKind.Charset
+                    : key == ContentKey ? AttributeKind.Content
+                    : AttributeKind.None;
+            }
+            else if (name.SemanticEquals("http-equiv"u8))
+            {
+                _pendingAttribute = AttributeKind.HttpEquiv;
+            }
+
+            return _pendingAttribute != AttributeKind.None;
+        }
 
         public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value)
         {
             if (!_isMeta)
                 return;
 
-            if (_charset is null && name.SemanticEquals("charset"u8))
-                _charset = Encoding.ASCII.GetString(value).Trim();
-            else if (_content is null && name.SemanticEquals("content"u8))
-                _content = Encoding.ASCII.GetString(value);
-            else if (_httpEquiv is null && name.SemanticEquals("http-equiv"u8))
-                _httpEquiv = Encoding.ASCII.GetString(value).Trim();
+            switch (_pendingAttribute)
+            {
+                case AttributeKind.Charset when _charset is null:
+                    _charset = Encoding.ASCII.GetString(value).Trim();
+                    break;
+                case AttributeKind.Content when _content is null:
+                    _content = Encoding.ASCII.GetString(value);
+                    break;
+                case AttributeKind.HttpEquiv when _httpEquiv is null:
+                    _httpEquiv = Encoding.ASCII.GetString(value).Trim();
+                    break;
+            }
+            _pendingAttribute = AttributeKind.None;
         }
 
         public void StartTagEnd(bool selfClosing)

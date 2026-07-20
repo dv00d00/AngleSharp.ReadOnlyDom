@@ -13,6 +13,9 @@ public enum Utf8BaselineWorkload
     RawText,
     EntityHeavy,
     LongToken,
+    CompactNames,
+    FallbackNames,
+    MixedCaseDuplicates,
 }
 
 [MemoryDiagnoser]
@@ -22,14 +25,21 @@ public class Utf8TokenizerBaselineBenchmark
     private byte[] _utf8 = null!;
     private readonly FingerprintSink _sink = new();
 
-    [Params(
-        Utf8BaselineWorkload.Typical,
-        Utf8BaselineWorkload.Malformed,
-        Utf8BaselineWorkload.RawText,
-        Utf8BaselineWorkload.EntityHeavy,
-        Utf8BaselineWorkload.LongToken
-    )]
+    [ParamsSource(nameof(Workloads))]
     public Utf8BaselineWorkload Workload { get; set; }
+
+    public IEnumerable<Utf8BaselineWorkload> Workloads()
+    {
+        var selected = Environment.GetEnvironmentVariable("ANGLE_UTF8_TOKENIZER_WORKLOADS");
+        if (string.IsNullOrWhiteSpace(selected))
+            return Enum.GetValues<Utf8BaselineWorkload>();
+
+        return selected
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(static value => Enum.Parse<Utf8BaselineWorkload>(value, ignoreCase: true))
+            .Distinct()
+            .ToArray();
+    }
 
     [GlobalSetup]
     public async Task Setup()
@@ -199,6 +209,21 @@ internal static class Utf8TokenizerBaselineCorpus
                 "<p title='&amp;&notin;&#x1F600;'>&lt;&gt;&quot;&apos;&copy;&#169;&notit;</p>"
             ),
             Utf8BaselineWorkload.LongToken => CreateLongToken(),
+            Utf8BaselineWorkload.CompactNames => RepeatToExactSize(
+                "<article id='item' class='card' href='/item' src='image' alt='preview' title='measured' "
+                    + "name='entry' type='example' lang='en' width='320' height='200' rel='next' value='42' "
+                    + "content='payload'>ordinary text</article>"
+            ),
+            Utf8BaselineWorkload.FallbackNames => RepeatToExactSize(
+                "<custom-element data-record='1' aria-label='item' http-equiv='refresh' accept-charset='utf-8' "
+                    + "data-alpha='a' data-beta='b' data-gamma='c' data-delta='d' data-epsilon='e' "
+                    + "data-zeta='f' data-eta='g' data-theta='h' data-iota='i' data-kappa='j' "
+                    + "data-lambda='k' data-mu='l' data-nu='m' data-xi='n'>ordinary text</custom-element>"
+            ),
+            Utf8BaselineWorkload.MixedCaseDuplicates => RepeatToExactSize(
+                "<ArTiClE ID='first' id='ignored' CLASS='card' class='ignored' "
+                    + "DaTa-Key='one' data-key='ignored' TITLE='title' title='ignored'>ordinary text</ArTiClE>"
+            ),
             _ => throw new ArgumentOutOfRangeException(nameof(workload)),
         };
 

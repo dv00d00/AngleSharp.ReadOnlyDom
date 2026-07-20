@@ -52,6 +52,13 @@ internal static class QueryPlanCompiler
             .Order(StringComparer.Ordinal)
             .ToArray();
         var attributeNamesUtf8 = attributeNames.Select(Encoding.UTF8.GetBytes).ToArray();
+        var attributeIdentities = attributeNamesUtf8.Select(CompileAttributeIdentity).ToArray();
+        var compactAttributeMask = 0UL;
+        for (var index = 0; index < attributeIdentities.Length; index++)
+        {
+            if (attributeIdentities[index].Length == 0)
+                compactAttributeMask |= 1UL << index;
+        }
         if (attributeNames.Length > 64)
             throw new NotSupportedException("Lexical streaming plans support at most 64 required attributes.");
         var attributeIndexes = attributeNames
@@ -66,12 +73,7 @@ internal static class QueryPlanCompiler
         {
             var source = sourceNodes[index];
             var tagName = Encoding.UTF8.GetBytes(source.Selector.TagName);
-            var tagIdentityLength = 0;
-            if (!Utf8HtmlName.TryGetCompactKey(tagName, out var tagIdentity))
-            {
-                tagIdentity = Utf8NameHash.ComputeSemantic(tagName);
-                tagIdentityLength = tagName.Length;
-            }
+            var tagIdentity = CompileTagIdentity(tagName);
             var predicates = source
                 .Selector.Attributes.Select(predicate => new CompiledAttributePredicate(
                     attributeIndexes[predicate.Name],
@@ -95,8 +97,8 @@ internal static class QueryPlanCompiler
                 source.Parent is null ? -1 : sourceIndexes[source.Parent],
                 source.Relation,
                 tagName,
-                tagIdentity,
-                tagIdentityLength,
+                tagIdentity.Value,
+                tagIdentity.Length,
                 requiredAttributeBits,
                 predicates,
                 source.StartHandler,
@@ -130,7 +132,29 @@ internal static class QueryPlanCompiler
             nodes.Length,
             24
         );
-        return new QueryPlan<TState>(nodes, attributeNames, attributeNamesUtf8, tagDispatch, explanation);
+        return new QueryPlan<TState>(
+            nodes,
+            attributeNames,
+            attributeNamesUtf8,
+            attributeIdentities,
+            compactAttributeMask,
+            tagDispatch,
+            explanation
+        );
+    }
+
+    private static CompiledNameIdentity CompileAttributeIdentity(byte[] name)
+    {
+        return Utf8HtmlName.TryGetCompactKey(name, out var identity)
+            ? new CompiledNameIdentity(identity, 0)
+            : new CompiledNameIdentity(0, name.Length);
+    }
+
+    private static CompiledNameIdentity CompileTagIdentity(byte[] name)
+    {
+        if (Utf8HtmlName.TryGetCompactKey(name, out var identity))
+            return new CompiledNameIdentity(identity, 0);
+        return new CompiledNameIdentity(Utf8NameHash.ComputeSemantic(name), name.Length);
     }
 
     private static void AddPreorder<TState>(QueryNode<TState> node, List<QueryNode<TState>> nodes)
