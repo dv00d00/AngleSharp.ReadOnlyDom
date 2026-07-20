@@ -126,8 +126,7 @@ public readonly struct Node
             var payloadIndex = document.PayloadIndexAt(handle);
             if (payloadIndex < 0)
                 continue;
-            var payload = document.GetPayload(payloadIndex);
-            sink.Append(document.GetValue(payload.ValueStart, payload.ValueLength));
+            sink.Append(document.PayloadValueSpanAt(payloadIndex));
         }
     }
 
@@ -176,8 +175,7 @@ public readonly struct Node
             var payloadIndex = document.PayloadIndexAt(handle);
             if (payloadIndex < 0)
                 continue;
-            var payload = document.GetPayload(payloadIndex);
-            var value = document.GetValue(payload.ValueStart, payload.ValueLength);
+            var value = document.PayloadValueSpanAt(payloadIndex);
             if (written + value.Length > destination.Length)
                 return false;
             value.CopyTo(destination.Slice(written));
@@ -201,16 +199,14 @@ public readonly struct Node
         value = default;
         if (nameId == ushort.MaxValue)
             return false;
-        var node = Raw;
-        if (node.PayloadIndex < 0)
+        var document = _document!;
+        if (!document.TryGetAttributeRange(_handle, out var first, out var count))
             return false;
-        var payload = _document!.GetPayload(node.PayloadIndex);
-        for (var a = payload.FirstAttribute; a < payload.FirstAttribute + payload.AttributeCount; a++)
+        for (var a = first; a < first + count; a++)
         {
-            var attribute = _document.GetAttribute(a);
-            if (attribute.NameId == nameId)
+            if (document.AttributeNameIdAt(a) == nameId)
             {
-                value = _document.GetValue(attribute.ValueStart, attribute.ValueLength);
+                value = document.AttributeValueSpanAt(a);
                 return true;
             }
         }
