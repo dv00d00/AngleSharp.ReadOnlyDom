@@ -189,22 +189,19 @@ public static class CompactQuery
             if (!_hasClass && !_hasAttr)
                 return true;
 
-            var node = _document.GetNode(handle);
-            if (node.PayloadIndex < 0)
-                return false; // a filter is active but the element carries no attributes
+            // a filter is active but the element carries no attributes
+            if (!_document.TryGetAttributeRange(handle, out var first, out var count))
+                return false;
 
-            var payload = _document.GetPayload(node.PayloadIndex);
             var classOk = !_hasClass;
             var attrOk = !_hasAttr;
-            for (var a = payload.FirstAttribute; a < payload.FirstAttribute + payload.AttributeCount; a++)
+            for (var a = first; a < first + count; a++)
             {
-                var attr = _document.GetAttribute(a);
-                if (_hasClass && !classOk && attr.NameId == _classId)
-                    classOk = HasToken(_document.GetValue(attr.ValueStart, attr.ValueLength), _classToken);
-                if (_hasAttr && !attrOk && attr.NameId == _attrId)
-                    attrOk =
-                        _attrValue is null
-                        || _document.GetValue(attr.ValueStart, attr.ValueLength).SequenceEqual(_attrValue);
+                var nameId = _document.AttributeNameIdAt(a);
+                if (_hasClass && !classOk && nameId == _classId)
+                    classOk = HasToken(_document.AttributeValueSpanAt(a), _classToken);
+                if (_hasAttr && !attrOk && nameId == _attrId)
+                    attrOk = _attrValue is null || _document.AttributeValueSpanAt(a).SequenceEqual(_attrValue);
                 if (classOk && attrOk)
                     return true;
             }
