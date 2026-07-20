@@ -11,6 +11,7 @@ public enum NameIdentityWorkload
 {
     Compact,
     Fallback,
+    LongFallback,
     MixedCaseDuplicates,
 }
 
@@ -21,6 +22,8 @@ public class NameIdentityQueryBenchmark
     private static readonly QueryPlan<int> CompactRewrite = CreateCompactQuery(countMatches: false);
     private static readonly QueryPlan<int> FallbackMatch = CreateFallbackQuery(countMatches: true);
     private static readonly QueryPlan<int> FallbackRewrite = CreateFallbackQuery(countMatches: false);
+    private static readonly QueryPlan<int> LongFallbackMatch = CreateLongFallbackQuery(countMatches: true);
+    private static readonly QueryPlan<int> LongFallbackRewrite = CreateLongFallbackQuery(countMatches: false);
     private static readonly QueryPlan<int> MixedMatch = CreateMixedQuery(countMatches: true);
     private static readonly QueryPlan<int> MixedRewrite = CreateMixedQuery(countMatches: false);
 
@@ -29,7 +32,12 @@ public class NameIdentityQueryBenchmark
     private QueryPlan<int> _rewrite = null!;
     private int _expectedMatches;
 
-    [Params(NameIdentityWorkload.Compact, NameIdentityWorkload.Fallback, NameIdentityWorkload.MixedCaseDuplicates)]
+    [Params(
+        NameIdentityWorkload.Compact,
+        NameIdentityWorkload.Fallback,
+        NameIdentityWorkload.LongFallback,
+        NameIdentityWorkload.MixedCaseDuplicates
+    )]
     public NameIdentityWorkload Workload { get; set; }
 
     [GlobalSetup]
@@ -46,6 +54,13 @@ public class NameIdentityQueryBenchmark
                 "<custom-element data-record='1' aria-label='item' http-equiv='refresh'>ordinary text</custom-element>",
                 FallbackMatch,
                 FallbackRewrite
+            ),
+            NameIdentityWorkload.LongFallback => (
+                "<custom-element DaTa-Customer-Record-Id='1' "
+                    + "ArIa-AcTiVeDeScEnDaNt='item' "
+                    + "ArIa-MuLtIsElEcTaBlE='true'>ordinary text</custom-element>",
+                LongFallbackMatch,
+                LongFallbackRewrite
             ),
             NameIdentityWorkload.MixedCaseDuplicates => (
                 "<ArTiClE ID='first' id='ignored' CLASS='card' class='ignored' "
@@ -111,6 +126,18 @@ public class NameIdentityQueryBenchmark
             .Attribute("data-record", "1")
             .Attribute("aria-label", "item")
             .Attribute("http-equiv", "refresh");
+        if (countMatches)
+            match.OnStart(static (ref int count, in Element _) => count++);
+        return match.Compile();
+    }
+
+    private static QueryPlan<int> CreateLongFallbackQuery(bool countMatches)
+    {
+        var match = StreamQuery
+            .For<int>("custom-element")
+            .Attribute("data-customer-record-id", "1")
+            .Attribute("aria-activedescendant", "item")
+            .Attribute("aria-multiselectable", "true");
         if (countMatches)
             match.OnStart(static (ref int count, in Element _) => count++);
         return match.Compile();
