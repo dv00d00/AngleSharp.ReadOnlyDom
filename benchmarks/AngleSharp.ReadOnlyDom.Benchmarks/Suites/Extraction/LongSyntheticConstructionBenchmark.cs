@@ -12,6 +12,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 /// Full-input workload with a small result near EOF. The construction-time paths still run the complete AngleSharp
 /// tokenizer and tree builder; their advantage comes only from avoiding irrelevant value and DOM materialization.
 /// </summary>
+[BenchmarkCategory("Extraction")]
 [MemoryDiagnoser]
 public class LongSyntheticConstructionBenchmark
 {

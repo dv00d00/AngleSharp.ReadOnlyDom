@@ -8,6 +8,7 @@ using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
+[BenchmarkCategory("Query", "IO")]
 [MemoryDiagnoser]
 public class HttpClientStreamingQueryBenchmark
 {

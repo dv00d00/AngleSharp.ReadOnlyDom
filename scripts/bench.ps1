@@ -93,6 +93,7 @@ if ($Tier -in @("retained", "all")) {
     if ($LASTEXITCODE -ne 0) { throw "Retained-memory benchmark failed." }
 }
 if ($Tier -in @("query", "all")) {
+    Invoke-Benchmark "*HttpClientStreamingQueryBenchmark*" "query-http"
     dotnet run --project $project -c Release -f net10.0 --no-build -- `
         --query-workloads --iterations 30 --output (Join-Path $output "query-workloads.md")
     if ($LASTEXITCODE -ne 0) { throw "Query workload measurement failed." }

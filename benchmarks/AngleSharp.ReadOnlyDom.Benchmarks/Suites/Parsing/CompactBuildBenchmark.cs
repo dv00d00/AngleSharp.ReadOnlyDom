@@ -6,6 +6,7 @@ using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
+[BenchmarkCategory("Parsing")]
 [MemoryDiagnoser]
 public class CompactBuildBenchmark
 {
