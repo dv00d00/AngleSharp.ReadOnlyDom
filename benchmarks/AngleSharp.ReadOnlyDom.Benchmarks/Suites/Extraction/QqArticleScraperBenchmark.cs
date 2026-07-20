@@ -354,7 +354,7 @@ public class QqArticleScraperBenchmark
     private sealed class ArticleStateMachine
     {
         internal readonly StringBuilder _title = new();
-        internal List<Article> _results = new();
+        internal List<Article> _results = new(128);
         internal string _cardMetadata = string.Empty;
         internal string? _href;
         internal string? _imageUrl;
