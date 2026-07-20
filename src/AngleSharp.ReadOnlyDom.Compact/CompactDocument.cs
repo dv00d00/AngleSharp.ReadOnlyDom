@@ -400,7 +400,7 @@ public sealed class CompactDocument : IDisposable
                 }
                 finally
                 {
-                    ArrayPool<char>.Shared.Return(_text!, clearArray: true);
+                    ArrayPool<char>.Shared.Return(_text!);
                 }
             }
             return;
@@ -409,7 +409,7 @@ public sealed class CompactDocument : IDisposable
         ArrayPool<CompactNode>.Shared.Return(_nodes!);
         ArrayPool<CompactNodePayload>.Shared.Return(_payloads!);
         ArrayPool<CompactAttribute>.Shared.Return(_attributes!);
-        ArrayPool<char>.Shared.Return(_text!, clearArray: true);
+        ArrayPool<char>.Shared.Return(_text!);
         if (_parents is not null)
             ArrayPool<int>.Shared.Return(_parents);
         if (_sources is not null)

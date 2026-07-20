@@ -104,11 +104,30 @@ internal sealed class ArenaConstructionFactory : IDomConstructionElementFactory<
     public ArenaElement CreateUnknown(ArenaDocument document, StringOrMemory tagName) => Create(document, tagName);
 
     public ArenaDocument CreateDocument(TextSource source, IBrowsingContext? context = null) =>
-        new Arena(_hints, _trackSourceReferences, _constructionView?.CreateState(source)).CreateDocument(
+        new Arena(ScaledHints(source), _trackSourceReferences, _constructionView?.CreateState(source)).CreateDocument(
             source,
             _options,
             _layout
         );
+
+    /// <summary>
+    /// Sizes the initial column capacities from the input length so typical documents avoid the
+    /// repeated grow-and-copy cycle. User-provided hints act as a floor, never a ceiling.
+    /// </summary>
+    private CompactParserHints ScaledHints(TextSource source)
+    {
+        if (!source.TryGetContentLength(out var length) || length <= 0)
+            return _hints;
+        return new CompactParserHints
+        {
+            InitialNodeCapacity = Scale(length / 32, _hints.InitialNodeCapacity),
+            InitialPayloadCapacity = Scale(length / 48, _hints.InitialPayloadCapacity),
+            InitialAttributeCapacity = Scale(length / 48, _hints.InitialAttributeCapacity),
+            InitialTextCapacity = Scale(length / 2, _hints.InitialTextCapacity),
+        };
+
+        static int Scale(int estimate, int hint) => Math.Max(hint, Math.Min(estimate, 1 << 20));
+    }
 
     private static ArenaElement CreateKnown(ArenaDocument document, StringOrMemory name, ElementMarker marker)
     {
