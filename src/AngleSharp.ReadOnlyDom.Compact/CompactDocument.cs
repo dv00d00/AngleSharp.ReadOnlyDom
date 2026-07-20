@@ -114,6 +114,12 @@ public sealed class CompactDocument : IDisposable
 
     internal ushort NameIdAt(int handle) => _arena is null ? _nodes![handle].NameId : _arena.FrozenNameId(handle);
 
+    internal int PayloadIndexAt(int handle) =>
+        _arena is null ? _nodes![handle].PayloadIndex : _arena.FrozenPayloadIndex(handle);
+
+    internal int SubtreeEndAt(int handle) =>
+        _arena is null ? _nodes![handle].SubtreeEndExclusive : _arena.FrozenSubtreeEnd(handle);
+
     public CompactNodePayload GetPayload(int index)
     {
         if (_arena is null)

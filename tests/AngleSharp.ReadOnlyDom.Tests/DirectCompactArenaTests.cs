@@ -512,10 +512,16 @@ public sealed class CompactParserTests
         using var actual = CompactParser.CreateParser(layout: layout).ParseCompactDocument(html);
         var actualContent = actual.Elements("div").WithAttribute("id", "content").First();
         var actualTemplate = actual.Elements("template").First();
+        var expectedContent = expected.QuerySelector("#content")!.TextContent;
+        var destination = new char[actualContent.TextLength()];
 
-        await Assert.That(actualContent.Text()).IsEqualTo(expected.QuerySelector("#content")!.TextContent);
+        await Assert.That(actualContent.Text()).IsEqualTo(expectedContent);
+        await Assert.That(actualContent.TryWriteText(destination, out var written)).IsTrue();
+        await Assert.That(new string(destination, 0, written)).IsEqualTo(expectedContent);
         await Assert.That(actualTemplate.Text()).IsEqualTo(expected.QuerySelector("template")!.TextContent);
         await Assert.That(actualTemplate.TextLength()).IsEqualTo(0);
+        await Assert.That(actualTemplate.TryWriteText([], out var templateWritten)).IsTrue();
+        await Assert.That(templateWritten).IsEqualTo(0);
     }
 
     [Test]

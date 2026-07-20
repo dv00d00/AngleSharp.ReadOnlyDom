@@ -111,20 +111,24 @@ public readonly struct Node
     public void WriteText<TSink>(ref TSink sink)
         where TSink : ISpanSink
     {
-        var node = Raw;
-        if (_document!.IsTemplate(_handle))
-            return;
-        if (node.Kind == CompactNodeKind.Text && node.PayloadIndex >= 0)
+        var document = _document!;
+        var endExclusive = document.SubtreeEndAt(_handle);
+        for (var handle = _handle; handle < endExclusive; handle++)
         {
-            var payload = _document!.GetPayload(node.PayloadIndex);
-            sink.Append(_document.GetValue(payload.ValueStart, payload.ValueLength));
+            var kind = document.KindAt(handle);
+            if (kind == CompactNodeKind.Element && document.IsTemplate(handle))
+            {
+                handle = document.SubtreeEndAt(handle) - 1;
+                continue;
+            }
+            if (kind != CompactNodeKind.Text)
+                continue;
+            var payloadIndex = document.PayloadIndexAt(handle);
+            if (payloadIndex < 0)
+                continue;
+            var payload = document.GetPayload(payloadIndex);
+            sink.Append(document.GetValue(payload.ValueStart, payload.ValueLength));
         }
-        for (
-            var child = node.FirstChild;
-            child >= 0 && child < node.SubtreeEndExclusive;
-            child = _document!.GetNode(child).SubtreeEndExclusive
-        )
-            new Node(_document!, child).WriteText(ref sink);
     }
 
     public void AppendText(StringBuilder builder)
@@ -157,25 +161,28 @@ public readonly struct Node
 
     private bool WriteInto(Span<char> destination, ref int written)
     {
-        var node = Raw;
-        if (_document!.IsTemplate(_handle))
-            return true;
-        if (node.Kind == CompactNodeKind.Text && node.PayloadIndex >= 0)
+        var document = _document!;
+        var endExclusive = document.SubtreeEndAt(_handle);
+        for (var handle = _handle; handle < endExclusive; handle++)
         {
-            var payload = _document!.GetPayload(node.PayloadIndex);
-            var value = _document.GetValue(payload.ValueStart, payload.ValueLength);
+            var kind = document.KindAt(handle);
+            if (kind == CompactNodeKind.Element && document.IsTemplate(handle))
+            {
+                handle = document.SubtreeEndAt(handle) - 1;
+                continue;
+            }
+            if (kind != CompactNodeKind.Text)
+                continue;
+            var payloadIndex = document.PayloadIndexAt(handle);
+            if (payloadIndex < 0)
+                continue;
+            var payload = document.GetPayload(payloadIndex);
+            var value = document.GetValue(payload.ValueStart, payload.ValueLength);
             if (written + value.Length > destination.Length)
                 return false;
             value.CopyTo(destination.Slice(written));
             written += value.Length;
         }
-        for (
-            var child = node.FirstChild;
-            child >= 0 && child < node.SubtreeEndExclusive;
-            child = _document!.GetNode(child).SubtreeEndExclusive
-        )
-            if (!new Node(_document!, child).WriteInto(destination, ref written))
-                return false;
         return true;
     }
 
