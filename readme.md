@@ -20,6 +20,56 @@ contiguous UTF-8 and `PipeReader` input, bounded resource limits, and backpressu
 > is intentionally parked until that dependency has a clean upstream version. See
 > [the upstream notes](docs/UPSTREAM_ANGLESHARP_NOTES.md).
 
+## Build against the AngleSharp fork
+
+The UTF-8 tokenizer and streaming-query projects currently require the matching AngleSharp fork branch. On a fresh
+Windows machine, install the .NET 10 SDK and clone both repositories into the same parent directory:
+
+```powershell
+$workspace = 'C:\src\anglesharp-work'
+New-Item -ItemType Directory -Force $workspace | Out-Null
+
+git clone --branch codex/tokenizer-consumer-seam https://github.com/dv00d00/AngleSharp.git "$workspace\AngleSharp"
+git clone --branch codex/rust-capture-demand https://github.com/dv00d00/AngleSharp.ReadOnlyDom.git "$workspace\AngleSharp.ReadOnlyDom"
+
+Set-Location "$workspace\AngleSharp.ReadOnlyDom"
+Copy-Item Directory.Build.targets.example Directory.Build.targets
+```
+
+The targets file replaces the AngleSharp package reference with the fork's `AngleSharp.Core.csproj`. Sibling clones
+named `AngleSharp` and `AngleSharp.ReadOnlyDom` are detected automatically. For any other layout, set the source root
+before restoring:
+
+```powershell
+$env:AngleSharpSourceRoot = (Resolve-Path 'D:\src\AngleSharp').Path
+```
+
+Restore after enabling or changing the source override so every target framework gets fresh project assets. Build
+serially because the solution and the fork share AngleSharp output paths:
+
+```powershell
+dotnet restore AngleSharp.ReadOnlyDom.slnx --force --no-cache
+dotnet build AngleSharp.ReadOnlyDom.slnx -c Release --no-restore -m:1
+dotnet test tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj -c Release -f net10.0 --no-restore
+```
+
+The Release build output should contain an
+`AngleSharp.Core -> ...\AngleSharp\src\AngleSharp\bin\Release\...\AngleSharp.dll` line.
+If it does not, the build is still consuming the NuGet package.
+
+For Rider, make `AngleSharpSourceRoot` a persistent user variable and restart Rider before opening the solution:
+
+```powershell
+[Environment]::SetEnvironmentVariable(
+    'AngleSharpSourceRoot',
+    (Resolve-Path 'D:\src\AngleSharp').Path,
+    'User'
+)
+```
+
+`Directory.Build.targets` is intentionally local and ignored; edit it when a checkout needs a fixed machine-specific
+path. Recopy the example to reset it.
+
 ## Read-only DOM
 
 Use this when consumers benefit from normal node navigation but do not mutate the document.
