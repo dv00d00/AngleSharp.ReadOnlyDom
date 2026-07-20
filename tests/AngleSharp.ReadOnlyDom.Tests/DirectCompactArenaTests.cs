@@ -94,6 +94,76 @@ public sealed class CompactParserTests
     [Test]
     [Arguments(CompactDocumentLayout.FrozenColumns)]
     [Arguments(CompactDocumentLayout.Packed)]
+    public async Task ValuesSurviveTokenizerBufferReuseAfterParsing(CompactDocumentLayout layout)
+    {
+        var source = new StringBuilder("<body>");
+        for (var i = 0; i < 64; i++)
+            source.Append("<div data-idx='item ").Append(i).Append(" &amp; more'>value ").Append(i).Append(" &lt;ok&gt;</div>");
+        source.Append("</body>");
+        var html = source.ToString();
+
+        using var document = CompactParser.CreateParser(layout: layout).ParseCompactDocument(html);
+        ScribbleSharedCharPool(html.Length);
+
+        var idxName = document.Name("data-idx");
+        var index = 0;
+        foreach (var div in document.Elements("div"))
+        {
+            await Assert.That(div.Attr(idxName).ToString()).IsEqualTo($"item {index} & more");
+            await Assert.That(div.Text()).IsEqualTo($"value {index} <ok>");
+            index++;
+        }
+        await Assert.That(index).IsEqualTo(64);
+    }
+
+    [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task SparselyRetainedTextSurvivesTokenizerBufferReuse(CompactDocumentLayout layout)
+    {
+        // Long whitespace-only runs pass through the tokenizer's shared buffer and are then
+        // dropped, so almost none of the buffered text is retained. This drives the freeze onto
+        // its dense-copy path while the previous test's dense retention keeps the bulk path covered.
+        var source = new StringBuilder("<body><div>a</div>");
+        for (var i = 0; i < 32; i++)
+            source.Append("<div>").Append(new string(' ', 512)).Append("</div>");
+        source.Append("<div>z</div></body>");
+        var html = source.ToString();
+
+        using var document = CompactParser.CreateParser(layout: layout).ParseCompactDocument(html);
+        ScribbleSharedCharPool(html.Length);
+
+        var texts = new List<string>();
+        foreach (var div in document.Elements("div"))
+        {
+            var text = div.Text();
+            if (text.Length != 0)
+                texts.Add(text);
+        }
+        await Assert.That(texts).IsEquivalentTo(["a", "z"]);
+    }
+
+    /// <summary>
+    /// Makes dangling slices visible: if the freeze left any value pointing into the tokenizer's
+    /// returned buffer, re-renting similarly sized arrays and overwriting them corrupts that data
+    /// before the assertions read it back.
+    /// </summary>
+    private static void ScribbleSharedCharPool(int sourceLength)
+    {
+        var rented = new List<char[]>();
+        for (var i = 0; i < 8; i++)
+        {
+            var buffer = System.Buffers.ArrayPool<char>.Shared.Rent(Math.Max(sourceLength, 1));
+            buffer.AsSpan().Fill('!');
+            rented.Add(buffer);
+        }
+        foreach (var buffer in rented)
+            System.Buffers.ArrayPool<char>.Shared.Return(buffer);
+    }
+
+    [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
     public async Task SubtreeBoundariesSupportBoundedScansAndDirectChildren(CompactDocumentLayout layout)
     {
         using var document = CompactParser

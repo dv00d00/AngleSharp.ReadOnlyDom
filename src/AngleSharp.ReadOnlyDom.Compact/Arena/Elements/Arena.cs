@@ -629,14 +629,14 @@ internal sealed class Arena : IDisposable
 
         if (bulk)
         {
-            var total = 0;
+            var total = 0L;
             for (var region = 0; region < regionCount; region++)
                 total += regions[region].End - regions[region].Start;
             // Gaps between retained values (filtered attributes, dropped whitespace) inflate the
             // range; fall back to the dense copy when the overhead outgrows the retained text.
-            if (total <= Math.Max(_textLength * 2, 4096))
+            if (total <= Math.Max((long)_textLength * 2, 4096))
             {
-                var text = Allocate<char>(Math.Max(total, 1));
+                var text = Allocate<char>((int)Math.Max(total, 1));
                 var position = 0;
                 for (var region = 0; region < regionCount; region++)
                 {
