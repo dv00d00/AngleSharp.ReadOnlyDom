@@ -17,6 +17,12 @@ public class RawPassthroughBenchmark
     private static readonly QueryPlan<int> Html5RewriteQuery = CreateHtml5Query(countMatches: false);
     private static readonly QueryPlan<int> QqMatchQuery = CreateQqQuery(countMatches: true);
     private static readonly QueryPlan<int> QqRewriteQuery = CreateQqQuery(countMatches: false);
+    private static readonly QueryPlan<int> CompactNameMatchQuery = CreateCompactNameQuery(countMatches: true);
+    private static readonly QueryPlan<int> CompactNameRewriteQuery = CreateCompactNameQuery(countMatches: false);
+    private static readonly QueryPlan<int> FallbackNameMatchQuery = CreateFallbackNameQuery(countMatches: true);
+    private static readonly QueryPlan<int> FallbackNameRewriteQuery = CreateFallbackNameQuery(countMatches: false);
+    private static readonly QueryPlan<int> MixedNameMatchQuery = CreateMixedNameQuery(countMatches: true);
+    private static readonly QueryPlan<int> MixedNameRewriteQuery = CreateMixedNameQuery(countMatches: false);
 
     private readonly MaterializingCommentSink _materializingCommentSink = new();
     private readonly DiscardingCommentSink _discardingCommentSink = new();
@@ -32,7 +38,10 @@ public class RawPassthroughBenchmark
         "html5test-no-scripts",
         "html5test-no-comments-or-scripts",
         "html5test-no-payload",
-        "qq"
+        "qq",
+        "compact-names",
+        "fallback-names",
+        "mixed-name-duplicates"
     )]
     public string Page { get; set; } = null!;
 
@@ -60,17 +69,40 @@ public class RawPassthroughBenchmark
                 Html5MatchQuery,
                 Html5RewriteQuery
             ),
-            "html5test-no-payload" => (
-                ReadRequiredFile("ANGLE_HTML5_NOPAYLOAD"),
-                Html5MatchQuery,
-                Html5RewriteQuery
-            ),
+            "html5test-no-payload" => (ReadRequiredFile("ANGLE_HTML5_NOPAYLOAD"), Html5MatchQuery, Html5RewriteQuery),
             "qq" => (
                 Encoding.UTF8.GetBytes(
                     BenchmarkCorpus.Load("full").Single(static document => document.Name == "qq").Html
                 ),
                 QqMatchQuery,
                 QqRewriteQuery
+            ),
+            "compact-names" => (
+                CreateNameFixture(
+                    "<article id='item' class='card' href='/item' src='image' alt='preview' title='measured' "
+                        + "name='entry' type='example' lang='en' width='320' height='200' rel='next' value='42' "
+                        + "content='payload'>ordinary text</article>"
+                ),
+                CompactNameMatchQuery,
+                CompactNameRewriteQuery
+            ),
+            "fallback-names" => (
+                CreateNameFixture(
+                    "<custom-element data-record='1' aria-label='item' http-equiv='refresh' accept-charset='utf-8' "
+                        + "data-alpha='a' data-beta='b' data-gamma='c' data-delta='d' data-epsilon='e' "
+                        + "data-zeta='f' data-eta='g' data-theta='h' data-iota='i' data-kappa='j' "
+                        + "data-lambda='k' data-mu='l' data-nu='m' data-xi='n'>ordinary text</custom-element>"
+                ),
+                FallbackNameMatchQuery,
+                FallbackNameRewriteQuery
+            ),
+            "mixed-name-duplicates" => (
+                CreateNameFixture(
+                    "<ArTiClE ID='first' id='ignored' CLASS='card' class='ignored' "
+                        + "DaTa-Key='one' data-key='ignored' TITLE='title' title='ignored'>ordinary text</ArTiClE>"
+                ),
+                MixedNameMatchQuery,
+                MixedNameRewriteQuery
             ),
             _ => throw new InvalidOperationException($"Unknown passthrough fixture '{Page}'."),
         };
@@ -198,6 +230,55 @@ public class RawPassthroughBenchmark
         return list.Compile();
     }
 
+    private static QueryPlan<int> CreateCompactNameQuery(bool countMatches)
+    {
+        var match = StreamQuery
+            .For<int>("article")
+            .Attribute("id", "item")
+            .Attribute("class", "card")
+            .Attribute("title", "measured")
+            .Attribute("content", "payload");
+        if (countMatches)
+            match.OnStart(static (ref int count, in Element _) => count++);
+        return match.Compile();
+    }
+
+    private static QueryPlan<int> CreateFallbackNameQuery(bool countMatches)
+    {
+        var match = StreamQuery
+            .For<int>("custom-element")
+            .Attribute("data-record", "1")
+            .Attribute("aria-label", "item")
+            .Attribute("http-equiv", "refresh");
+        if (countMatches)
+            match.OnStart(static (ref int count, in Element _) => count++);
+        return match.Compile();
+    }
+
+    private static QueryPlan<int> CreateMixedNameQuery(bool countMatches)
+    {
+        var match = StreamQuery
+            .For<int>("article")
+            .Attribute("id", "first")
+            .Attribute("class", "card")
+            .Attribute("data-key", "one")
+            .Attribute("title", "title");
+        if (countMatches)
+            match.OnStart(static (ref int count, in Element _) => count++);
+        return match.Compile();
+    }
+
+    private static byte[] CreateNameFixture(string fragment)
+    {
+        const int targetBytes = 256 * 1024;
+        var source = Encoding.UTF8.GetBytes(fragment);
+        var copies = Math.Max(1, targetBytes / source.Length);
+        var output = new byte[source.Length * copies];
+        for (var offset = 0; offset < output.Length; offset += source.Length)
+            source.CopyTo(output, offset);
+        return output;
+    }
+
     private static byte[] ReadRequiredFile(string variable)
     {
         var path = Environment.GetEnvironmentVariable(variable);
@@ -237,7 +318,9 @@ public class RawPassthroughBenchmark
                 closingStart += openingEnd;
                 var closingEnd = remaining[closingStart..].IndexOf((byte)'>');
                 if (closingEnd < 0)
-                    throw new InvalidOperationException("The benchmark fixture contains an unterminated script end tag.");
+                    throw new InvalidOperationException(
+                        "The benchmark fixture contains an unterminated script end tag."
+                    );
 
                 closingEnd += closingStart + 1;
                 if (stripScripts)
@@ -266,7 +349,9 @@ public class RawPassthroughBenchmark
     }
 
     private static int FirstNonNegative(int left, int right) =>
-        left < 0 ? right : right < 0 ? left : Math.Min(left, right);
+        left < 0 ? right
+        : right < 0 ? left
+        : Math.Min(left, right);
 
     private static void Write(ArrayBufferWriter<byte> output, ReadOnlySpan<byte> value)
     {
@@ -289,8 +374,7 @@ public class RawPassthroughBenchmark
             return Utf8HtmlStartTagCapture.None;
         }
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) =>
-            throw new InvalidOperationException();
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) => throw new InvalidOperationException();
 
         public void StartTagEnd(bool selfClosing) => Checksum += selfClosing ? 2 : 1;
 
@@ -316,8 +400,7 @@ public class RawPassthroughBenchmark
             return Utf8HtmlStartTagCapture.None;
         }
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) =>
-            throw new InvalidOperationException();
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) => throw new InvalidOperationException();
 
         public void StartTagEnd(bool selfClosing) => Checksum += selfClosing ? 2 : 1;
 
@@ -351,8 +434,7 @@ public class RawPassthroughBenchmark
             return Utf8HtmlStartTagCapture.None;
         }
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) =>
-            throw new InvalidOperationException();
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) => throw new InvalidOperationException();
 
         public void StartTagEnd(bool selfClosing) => Checksum += selfClosing ? 2 : 1;
 
@@ -385,8 +467,7 @@ public class RawPassthroughBenchmark
             return Utf8HtmlStartTagCapture.None;
         }
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) =>
-            throw new InvalidOperationException();
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) => throw new InvalidOperationException();
 
         public void StartTagEnd(bool selfClosing) => Checksum += selfClosing ? 2 : 1;
 

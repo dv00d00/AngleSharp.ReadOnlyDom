@@ -14,8 +14,7 @@ public sealed class QueryTests
     {
         var root = StreamQuery.For<QueryState>("main");
         root.Child("a").OnStart(static (ref QueryState state, in Element _) => state.Events.Add("child"));
-        root.Descendant("a")
-            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("descendant"));
+        root.Descendant("a").OnStart(static (ref QueryState state, in Element _) => state.Events.Add("descendant"));
 
         var state = root.Compile()
             .Execute("<main><a>direct</a><section><a>nested</a></section></main>"u8, new QueryState());
@@ -52,6 +51,44 @@ public sealed class QueryTests
             );
 
         await Assert.That(string.Join('|', state.Events)).IsEqualTo("42|missing");
+    }
+
+    [Test]
+    public async Task MixedCaseCompactAndFallbackNamesPreserveFirstDuplicateAttribute()
+    {
+        var root = StreamQuery
+            .For<QueryState>("article")
+            .Attribute("id", "first")
+            .Attribute("class", "card")
+            .Attribute("data-key", "one")
+            .Attribute("title", "title")
+            .OnStart(
+                static (ref QueryState state, in Element element) =>
+                    state.Events.Add(
+                        String.Join(
+                            "|",
+                            Encoding.UTF8.GetString(Get(element, "id")),
+                            Encoding.UTF8.GetString(Get(element, "class")),
+                            Encoding.UTF8.GetString(Get(element, "data-key")),
+                            Encoding.UTF8.GetString(Get(element, "title"))
+                        )
+                    ),
+                "id",
+                "class",
+                "data-key",
+                "title"
+            );
+
+        var state = root.Compile()
+            .Execute(
+                Encoding.UTF8.GetBytes(
+                    "<ArTiClE ID='first' id='ignored' CLASS='card' class='ignored' "
+                        + "DaTa-Key='one' data-key='ignored' TITLE='title' title='ignored'></ArTiClE>"
+                ),
+                new QueryState()
+            );
+
+        await Assert.That(state.Events).IsEquivalentTo(["first|card|one|title"]);
     }
 
     [Test]
@@ -111,8 +148,7 @@ public sealed class QueryTests
         var root = StreamQuery
             .For<QueryState>("p")
             .OnNormalizedText(
-                static (ref QueryState state, in CompletedElement element) =>
-                    state.Events.Add(element.GetText())
+                static (ref QueryState state, in CompletedElement element) => state.Events.Add(element.GetText())
             );
         var pipe = new Pipe(new PipeOptions(minimumSegmentSize: 1, useSynchronizationContext: false));
         var execute = root.Compile().ExecuteAsync(pipe.Reader, new QueryState()).AsTask();
@@ -140,11 +176,7 @@ public sealed class QueryTests
         byte[] malformed = [.. "<p>A"u8, 0xC2, .. "B</p>"u8];
 
         var repaired = plan.Execute(malformed, new QueryState());
-        var trusted = plan.Execute(
-            "<p>A\u00a0B</p>"u8,
-            new QueryState(),
-            Utf8InputContract.WellFormedUtf8
-        );
+        var trusted = plan.Execute("<p>A\u00a0B</p>"u8, new QueryState(), Utf8InputContract.WellFormedUtf8);
 
         await Assert.That(repaired.Text.ToString()).IsEqualTo("A\uFFFDB");
         await Assert.That(trusted.Text.ToString()).IsEqualTo("A\u00a0B");
@@ -178,11 +210,8 @@ public sealed class QueryTests
             .For<QueryState>("custom-element")
             .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("start"))
             .OnEnd(static (ref QueryState state) => state.Events.Add("end"));
-        var state = root.Compile().Execute(
-            "<CuStOm-ElEmEnT></cUsToM-eLeMeNt>"u8,
-            new QueryState(),
-            Utf8InputContract.WellFormedUtf8
-        );
+        var state = root.Compile()
+            .Execute("<CuStOm-ElEmEnT></cUsToM-eLeMeNt>"u8, new QueryState(), Utf8InputContract.WellFormedUtf8);
 
         await Assert.That(state.Events).IsEquivalentTo(["start", "end"]);
     }
@@ -294,7 +323,8 @@ public sealed class QueryTests
     {
         const string html = "<table><div id=inside>lexically nested</div></table>";
         var root = StreamQuery.For<QueryState>("table");
-        root.Descendant("div").Id("inside")
+        root.Descendant("div")
+            .Id("inside")
             .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("match"));
         var lexical = root.Compile().Execute(Encoding.UTF8.GetBytes(html), new QueryState());
 
@@ -308,8 +338,7 @@ public sealed class QueryTests
     public async Task ExplanationAndNodeLimitMakeTheExecutionModelExplicit()
     {
         var root = StreamQuery.For<QueryState>("ul").Class("news-list");
-        root.Descendant("a").Attribute("href")
-            .OnStart(static (ref QueryState _, in Element _) => { }, "title");
+        root.Descendant("a").Attribute("href").OnStart(static (ref QueryState _, in Element _) => { }, "title");
         var explanation = root.Compile().Explanation;
 
         await Assert.That(explanation.ExecutionModel).IsEqualTo(QueryExecutionModel.LexicalStreaming);
@@ -354,7 +383,8 @@ public sealed class QueryTests
             );
 
         await Assert.That(matches).IsEqualTo(2);
-        await Assert.That(Encoding.UTF8.GetString(output.WrittenSpan))
+        await Assert
+            .That(Encoding.UTF8.GetString(output.WrittenSpan))
             .IsEqualTo(
                 "<main>é<!--keep--><a href='x' data-query-hit=\"1\">text</a><a href=y data-query-hit=\"1\"/></main>"
             );
@@ -365,9 +395,7 @@ public sealed class QueryTests
     {
         var comment = new string('x', 4096);
         var source = Encoding.UTF8.GetBytes($"<main><!--{comment}--><a href=x>text</a></main>");
-        var expected = Encoding.UTF8.GetBytes(
-            $"<main><!--{comment}--><a href=x data-query-hit=\"1\">text</a></main>"
-        );
+        var expected = Encoding.UTF8.GetBytes($"<main><!--{comment}--><a href=x data-query-hit=\"1\">text</a></main>");
         var output = new ArrayBufferWriter<byte>();
         var limits = new HtmlStreamingLimits(maximumBufferedTokenBytes: 64);
         var query = StreamQuery.For<int>("a").Attribute("href").Compile();
@@ -398,11 +426,9 @@ public sealed class QueryTests
             "<a>"u8,
             output,
             0,
-            static (ref int _, in Element _, ref StartTagEditor tag) =>
-                tag.AppendAttribute("data-value"u8, "a&\"b"u8)
+            static (ref int _, in Element _, ref StartTagEditor tag) => tag.AppendAttribute("data-value"u8, "a&\"b"u8)
         );
-        await Assert.That(Encoding.UTF8.GetString(output.WrittenSpan))
-            .IsEqualTo("<a data-value=\"a&amp;&quot;b\">");
+        await Assert.That(Encoding.UTF8.GetString(output.WrittenSpan)).IsEqualTo("<a data-value=\"a&amp;&quot;b\">");
 
         var rejected = false;
         output = new ArrayBufferWriter<byte>();

@@ -25,6 +25,7 @@ internal sealed class QueryExecution<TState>
     private int _pendingTagNameLength;
     private ulong _pendingCandidateBits;
     private ulong _pendingAttributeBits;
+    private int _pendingAttributeIndex = -1;
     private ulong _seenAttributeBits;
     private bool _disposed;
     private readonly int _maximumNestingDepth;
@@ -85,60 +86,68 @@ internal sealed class QueryExecution<TState>
         _pendingTagNameLength = name.Verbatim.Length;
         _pendingCandidateBits = 0;
         _pendingAttributeBits = 0;
+        _pendingAttributeIndex = -1;
         var candidates = FindTagCandidates(identity, identityLength);
         while (candidates != 0)
         {
             var index = BitOperations.TrailingZeroCount(candidates);
             candidates &= candidates - 1;
             var node = _plan.Nodes[index];
-            if (
-                (identityLength != 0 && !name.SemanticEquals(node.TagNameUtf8))
-                || !ParentMatches(node)
-            )
+            if ((identityLength != 0 && !name.SemanticEquals(node.TagNameUtf8)) || !ParentMatches(node))
                 continue;
             _pendingCandidateBits |= 1UL << node.Index;
             _pendingAttributeBits |= node.RequestedAttributeMask;
         }
         ResetAttributes();
-        return _pendingAttributeBits == 0
-            ? Utf8HtmlStartTagCapture.None
-            : Utf8HtmlStartTagCapture.Attributes;
+        return _pendingAttributeBits == 0 ? Utf8HtmlStartTagCapture.None : Utf8HtmlStartTagCapture.Attributes;
     }
 
     public bool WantsAttribute(Utf8HtmlName name)
     {
+        _pendingAttributeIndex = -1;
+        var identity = 0UL;
+        var hasCompactIdentity =
+            (_pendingAttributeBits & _plan.CompactAttributeMask) != 0 && name.TryGetCompactKey(out identity);
+
         var attributes = _pendingAttributeBits;
         while (attributes != 0)
         {
             var index = BitOperations.TrailingZeroCount(attributes);
             attributes &= attributes - 1;
-            if (name.SemanticEquals(_plan.AttributeNamesUtf8[index]))
-                return true;
+            var expected = _plan.AttributeIdentities[index];
+            if (hasCompactIdentity)
+            {
+                if (expected.Length != 0 || expected.Value != identity)
+                    continue;
+            }
+            else if (
+                expected.Length == 0
+                || expected.Length != name.Verbatim.Length
+                || !name.SemanticEquals(_plan.AttributeNamesUtf8[index])
+            )
+            {
+                continue;
+            }
+            _pendingAttributeIndex = index;
+            return true;
         }
         return false;
     }
 
     public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value)
     {
-        var attributes = _pendingAttributeBits;
-        while (attributes != 0)
-        {
-            var index = BitOperations.TrailingZeroCount(attributes);
-            attributes &= attributes - 1;
-            if (!name.SemanticEquals(_plan.AttributeNamesUtf8[index]))
-                continue;
-            if (_attributeLengths[index] >= 0)
-                return;
-            EnsureQueryCaptureCapacity(value.Length);
-            EnsureAttributeCapacity(value.Length);
-            _attributeStarts[index] = _attributeValueLength;
-            _attributeLengths[index] = value.Length;
-            _seenAttributeBits |= 1UL << index;
-            value.CopyTo(_attributeValues.AsSpan(_attributeValueLength));
-            _attributeValueLength += value.Length;
-            _queryCaptureBytes += value.Length;
+        var index = _pendingAttributeIndex;
+        _pendingAttributeIndex = -1;
+        if (index < 0 || _attributeLengths[index] >= 0)
             return;
-        }
+        EnsureQueryCaptureCapacity(value.Length);
+        EnsureAttributeCapacity(value.Length);
+        _attributeStarts[index] = _attributeValueLength;
+        _attributeLengths[index] = value.Length;
+        _seenAttributeBits |= 1UL << index;
+        value.CopyTo(_attributeValues.AsSpan(_attributeValueLength));
+        _attributeValueLength += value.Length;
+        _queryCaptureBytes += value.Length;
     }
 
     public void StartTagSourceRange(long sourceStart, long sourceEnd)
@@ -169,12 +178,7 @@ internal sealed class QueryExecution<TState>
         }
 
         var closesImmediately =
-            selfClosing
-            || IsVoidTag(
-                _pendingTagIdentity,
-                _pendingTagIdentityLength,
-                _pendingTagNameLength
-            );
+            selfClosing || IsVoidTag(_pendingTagIdentity, _pendingTagIdentityLength, _pendingTagNameLength);
         if (!closesImmediately && _frameCount >= _maximumNestingDepth)
             throw new HtmlStreamingLimitExceededException(
                 HtmlStreamingLimit.NestingDepth,
@@ -213,11 +217,7 @@ internal sealed class QueryExecution<TState>
         }
 
         EnsureFrameCapacity();
-        _frames[_frameCount++] = new QueryFrame(
-            _pendingTagIdentity,
-            _pendingTagIdentityLength,
-            matches
-        );
+        _frames[_frameCount++] = new QueryFrame(_pendingTagIdentity, _pendingTagIdentityLength, matches);
         IncrementActive(matches);
     }
 
@@ -254,10 +254,7 @@ internal sealed class QueryExecution<TState>
         }
         for (var index = _frameCount - 1; index >= 0; index--)
         {
-            if (
-                _frames[index].TagIdentity != identity
-                || _frames[index].TagIdentityLength != identityLength
-            )
+            if (_frames[index].TagIdentity != identity || _frames[index].TagIdentityLength != identityLength)
                 continue;
             for (var popped = _frameCount - 1; popped >= index; popped--)
                 CloseFrame(_frames[popped]);

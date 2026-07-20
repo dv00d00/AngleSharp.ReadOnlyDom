@@ -1,6 +1,5 @@
-﻿using System.IO.Pipelines;
-
-using System.Buffers;
+﻿using System.Buffers;
+using System.IO.Pipelines;
 using System.Text;
 
 namespace AngleSharp.ReadOnlyDom.Streaming;
@@ -11,6 +10,8 @@ public sealed class QueryPlan<TState>
         QueryPlanNode<TState>[] nodes,
         string[] attributeNames,
         byte[][] attributeNamesUtf8,
+        CompiledNameIdentity[] attributeIdentities,
+        ulong compactAttributeMask,
         CompiledTagDispatch[] tagDispatch,
         QueryExplanation explanation
     )
@@ -18,6 +19,8 @@ public sealed class QueryPlan<TState>
         Nodes = nodes;
         AttributeNames = attributeNames;
         AttributeNamesUtf8 = attributeNamesUtf8;
+        AttributeIdentities = attributeIdentities;
+        CompactAttributeMask = compactAttributeMask;
         TagDispatch = tagDispatch;
         TextHandlerMask = nodes.Aggregate(
             0UL,
@@ -39,6 +42,8 @@ public sealed class QueryPlan<TState>
     internal QueryPlanNode<TState>[] Nodes { get; }
     internal string[] AttributeNames { get; }
     internal byte[][] AttributeNamesUtf8 { get; }
+    internal CompiledNameIdentity[] AttributeIdentities { get; }
+    internal ulong CompactAttributeMask { get; }
     internal CompiledTagDispatch[] TagDispatch { get; }
     internal ulong TextHandlerMask { get; }
     internal ulong CompletedHandlerMask { get; }
