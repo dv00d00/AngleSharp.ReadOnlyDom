@@ -18,6 +18,7 @@ public enum Utf8BaselineWorkload
     MixedCaseDuplicates,
 }
 
+[BenchmarkCategory("Utf8")]
 [MemoryDiagnoser]
 public class Utf8TokenizerBaselineBenchmark
 {

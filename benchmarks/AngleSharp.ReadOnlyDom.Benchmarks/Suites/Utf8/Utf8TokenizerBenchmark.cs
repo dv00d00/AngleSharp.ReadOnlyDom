@@ -9,6 +9,7 @@ using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
+[BenchmarkCategory("Utf8")]
 [MemoryDiagnoser]
 public class Utf8TokenizerBenchmark
 {

@@ -2,8 +2,6 @@
 
 using System.Buffers;
 using System.Text;
-using AngleSharp.Css.Dom;
-using AngleSharp.Css.Parser;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Compact;
 using AngleSharp.ReadOnlyDom.Compact.Experimental;
@@ -13,7 +11,6 @@ using AngleSharp.ReadOnlyDom.Streaming;
 using AngleSharp.Text;
 using BenchmarkDotNet.Attributes;
 using AngleSharpDocument = AngleSharp.Dom.IDocument;
-using AngleSharpElement = AngleSharp.Dom.IElement;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
@@ -21,18 +18,15 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 /// Turns the README's pathological ParserBenchmark [UrlTest=qq] fixture into a realistic scraper.
 /// Every lane returns the same owned objects for article links inside QQ news-list cards.
 /// </summary>
+[BenchmarkCategory("Extraction", "Query")]
 [MemoryDiagnoser]
 public class QqArticleScraperBenchmark
 {
-    private static readonly ISelector ArticleCardsSelector = ParseSelector(".news-list li[dt-eid='em_item_article']");
-    private static readonly ISelector ArticleLinksSelector = ParseSelector("a[href]");
-    private static readonly ISelector ImagesSelector = ParseSelector("img");
     private static readonly QueryPlan<CompiledArticleState> ArticleQuery = CreateArticleQuery();
     private static readonly QueryPlan<CompiledArticleState> CompletedArticleQuery = CreateCompletedArticleQuery();
     private readonly HtmlParser _angleSharp = new();
     private readonly HtmlParser _angleSharpScraper = new(CreateOptions(trackSources: false));
     private readonly HtmlParser _readOnlyMinimal = CreateReadOnlyParser(ReadOnlyMetadataProfile.Minimal);
-    private readonly HtmlParser _readOnlySourceMapped = CreateReadOnlyParser(ReadOnlyMetadataProfile.SourceMapped);
 
     private readonly HtmlParser _compact = CompactParser.CreateParser(
         parserOptions: CreateOptions(trackSources: false)
@@ -59,22 +53,10 @@ public class QqArticleScraperBenchmark
         _utf8 = Encoding.UTF8.GetBytes(_html);
         _expected = AngleSharpDom();
 
-        AssertEqual(nameof(AngleSharpDomApi), AngleSharpDomApi());
-        AssertEqual(nameof(AngleSharpDomTreeWalk), AngleSharpDomTreeWalk());
         AssertEqual(nameof(AngleSharpScraperOptionsCss), AngleSharpScraperOptionsCss());
-        AssertEqual(nameof(AngleSharpScraperOptionsPrecompiledCss), AngleSharpScraperOptionsPrecompiledCss());
-        AssertEqual(nameof(AngleSharpScraperOptionsDomApi), AngleSharpScraperOptionsDomApi());
-        AssertEqual(nameof(AngleSharpScraperOptionsTreeWalk), AngleSharpScraperOptionsTreeWalk());
-        AssertEqual(nameof(AngleSharpUtf16MemoryCss), AngleSharpUtf16MemoryCss());
-        AssertEqual(nameof(AngleSharpUtf8MemoryAutoCss), AngleSharpUtf8MemoryAutoCss());
         AssertEqual(nameof(AngleSharpUtf8MemoryExplicitCss), AngleSharpUtf8MemoryExplicitCss());
-        AssertEqual(nameof(AngleSharpLegacyStreamCss), AngleSharpLegacyStreamCss());
-        AssertEqual(nameof(AngleSharpBufferedStreamCss), AngleSharpBufferedStreamCss().GetAwaiter().GetResult());
         AssertEqual(nameof(AngleSharpStreamingStreamCss), AngleSharpStreamingStreamCss().GetAwaiter().GetResult());
-        AssertEqual(nameof(ReadOnlyMinimalFull), ReadOnlyMinimalFull());
         AssertEqual(nameof(ReadOnlyMinimalBodyFiltered), ReadOnlyMinimalBodyFiltered());
-        AssertEqual(nameof(ReadOnlySourceMappedBodyFiltered), ReadOnlySourceMappedBodyFiltered());
-        AssertEqual(nameof(CompactFrozenBodyFiltered), CompactFrozenBodyFiltered());
         AssertEqual(nameof(CompactFrozenResolvedIds), CompactFrozenResolvedIds());
         AssertEqual(nameof(NativeUtf8Fold), NativeUtf8Fold());
         AssertEqual(nameof(QueryCompiledUtf8Fold), QueryCompiledUtf8Fold());
@@ -94,58 +76,9 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
-    public List<Article> AngleSharpDomApi()
-    {
-        using var document = _angleSharp.ParseDocument(_html);
-        return ScrapeAngleSharpDomApi(document);
-    }
-
-    [Benchmark]
-    public List<Article> AngleSharpDomTreeWalk()
-    {
-        using var document = _angleSharp.ParseDocument(_html);
-        return ScrapeAngleSharpTreeWalk(document);
-    }
-
-    [Benchmark]
     public List<Article> AngleSharpScraperOptionsCss()
     {
         using var document = _angleSharpScraper.ParseDocument(_html);
-        return ScrapeAngleSharpCss(document);
-    }
-
-    [Benchmark]
-    public List<Article> AngleSharpScraperOptionsPrecompiledCss()
-    {
-        using var document = _angleSharpScraper.ParseDocument(_html);
-        return ScrapeAngleSharpPrecompiledCss(document);
-    }
-
-    [Benchmark]
-    public List<Article> AngleSharpScraperOptionsDomApi()
-    {
-        using var document = _angleSharpScraper.ParseDocument(_html);
-        return ScrapeAngleSharpDomApi(document);
-    }
-
-    [Benchmark]
-    public List<Article> AngleSharpScraperOptionsTreeWalk()
-    {
-        using var document = _angleSharpScraper.ParseDocument(_html);
-        return ScrapeAngleSharpTreeWalk(document);
-    }
-
-    [Benchmark]
-    public List<Article> AngleSharpUtf16MemoryCss()
-    {
-        using var document = _angleSharpScraper.ParseDocument(_html.AsMemory());
-        return ScrapeAngleSharpCss(document);
-    }
-
-    [Benchmark]
-    public List<Article> AngleSharpUtf8MemoryAutoCss()
-    {
-        using var document = _angleSharpScraper.ParseDocument(new TextSource(new ReadOnlyByteTextSource(_utf8)));
         return ScrapeAngleSharpCss(document);
     }
 
@@ -155,24 +88,6 @@ public class QqArticleScraperBenchmark
         using var document = _angleSharpScraper.ParseDocument(
             new TextSource(new ReadOnlyByteTextSource(_utf8, Encoding.UTF8))
         );
-        return ScrapeAngleSharpCss(document);
-    }
-
-    [Benchmark]
-    public List<Article> AngleSharpLegacyStreamCss()
-    {
-        using var stream = new MemoryStream(_utf8, writable: false);
-        using var document = _angleSharpScraper.ParseDocument(stream);
-        return ScrapeAngleSharpCss(document);
-    }
-
-    [Benchmark]
-    public async Task<List<Article>> AngleSharpBufferedStreamCss()
-    {
-        using var stream = new MemoryStream(_utf8, writable: false);
-        using var document = await _angleSharpScraper
-            .ParseDocumentAsync(stream, HtmlStreamSourceMode.Buffered, Encoding.UTF8)
-            .ConfigureAwait(false);
         return ScrapeAngleSharpCss(document);
     }
 
@@ -209,139 +124,6 @@ public class QqArticleScraperBenchmark
         return output;
     }
 
-    private static List<Article> ScrapeAngleSharpDomApi(AngleSharpDocument document)
-    {
-        var output = new List<Article>(128);
-        foreach (var list in document.GetElementsByClassName("news-list"))
-        {
-            if (!list.LocalName.Equals("ul", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            foreach (var card in list.GetElementsByTagName("li"))
-            {
-                if (!string.Equals(card.GetAttribute("dt-eid"), "em_item_article", StringComparison.Ordinal))
-                    continue;
-
-                var metadata = card.GetAttribute("dt-params") ?? string.Empty;
-                foreach (var link in card.GetElementsByTagName("a"))
-                {
-                    var href = link.GetAttribute("href");
-                    if (href is null)
-                        continue;
-
-                    var image = link.GetElementsByTagName("img").FirstOrDefault();
-                    AddArticle(
-                        output,
-                        link.TextContent,
-                        href,
-                        image?.GetAttribute("src"),
-                        image?.GetAttribute("alt"),
-                        metadata
-                    );
-                }
-            }
-        }
-
-        return output;
-    }
-
-    private static List<Article> ScrapeAngleSharpPrecompiledCss(AngleSharpDocument document)
-    {
-        var output = new List<Article>(128);
-        foreach (var card in AngleSharp.Dom.QueryExtensions.QuerySelectorAll(document.ChildNodes, ArticleCardsSelector))
-        {
-            var metadata = card.GetAttribute("dt-params") ?? string.Empty;
-            foreach (var link in AngleSharp.Dom.QueryExtensions.QuerySelectorAll(card.ChildNodes, ArticleLinksSelector))
-            {
-                var image = AngleSharp
-                    .Dom.QueryExtensions.QuerySelectorAll(link.ChildNodes, ImagesSelector)
-                    .FirstOrDefault();
-                AddArticle(
-                    output,
-                    link.TextContent,
-                    link.GetAttribute("href") ?? string.Empty,
-                    image?.GetAttribute("src"),
-                    image?.GetAttribute("alt"),
-                    metadata
-                );
-            }
-        }
-
-        return output;
-    }
-
-    private static List<Article> ScrapeAngleSharpTreeWalk(AngleSharpDocument document)
-    {
-        var output = new List<Article>(128);
-        WalkForCards(document.DocumentElement, newsListDepth: 0, output);
-        return output;
-    }
-
-    private static void WalkForCards(AngleSharpElement element, int newsListDepth, List<Article> output)
-    {
-        if (
-            element.LocalName.Equals("ul", StringComparison.OrdinalIgnoreCase)
-            && element.ClassList.Contains("news-list")
-        )
-        {
-            newsListDepth++;
-        }
-
-        if (
-            newsListDepth != 0
-            && element.LocalName.Equals("li", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(element.GetAttribute("dt-eid"), "em_item_article", StringComparison.Ordinal)
-        )
-        {
-            WalkForLinks(element, element.GetAttribute("dt-params") ?? string.Empty, output);
-        }
-
-        foreach (var child in element.Children)
-            WalkForCards(child, newsListDepth, output);
-    }
-
-    private static void WalkForLinks(AngleSharpElement element, string metadata, List<Article> output)
-    {
-        foreach (var child in element.Children)
-        {
-            if (
-                child.LocalName.Equals("a", StringComparison.OrdinalIgnoreCase)
-                && child.GetAttribute("href") is { } href
-            )
-            {
-                var image = FindFirstImage(child);
-                AddArticle(
-                    output,
-                    child.TextContent,
-                    href,
-                    image?.GetAttribute("src"),
-                    image?.GetAttribute("alt"),
-                    metadata
-                );
-            }
-
-            WalkForLinks(child, metadata, output);
-        }
-    }
-
-    private static AngleSharpElement? FindFirstImage(AngleSharpElement element)
-    {
-        foreach (var child in element.Children)
-        {
-            if (child.LocalName.Equals("img", StringComparison.OrdinalIgnoreCase))
-                return child;
-
-            if (FindFirstImage(child) is { } descendant)
-                return descendant;
-        }
-
-        return null;
-    }
-
-    private static ISelector ParseSelector(string selector) =>
-        new CssSelectorParser().ParseSelector(selector)
-        ?? throw new InvalidOperationException($"Invalid benchmark selector: {selector}");
-
     private static string RepeatBody(string source, int copies)
     {
         var bodyOpen = source.IndexOf("<body", StringComparison.OrdinalIgnoreCase);
@@ -360,55 +142,11 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
-    public List<Article> ReadOnlyMinimalFull()
-    {
-        using var document = _readOnlyMinimal.ParseReadOnlyDocument(_html);
-        return ScrapeReadOnly(document);
-    }
-
-    [Benchmark]
     public List<Article> ReadOnlyMinimalBodyFiltered()
     {
         var filter = new FirstTagAndAllChildren("body");
         using var document = _readOnlyMinimal.ParseReadOnlyDocument(_html, filter.Loop);
         return ScrapeReadOnly(document);
-    }
-
-    [Benchmark]
-    public List<Article> ReadOnlySourceMappedBodyFiltered()
-    {
-        var filter = new FirstTagAndAllChildren("body");
-        using var document = _readOnlySourceMapped.ParseReadOnlyDocument(_html, filter.Loop);
-        return ScrapeReadOnly(document);
-    }
-
-    [Benchmark]
-    public List<Article> CompactFrozenBodyFiltered()
-    {
-        var filter = new FirstTagAndAllChildren("body");
-        using var document = _compact.ParseCompactDocument(_html, filter.Loop);
-        var output = new List<Article>(128);
-        foreach (var list in document.Elements("ul").WithClass("news-list"))
-        {
-            foreach (var card in list.Elements("li").WithAttribute("dt-eid", "em_item_article"))
-            {
-                var metadata = card.Attr("dt-params").ToString();
-                foreach (var link in card.Elements("a").WithAttribute("href"))
-                {
-                    var image = link.Elements("img").First();
-                    AddArticle(
-                        output,
-                        link.Text(),
-                        link.Attr("href").ToString(),
-                        image.Exists ? image.Attr("src").ToString() : null,
-                        image.Exists ? image.Attr("alt").ToString() : null,
-                        metadata
-                    );
-                }
-            }
-        }
-
-        return output;
     }
 
     [Benchmark]
