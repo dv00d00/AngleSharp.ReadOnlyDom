@@ -1,14 +1,11 @@
 #if NET10_0
 
-using System.Buffers;
 using System.Text;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Compact;
-using AngleSharp.ReadOnlyDom.Compact.Experimental;
 using AngleSharp.ReadOnlyDom.Filters;
 using AngleSharp.ReadOnlyDom.Html;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.Text;
 using BenchmarkDotNet.Attributes;
 using AngleSharpDocument = AngleSharp.Dom.IDocument;
 
@@ -22,8 +19,8 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 [MemoryDiagnoser]
 public class QqArticleScraperBenchmark
 {
-    private static readonly QueryPlan<CompiledArticleState> ArticleQuery = CreateArticleQuery();
-    private static readonly QueryPlan<CompiledArticleState> CompletedArticleQuery = CreateCompletedArticleQuery();
+    private static readonly QueryPlan<ArticleStateMachine> ArticleQuery = CreateArticleQuery();
+    private static readonly QueryPlan<ArticleStateMachine> CompletedArticleQuery = CreateCompletedArticleQuery();
     private readonly HtmlParser _angleSharp = new();
     private readonly HtmlParser _angleSharpScraper = new(CreateOptions(trackSources: false));
     private readonly HtmlParser _readOnlyMinimal = CreateReadOnlyParser(ReadOnlyMetadataProfile.Minimal);
@@ -54,11 +51,8 @@ public class QqArticleScraperBenchmark
         _expected = AngleSharpDom();
 
         AssertEqual(nameof(AngleSharpScraperOptionsCss), AngleSharpScraperOptionsCss());
-        AssertEqual(nameof(AngleSharpUtf8MemoryExplicitCss), AngleSharpUtf8MemoryExplicitCss());
-        AssertEqual(nameof(AngleSharpStreamingStreamCss), AngleSharpStreamingStreamCss().GetAwaiter().GetResult());
         AssertEqual(nameof(ReadOnlyMinimalBodyFiltered), ReadOnlyMinimalBodyFiltered());
         AssertEqual(nameof(CompactFrozenResolvedIds), CompactFrozenResolvedIds());
-        AssertEqual(nameof(NativeUtf8Fold), NativeUtf8Fold());
         AssertEqual(nameof(QueryCompiledUtf8Fold), QueryCompiledUtf8Fold());
         AssertEqual(nameof(QueryCompletedElementFold), QueryCompletedElementFold());
 
@@ -67,37 +61,17 @@ public class QqArticleScraperBenchmark
                 + $"{_expected.Count:N0} article-link objects."
         );
     }
-
-    [Benchmark(Baseline = true)]
+    
     public List<Article> AngleSharpDom()
     {
         using var document = _angleSharp.ParseDocument(_html);
         return ScrapeAngleSharpCss(document);
     }
 
-    [Benchmark]
+    [Benchmark(Baseline = true)]
     public List<Article> AngleSharpScraperOptionsCss()
     {
         using var document = _angleSharpScraper.ParseDocument(_html);
-        return ScrapeAngleSharpCss(document);
-    }
-
-    [Benchmark]
-    public List<Article> AngleSharpUtf8MemoryExplicitCss()
-    {
-        using var document = _angleSharpScraper.ParseDocument(
-            new TextSource(new ReadOnlyByteTextSource(_utf8, Encoding.UTF8))
-        );
-        return ScrapeAngleSharpCss(document);
-    }
-
-    [Benchmark]
-    public async Task<List<Article>> AngleSharpStreamingStreamCss()
-    {
-        using var stream = new MemoryStream(_utf8, writable: false);
-        using var document = await _angleSharpScraper
-            .ParseDocumentAsync(stream, HtmlStreamSourceMode.Streaming, Encoding.UTF8)
-            .ConfigureAwait(false);
         return ScrapeAngleSharpCss(document);
     }
 
@@ -191,34 +165,24 @@ public class QqArticleScraperBenchmark
 
         return output;
     }
-
-    [Benchmark]
-    public List<Article> NativeUtf8Fold()
-    {
-        using var sink = new NativeArticleSink();
-        var tokenizer = new Utf8HtmlTokenizer(sink);
-        tokenizer.Write(_utf8);
-        tokenizer.Complete();
-        return sink.DetachResults();
-    }
-
+    
     [Benchmark]
     public List<Article> QueryCompiledUtf8Fold()
     {
-        var state = ArticleQuery.Execute(_utf8, new CompiledArticleState(), Utf8InputContract.WellFormedUtf8);
+        var state = ArticleQuery.Execute(_utf8, new ArticleStateMachine(), Utf8InputContract.WellFormedUtf8);
         return state.DetachResults();
     }
 
     [Benchmark]
     public List<Article> QueryCompletedElementFold()
     {
-        var state = CompletedArticleQuery.Execute(_utf8, new CompiledArticleState(), Utf8InputContract.WellFormedUtf8);
+        var state = CompletedArticleQuery.Execute(_utf8, new ArticleStateMachine(), Utf8InputContract.WellFormedUtf8);
         return state.DetachResults();
     }
 
-    private static QueryPlan<CompiledArticleState> CreateCompletedArticleQuery()
+    private static QueryPlan<ArticleStateMachine> CreateCompletedArticleQuery()
     {
-        var list = StreamQuery.For<CompiledArticleState>("ul").Class("news-list");
+        var list = StreamQuery.For<ArticleStateMachine>("ul").Class("news-list");
         var card = list.Descendant("li")
             .Attribute("dt-eid", "em_item_article")
             .OnStart(static (ref state, in element) => state.StartCard(element), "dt-params")
@@ -255,18 +219,20 @@ public class QqArticleScraperBenchmark
         return list.Compile();
     }
 
-    private static QueryPlan<CompiledArticleState> CreateArticleQuery()
+    private static QueryPlan<ArticleStateMachine> CreateArticleQuery()
     {
-        var list = StreamQuery.For<CompiledArticleState>("ul").Class("news-list");
-        var card = list.Descendant("li")
-            .Attribute("dt-eid", "em_item_article")
+        var list = StreamQuery.For<ArticleStateMachine>("ul").Class("news-list");
+        
+        var card = list.Descendant("li").Attribute("dt-eid", "em_item_article")
             .OnStart(static (ref state, in element) => state.StartCard(element), "dt-params")
             .OnEnd(static (ref state) => state.EndCard());
+        
         var link = card.Descendant("a")
             .Attribute("href")
             .OnStart(static (ref state, in element) => state.StartLink(element), "href")
             .OnText(static (ref state, text) => state.AppendText(text))
             .OnEnd(static (ref state) => state.EndLink());
+        
         link.Descendant("img").OnStart(static (ref state, in element) => state.Image(element), "src", "alt");
         return list.Compile();
     }
@@ -380,13 +346,12 @@ public class QqArticleScraperBenchmark
             SkipPlaintext = true,
             SkipCDATA = true,
             DisableElementPositionTracking = !trackSources,
-            ShouldEmitAttribute = static (ref _, name) =>
-                name.Span is "class" or "dt-eid" or "dt-params" or "href" or "src" or "alt",
+            ShouldEmitAttribute = static (ref _, name) => name.Span is "class" or "dt-eid" or "dt-params" or "href" or "src" or "alt",
         };
 
     public sealed record Article(string Title, string Url, string? ImageUrl, string? ImageAlt, string CardMetadata);
 
-    private sealed class CompiledArticleState
+    private sealed class ArticleStateMachine
     {
         internal readonly StringBuilder _title = new();
         internal List<Article> _results = new(128);
@@ -395,13 +360,13 @@ public class QqArticleScraperBenchmark
         internal string? _imageUrl;
         internal string? _imageAlt;
 
-        public void StartCard(in Element element) => _cardMetadata = Decode(element, "dt-params") ?? string.Empty;
+        public void StartCard(in Element element) => _cardMetadata = Attr(element, "dt-params") ?? string.Empty;
 
         public void EndCard() => _cardMetadata = string.Empty;
 
         public void StartLink(in Element element)
         {
-            _href = Decode(element, "href");
+            _href = Attr(element, "href");
             _imageUrl = null;
             _imageAlt = null;
             _title.Clear();
@@ -421,14 +386,15 @@ public class QqArticleScraperBenchmark
 
         public void Image(in Element element)
         {
-            _imageUrl ??= Decode(element, "src");
-            _imageAlt ??= Decode(element, "alt");
+            _imageUrl ??= Attr(element, "src");
+            _imageAlt ??= Attr(element, "alt");
         }
 
         public void EndLink()
         {
             if (_href is not null)
                 AddArticle(_results, _title.ToString(), _href, _imageUrl, _imageAlt, _cardMetadata);
+            
             _href = null;
             _imageUrl = null;
             _imageAlt = null;
@@ -442,259 +408,8 @@ public class QqArticleScraperBenchmark
             return results;
         }
 
-        internal static string? Decode(in Element element, string attribute) =>
+        static string? Attr(in Element element, string attribute) =>
             element.TryGetAttribute(attribute, out var value) ? Encoding.UTF8.GetString(value) : null;
-    }
-
-    private sealed class NativeArticleSink : IUtf8HtmlTokenSink, IDisposable
-    {
-        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
-
-        private Frame[] _frames = ArrayPool<Frame>.Shared.Rent(64);
-        private int _frameCount;
-        private int _newsListDepth;
-        private int _cardDepth;
-        private bool _pendingNewsList;
-        private bool _pendingCard;
-        private TagKind _pendingKind;
-        private ulong _pendingHash;
-        private int _pendingLength;
-        private string? _pendingMetadata;
-        private string? _pendingHref;
-        private string? _pendingImageUrl;
-        private string? _pendingImageAlt;
-        private string _cardMetadata = string.Empty;
-        private string? _activeHref;
-        private string? _activeImageUrl;
-        private string? _activeImageAlt;
-        private readonly StringBuilder _title = new();
-        private List<Article> _results = new(128);
-        private bool _disposed;
-
-        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
-        {
-            _pendingKind = Kind(name);
-            _pendingHash = name.SemanticHash;
-            _pendingLength = name.Verbatim.Length;
-            _pendingNewsList = false;
-            _pendingCard = false;
-            _pendingMetadata = null;
-            _pendingHref = null;
-            _pendingImageUrl = null;
-            _pendingImageAlt = null;
-            return _pendingKind switch
-            {
-                TagKind.Ul => Utf8HtmlStartTagCapture.Attributes,
-                TagKind.Li when _newsListDepth != 0 => Utf8HtmlStartTagCapture.Attributes,
-                TagKind.A when _cardDepth != 0 => Utf8HtmlStartTagCapture.Attributes,
-                TagKind.Img when _activeHref is not null => Utf8HtmlStartTagCapture.Attributes,
-                _ => Utf8HtmlStartTagCapture.None,
-            };
-        }
-
-        public bool WantsAttribute(Utf8HtmlName name) =>
-            _pendingKind switch
-            {
-                TagKind.Ul => name.SemanticEquals("class"u8),
-                TagKind.Li when _newsListDepth != 0 => name.SemanticEquals("dt-eid"u8)
-                    || name.SemanticEquals("dt-params"u8),
-                TagKind.A when _cardDepth != 0 => name.SemanticEquals("href"u8),
-                TagKind.Img when _activeHref is not null => name.SemanticEquals("src"u8)
-                    || name.SemanticEquals("alt"u8),
-                _ => false,
-            };
-
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value)
-        {
-            switch (_pendingKind)
-            {
-                case TagKind.Ul when name.SemanticEquals("class"u8):
-                    _pendingNewsList = ContainsToken(value, "news-list"u8);
-                    break;
-                case TagKind.Li when _newsListDepth != 0 && name.SemanticEquals("dt-eid"u8):
-                    _pendingCard = value.SequenceEqual("em_item_article"u8);
-                    break;
-                case TagKind.Li when _newsListDepth != 0 && name.SemanticEquals("dt-params"u8):
-                    _pendingMetadata = Encoding.UTF8.GetString(value);
-                    break;
-                case TagKind.A when _cardDepth != 0 && name.SemanticEquals("href"u8):
-                    _pendingHref = Encoding.UTF8.GetString(value);
-                    break;
-                case TagKind.Img when _activeHref is not null && name.SemanticEquals("src"u8):
-                    _pendingImageUrl = Encoding.UTF8.GetString(value);
-                    break;
-                case TagKind.Img when _activeHref is not null && name.SemanticEquals("alt"u8):
-                    _pendingImageAlt = Encoding.UTF8.GetString(value);
-                    break;
-            }
-        }
-
-        public void StartTagEnd(bool selfClosing)
-        {
-            var newsList = _pendingKind == TagKind.Ul && _pendingNewsList;
-            var card = _pendingKind == TagKind.Li && _newsListDepth != 0 && _pendingCard;
-            var articleLink = _pendingKind == TagKind.A && _cardDepth != 0 && !string.IsNullOrEmpty(_pendingHref);
-
-            if (card)
-                _cardMetadata = _pendingMetadata ?? string.Empty;
-            if (articleLink)
-            {
-                _activeHref = _pendingHref;
-                _activeImageUrl = null;
-                _activeImageAlt = null;
-                _title.Clear();
-            }
-
-            if (_pendingKind == TagKind.Img && _activeHref is not null)
-            {
-                _activeImageUrl ??= _pendingImageUrl;
-                _activeImageAlt ??= _pendingImageAlt;
-            }
-
-            if (selfClosing || IsVoid(_pendingKind))
-            {
-                if (articleLink)
-                    EmitArticle();
-                return;
-            }
-
-            EnsureCapacity();
-            _frames[_frameCount++] = new Frame(_pendingHash, _pendingLength, newsList, card, articleLink);
-            if (newsList)
-                _newsListDepth++;
-            if (card)
-                _cardDepth++;
-        }
-
-        public void Text(ReadOnlySpan<byte> utf8)
-        {
-            if (_activeHref is null)
-                return;
-            Span<char> chars = stackalloc char[2];
-            while (!utf8.IsEmpty)
-            {
-                Rune.DecodeFromUtf8(utf8, out var rune, out var consumed);
-                var written = rune.EncodeToUtf16(chars);
-                _title.Append(chars[..written]);
-                utf8 = utf8[consumed..];
-            }
-        }
-
-        public void EndTag(Utf8HtmlName name)
-        {
-            var hash = name.SemanticHash;
-            for (var index = _frameCount - 1; index >= 0; index--)
-            {
-                if (_frames[index].Hash != hash || _frames[index].Length != name.Verbatim.Length)
-                    continue;
-                for (var popped = _frameCount - 1; popped >= index; popped--)
-                    Close(_frames[popped]);
-                _frameCount = index;
-                return;
-            }
-        }
-
-        public void EndOfFile()
-        {
-            for (var index = _frameCount - 1; index >= 0; index--)
-                Close(_frames[index]);
-            _frameCount = 0;
-        }
-
-        public List<Article> DetachResults()
-        {
-            var results = _results;
-            _results = [];
-            return results;
-        }
-
-        public void Dispose()
-        {
-            if (_disposed)
-                return;
-            _disposed = true;
-            ArrayPool<Frame>.Shared.Return(_frames);
-            _frames = [];
-        }
-
-        private void Close(Frame frame)
-        {
-            if (frame.ArticleLink)
-                EmitArticle();
-            if (frame.Card)
-            {
-                _cardDepth--;
-                if (_cardDepth == 0)
-                    _cardMetadata = string.Empty;
-            }
-
-            if (frame.NewsList)
-                _newsListDepth--;
-        }
-
-        private void EmitArticle()
-        {
-            if (_activeHref is null)
-                return;
-            AddArticle(_results, _title.ToString(), _activeHref, _activeImageUrl, _activeImageAlt, _cardMetadata);
-            _activeHref = null;
-            _activeImageUrl = null;
-            _activeImageAlt = null;
-            _title.Clear();
-        }
-
-        private void EnsureCapacity()
-        {
-            if (_frameCount < _frames.Length)
-                return;
-            var replacement = ArrayPool<Frame>.Shared.Rent(_frames.Length * 2);
-            _frames.AsSpan(0, _frameCount).CopyTo(replacement);
-            ArrayPool<Frame>.Shared.Return(_frames);
-            _frames = replacement;
-        }
-
-        private static bool ContainsToken(ReadOnlySpan<byte> tokens, ReadOnlySpan<byte> wanted)
-        {
-            var index = 0;
-            while (index < tokens.Length)
-            {
-                while (
-                    index < tokens.Length
-                    && tokens[index] is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\r' or 0x0C
-                )
-                    index++;
-                var start = index;
-                while (
-                    index < tokens.Length
-                    && tokens[index] is not ((byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\r' or 0x0C)
-                )
-                    index++;
-                if (tokens[start..index].SequenceEqual(wanted))
-                    return true;
-            }
-
-            return false;
-        }
-
-        private static TagKind Kind(Utf8HtmlName name) =>
-            name.SemanticEquals("ul"u8) ? TagKind.Ul
-            : name.SemanticEquals("li"u8) ? TagKind.Li
-            : name.SemanticEquals("a"u8) ? TagKind.A
-            : name.SemanticEquals("img"u8) ? TagKind.Img
-            : TagKind.Other;
-
-        private static bool IsVoid(TagKind kind) => kind == TagKind.Img;
-
-        private enum TagKind : byte
-        {
-            Other,
-            Ul,
-            Li,
-            A,
-            Img,
-        }
-
-        private readonly record struct Frame(ulong Hash, int Length, bool NewsList, bool Card, bool ArticleLink);
     }
 }
 #endif

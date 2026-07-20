@@ -10,14 +10,13 @@ internal sealed class NameTable
     private readonly Dictionary<StringOrMemory, ushort> _ids = [];
 #endif
     private List<string>? _customNames;
-
+    
     public int CustomCount => _customNames?.Count ?? 0;
 
     public ushort GetId(StringOrMemory name)
     {
 #if NET10_0
-        var lookup = _ids.GetAlternateLookup<ReadOnlySpan<char>>();
-        if (lookup.TryGetValue(name.Memory.Span, out var id))
+        if (_ids.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(name.Memory.Span, out var id))
             return id;
         string ownedName;
         if (GeneratedTagMetadata.TryGetKnownNameId(name, out id))
