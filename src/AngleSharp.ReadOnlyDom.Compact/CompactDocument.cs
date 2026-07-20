@@ -25,6 +25,7 @@ public sealed class CompactDocument : IDisposable
     private readonly int _attributeCount;
     private readonly int _nameCount;
     private readonly int _textLength;
+    private readonly bool _hasTemplates;
     private int _disposed;
 
     internal CompactDocument(
@@ -56,6 +57,7 @@ public sealed class CompactDocument : IDisposable
         _attributeCount = attributeCount;
         _nameCount = nameCount;
         _textLength = textLength;
+        _hasTemplates = templateBoundaries.Length != 0;
     }
 
     internal CompactDocument(
@@ -83,6 +85,7 @@ public sealed class CompactDocument : IDisposable
         _metadataOptions = metadataOptions;
         _templateBoundaries = templateBoundaries;
         _text = text;
+        _hasTemplates = templateBoundaries.Length != 0;
     }
 
     public CompactDocumentLayout Layout =>
@@ -145,18 +148,66 @@ public sealed class CompactDocument : IDisposable
         );
     }
 
+    // Lightweight column accessors used by the hot attribute-lookup loops. They avoid materializing a
+    // CompactNode/CompactNodePayload/CompactAttribute struct (and, on the frozen path, the encode/decode
+    // round-trip) when the caller only needs the name ID or the value span.
+    internal int PayloadFirstAttributeAt(int payloadIndex) =>
+        _arena is null ? _payloads![payloadIndex].FirstAttribute : _arena.FrozenFirstAttribute(payloadIndex);
+
+    internal int PayloadAttributeCountAt(int payloadIndex) =>
+        _arena is null ? _payloads![payloadIndex].AttributeCount : _arena.FrozenAttributeCount(payloadIndex);
+
+    internal ushort AttributeNameIdAt(int index) =>
+        _arena is null ? _attributes![index].NameId : _arena.FrozenAttributeNameId(index);
+
+    internal ReadOnlySpan<char> AttributeValueSpanAt(int index)
+    {
+        if (_arena is null)
+        {
+            ref readonly var attribute = ref _attributes![index];
+            return attribute.ValueLength == 0 ? [] : _text!.AsSpan(attribute.ValueStart, attribute.ValueLength);
+        }
+        return _arena.FrozenAttributeValue(index).Span;
+    }
+
+    /// <summary>The value span for a payload index, without materializing a <see cref="CompactNodePayload"/>.</summary>
+    internal ReadOnlySpan<char> PayloadValueSpanAt(int payloadIndex)
+    {
+        if (_arena is null)
+        {
+            ref readonly var payload = ref _payloads![payloadIndex];
+            return payload.ValueLength == 0 ? [] : _text!.AsSpan(payload.ValueStart, payload.ValueLength);
+        }
+        return _arena.FrozenPayloadValue(payloadIndex).Span;
+    }
+
+    /// <summary>Returns the first-attribute index and count for a node handle, or false when it has no payload.</summary>
+    internal bool TryGetAttributeRange(int handle, out int firstAttribute, out int count)
+    {
+        var payloadIndex = PayloadIndexAt(handle);
+        if (payloadIndex < 0)
+        {
+            firstAttribute = 0;
+            count = 0;
+            return false;
+        }
+        firstAttribute = PayloadFirstAttributeAt(payloadIndex);
+        count = PayloadAttributeCountAt(payloadIndex);
+        return true;
+    }
+
     internal bool TryGetAttribute(int handle, ushort nameId, out CompactAttribute attribute, ref int inspected)
     {
-        var node = GetNode(handle);
-        if (nameId != ushort.MaxValue && node.PayloadIndex >= 0)
+        if (nameId != ushort.MaxValue && TryGetAttributeRange(handle, out var first, out var count))
         {
-            var payload = GetPayload(node.PayloadIndex);
-            for (var index = 0; index < payload.AttributeCount; index++)
+            for (var index = first; index < first + count; index++)
             {
-                attribute = GetAttribute(payload.FirstAttribute + index);
                 inspected++;
-                if (attribute.NameId == nameId)
+                if (AttributeNameIdAt(index) == nameId)
+                {
+                    attribute = GetAttribute(index);
                     return true;
+                }
             }
         }
         attribute = default;
@@ -249,6 +300,8 @@ public sealed class CompactDocument : IDisposable
 
     internal bool IsTemplate(int handle)
     {
+        if (!_hasTemplates)
+            return false;
         foreach (var boundary in _templateBoundaries)
             if (boundary.Handle == handle)
                 return true;
@@ -257,6 +310,11 @@ public sealed class CompactDocument : IDisposable
 
     internal bool TryGetTemplateContent(int handle, out int contentStart)
     {
+        if (!_hasTemplates)
+        {
+            contentStart = -1;
+            return false;
+        }
         foreach (var boundary in _templateBoundaries)
         {
             if (boundary.Handle != handle)
@@ -271,6 +329,8 @@ public sealed class CompactDocument : IDisposable
     internal bool TryGetContainingTemplateContentEnd(int handle, out int contentEnd)
     {
         contentEnd = -1;
+        if (!_hasTemplates)
+            return false;
         foreach (var boundary in _templateBoundaries)
         {
             if (handle >= boundary.ContentStart && handle < boundary.ContentEnd)
@@ -281,6 +341,8 @@ public sealed class CompactDocument : IDisposable
 
     internal bool IsInSameTreeScope(int first, int second)
     {
+        if (!_hasTemplates)
+            return true;
         foreach (var boundary in _templateBoundaries)
         {
             var firstInContent = first >= boundary.ContentStart && first < boundary.ContentEnd;
@@ -338,7 +400,7 @@ public sealed class CompactDocument : IDisposable
                 }
                 finally
                 {
-                    ArrayPool<char>.Shared.Return(_text!, clearArray: true);
+                    ArrayPool<char>.Shared.Return(_text!);
                 }
             }
             return;
@@ -347,7 +409,7 @@ public sealed class CompactDocument : IDisposable
         ArrayPool<CompactNode>.Shared.Return(_nodes!);
         ArrayPool<CompactNodePayload>.Shared.Return(_payloads!);
         ArrayPool<CompactAttribute>.Shared.Return(_attributes!);
-        ArrayPool<char>.Shared.Return(_text!, clearArray: true);
+        ArrayPool<char>.Shared.Return(_text!);
         if (_parents is not null)
             ArrayPool<int>.Shared.Return(_parents);
         if (_sources is not null)
