@@ -61,18 +61,29 @@ public readonly struct Node
     /// <summary>The attribute value (empty span if absent — use <see cref="HasAttr(string)"/> to disambiguate).</summary>
     public ReadOnlySpan<char> Attr(string name) => Attr(name.AsSpan());
 
-    public ReadOnlySpan<char> Attr(ReadOnlySpan<char> name) =>
-        TryFindAttribute(_document!.ResolveNameId(name), out var value) ? value : default;
+    public ReadOnlySpan<char> Attr(ReadOnlySpan<char> name) => Attr(_document!.ResolveNameId(name));
+
+    /// <summary>Gets an attribute using a name ID previously resolved by <see cref="CompactDocument.Name(string)"/>.</summary>
+    public ReadOnlySpan<char> Attr(ushort nameId) => TryFindAttribute(nameId, out var value) ? value : default;
 
     public bool HasAttr(string name) => HasAttr(name.AsSpan());
 
-    public bool HasAttr(ReadOnlySpan<char> name) => TryFindAttribute(_document!.ResolveNameId(name), out _);
+    public bool HasAttr(ReadOnlySpan<char> name) => HasAttr(_document!.ResolveNameId(name));
+
+    /// <summary>Checks an attribute using a previously resolved name ID.</summary>
+    public bool HasAttr(ushort nameId) => TryFindAttribute(nameId, out _);
 
     public bool HasClass(string token) => HasClass(token.AsSpan());
 
     public bool HasClass(ReadOnlySpan<char> token)
     {
-        if (!TryFindAttribute(_document!.ResolveNameId("class"), out var classes))
+        return HasClass(_document!.ResolveNameId("class"), token);
+    }
+
+    /// <summary>Checks a class token using a previously resolved <c>class</c> attribute name ID.</summary>
+    public bool HasClass(ushort classNameId, ReadOnlySpan<char> token)
+    {
+        if (!TryFindAttribute(classNameId, out var classes))
             return false;
         return ContainsToken(classes, token);
     }
