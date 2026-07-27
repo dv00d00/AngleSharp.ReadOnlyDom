@@ -162,6 +162,34 @@ public sealed class BackpressuredQueryTests
         }
     }
 
+    [Test]
+    public async Task PublishableBackpressurePreservesSplitNbspForNormalizedConsumer()
+    {
+        var input = new Pipe(new PipeOptions(minimumSegmentSize: 1, useSynchronizationContext: false));
+        await using var outputStream = new MemoryStream();
+        var output = PipeWriter.Create(outputStream, new StreamPipeWriterOptions(leaveOpen: true));
+        var state = new NormalizedOutput();
+        var plan = StreamQuery
+            .For<NormalizedOutput>("html")
+            .OnText(static (ref NormalizedOutput destination, ReadOnlySpan<byte> text) => destination.Append(text))
+            .Compile();
+        var execution = plan.ExecuteBackpressuredAsync(
+            input.Reader,
+            output,
+            state,
+            flushThreshold: 1,
+            inputSliceSize: 1
+        );
+
+        await input.Writer.WriteAsync("<html><body>A\u00a0B © C</body></html>"u8.ToArray());
+        await input.Writer.CompleteAsync();
+        await execution;
+        await input.Reader.CompleteAsync();
+        await output.CompleteAsync();
+
+        await Assert.That(Encoding.UTF8.GetString(outputStream.ToArray())).IsEqualTo("A B © C");
+    }
+
     private static void Copy(ReadOnlySequence<byte> source, IBufferWriter<byte> destination)
     {
         foreach (var segment in source)
@@ -200,6 +228,28 @@ public sealed class BackpressuredQueryTests
         {
             value.CopyTo(writer.GetSpan(value.Length));
             writer.Advance(value.Length);
+        }
+    }
+
+    private sealed class NormalizedOutput : IUtf8PublishSource
+    {
+        private readonly ArrayBufferWriter<byte> _buffer = new();
+        private readonly NormalizedUtf8Writer _writer;
+
+        internal NormalizedOutput()
+        {
+            _writer = new NormalizedUtf8Writer(_buffer);
+        }
+
+        public ReadOnlyMemory<byte> PublishableUtf8 => _buffer.WrittenMemory;
+
+        internal void Append(ReadOnlySpan<byte> value) => _writer.Append(value);
+
+        public void AdvancePublished(int bytes)
+        {
+            if (bytes != _buffer.WrittenCount)
+                throw new InvalidOperationException("The test output expects the complete publishable prefix to flush.");
+            _buffer.Clear();
         }
     }
 }

@@ -61,18 +61,29 @@ public readonly struct Node
     /// <summary>The attribute value (empty span if absent — use <see cref="HasAttr(string)"/> to disambiguate).</summary>
     public ReadOnlySpan<char> Attr(string name) => Attr(name.AsSpan());
 
-    public ReadOnlySpan<char> Attr(ReadOnlySpan<char> name) =>
-        TryFindAttribute(_document!.ResolveNameId(name), out var value) ? value : default;
+    public ReadOnlySpan<char> Attr(ReadOnlySpan<char> name) => Attr(_document!.ResolveNameId(name));
+
+    /// <summary>Gets an attribute using a name ID previously resolved by <see cref="CompactDocument.Name(string)"/>.</summary>
+    public ReadOnlySpan<char> Attr(ushort nameId) => TryFindAttribute(nameId, out var value) ? value : default;
 
     public bool HasAttr(string name) => HasAttr(name.AsSpan());
 
-    public bool HasAttr(ReadOnlySpan<char> name) => TryFindAttribute(_document!.ResolveNameId(name), out _);
+    public bool HasAttr(ReadOnlySpan<char> name) => HasAttr(_document!.ResolveNameId(name));
+
+    /// <summary>Checks an attribute using a previously resolved name ID.</summary>
+    public bool HasAttr(ushort nameId) => TryFindAttribute(nameId, out _);
 
     public bool HasClass(string token) => HasClass(token.AsSpan());
 
     public bool HasClass(ReadOnlySpan<char> token)
     {
-        if (!TryFindAttribute(_document!.ResolveNameId("class"), out var classes))
+        return HasClass(_document!.ResolveNameId("class"), token);
+    }
+
+    /// <summary>Checks a class token using a previously resolved <c>class</c> attribute name ID.</summary>
+    public bool HasClass(ushort classNameId, ReadOnlySpan<char> token)
+    {
+        if (!TryFindAttribute(classNameId, out var classes))
             return false;
         return ContainsToken(classes, token);
     }
@@ -100,20 +111,23 @@ public readonly struct Node
     public void WriteText<TSink>(ref TSink sink)
         where TSink : ISpanSink
     {
-        var node = Raw;
-        if (_document!.IsTemplate(_handle))
-            return;
-        if (node.Kind == CompactNodeKind.Text && node.PayloadIndex >= 0)
+        var document = _document!;
+        var endExclusive = document.SubtreeEndAt(_handle);
+        for (var handle = _handle; handle < endExclusive; handle++)
         {
-            var payload = _document!.GetPayload(node.PayloadIndex);
-            sink.Append(_document.GetValue(payload.ValueStart, payload.ValueLength));
+            var kind = document.KindAt(handle);
+            if (kind == CompactNodeKind.Element && document.IsTemplate(handle))
+            {
+                handle = document.SubtreeEndAt(handle) - 1;
+                continue;
+            }
+            if (kind != CompactNodeKind.Text)
+                continue;
+            var payloadIndex = document.PayloadIndexAt(handle);
+            if (payloadIndex < 0)
+                continue;
+            sink.Append(document.PayloadValueSpanAt(payloadIndex));
         }
-        for (
-            var child = node.FirstChild;
-            child >= 0 && child < node.SubtreeEndExclusive;
-            child = _document!.GetNode(child).SubtreeEndExclusive
-        )
-            new Node(_document!, child).WriteText(ref sink);
     }
 
     public void AppendText(StringBuilder builder)
@@ -146,25 +160,27 @@ public readonly struct Node
 
     private bool WriteInto(Span<char> destination, ref int written)
     {
-        var node = Raw;
-        if (_document!.IsTemplate(_handle))
-            return true;
-        if (node.Kind == CompactNodeKind.Text && node.PayloadIndex >= 0)
+        var document = _document!;
+        var endExclusive = document.SubtreeEndAt(_handle);
+        for (var handle = _handle; handle < endExclusive; handle++)
         {
-            var payload = _document!.GetPayload(node.PayloadIndex);
-            var value = _document.GetValue(payload.ValueStart, payload.ValueLength);
+            var kind = document.KindAt(handle);
+            if (kind == CompactNodeKind.Element && document.IsTemplate(handle))
+            {
+                handle = document.SubtreeEndAt(handle) - 1;
+                continue;
+            }
+            if (kind != CompactNodeKind.Text)
+                continue;
+            var payloadIndex = document.PayloadIndexAt(handle);
+            if (payloadIndex < 0)
+                continue;
+            var value = document.PayloadValueSpanAt(payloadIndex);
             if (written + value.Length > destination.Length)
                 return false;
             value.CopyTo(destination.Slice(written));
             written += value.Length;
         }
-        for (
-            var child = node.FirstChild;
-            child >= 0 && child < node.SubtreeEndExclusive;
-            child = _document!.GetNode(child).SubtreeEndExclusive
-        )
-            if (!new Node(_document!, child).WriteInto(destination, ref written))
-                return false;
         return true;
     }
 
@@ -183,16 +199,14 @@ public readonly struct Node
         value = default;
         if (nameId == ushort.MaxValue)
             return false;
-        var node = Raw;
-        if (node.PayloadIndex < 0)
+        var document = _document!;
+        if (!document.TryGetAttributeRange(_handle, out var first, out var count))
             return false;
-        var payload = _document!.GetPayload(node.PayloadIndex);
-        for (var a = payload.FirstAttribute; a < payload.FirstAttribute + payload.AttributeCount; a++)
+        for (var a = first; a < first + count; a++)
         {
-            var attribute = _document.GetAttribute(a);
-            if (attribute.NameId == nameId)
+            if (document.AttributeNameIdAt(a) == nameId)
             {
-                value = _document.GetValue(attribute.ValueStart, attribute.ValueLength);
+                value = document.AttributeValueSpanAt(a);
                 return true;
             }
         }

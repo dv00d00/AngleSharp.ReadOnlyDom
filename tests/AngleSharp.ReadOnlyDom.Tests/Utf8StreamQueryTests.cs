@@ -1,4 +1,5 @@
 #if NET10_0
+using System.Buffers;
 using System.Text;
 using System.IO.Pipelines;
 using AngleSharp.Html.Parser;
@@ -13,8 +14,7 @@ public sealed class QueryTests
     {
         var root = StreamQuery.For<QueryState>("main");
         root.Child("a").OnStart(static (ref QueryState state, in Element _) => state.Events.Add("child"));
-        root.Descendant("a")
-            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("descendant"));
+        root.Descendant("a").OnStart(static (ref QueryState state, in Element _) => state.Events.Add("descendant"));
 
         var state = root.Compile()
             .Execute("<main><a>direct</a><section><a>nested</a></section></main>"u8, new QueryState());
@@ -51,6 +51,44 @@ public sealed class QueryTests
             );
 
         await Assert.That(string.Join('|', state.Events)).IsEqualTo("42|missing");
+    }
+
+    [Test]
+    public async Task MixedCaseCompactAndFallbackNamesPreserveFirstDuplicateAttribute()
+    {
+        var root = StreamQuery
+            .For<QueryState>("article")
+            .Attribute("id", "first")
+            .Attribute("class", "card")
+            .Attribute("data-key", "one")
+            .Attribute("title", "title")
+            .OnStart(
+                static (ref QueryState state, in Element element) =>
+                    state.Events.Add(
+                        String.Join(
+                            "|",
+                            Encoding.UTF8.GetString(Get(element, "id")),
+                            Encoding.UTF8.GetString(Get(element, "class")),
+                            Encoding.UTF8.GetString(Get(element, "data-key")),
+                            Encoding.UTF8.GetString(Get(element, "title"))
+                        )
+                    ),
+                "id",
+                "class",
+                "data-key",
+                "title"
+            );
+
+        var state = root.Compile()
+            .Execute(
+                Encoding.UTF8.GetBytes(
+                    "<ArTiClE ID='first' id='ignored' CLASS='card' class='ignored' "
+                        + "DaTa-Key='one' data-key='ignored' TITLE='title' title='ignored'></ArTiClE>"
+                ),
+                new QueryState()
+            );
+
+        await Assert.That(state.Events).IsEquivalentTo(["first|card|one|title"]);
     }
 
     [Test]
@@ -105,7 +143,47 @@ public sealed class QueryTests
     }
 
     [Test]
-    public async Task OptimizedTagHashMatchesNormalizedNamesAcrossChunks()
+    public async Task PipeReaderPreservesRuneBoundariesForCompletedNormalizedText()
+    {
+        var root = StreamQuery
+            .For<QueryState>("p")
+            .OnNormalizedText(
+                static (ref QueryState state, in CompletedElement element) => state.Events.Add(element.GetText())
+            );
+        var pipe = new Pipe(new PipeOptions(minimumSegmentSize: 1, useSynchronizationContext: false));
+        var execute = root.Compile().ExecuteAsync(pipe.Reader, new QueryState()).AsTask();
+        var html = "<p>A\u00a0B © C</p>"u8.ToArray();
+
+        foreach (var value in html)
+            await pipe.Writer.WriteAsync(new byte[] { value });
+        await pipe.Writer.CompleteAsync();
+        var state = await execute;
+        await pipe.Reader.CompleteAsync();
+
+        await Assert.That(state.Events).IsEquivalentTo(["A B © C"]);
+    }
+
+    [Test]
+    public async Task SynchronousExecutionRepairsMalformedUtf8ByDefaultAndAllowsExplicitTrust()
+    {
+        var root = StreamQuery
+            .For<QueryState>("p")
+            .OnText(
+                static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                    state.Text.Append(Encoding.UTF8.GetString(text))
+            );
+        var plan = root.Compile();
+        byte[] malformed = [.. "<p>A"u8, 0xC2, .. "B</p>"u8];
+
+        var repaired = plan.Execute(malformed, new QueryState());
+        var trusted = plan.Execute("<p>A\u00a0B</p>"u8, new QueryState(), Utf8InputContract.WellFormedUtf8);
+
+        await Assert.That(repaired.Text.ToString()).IsEqualTo("A\uFFFDB");
+        await Assert.That(trusted.Text.ToString()).IsEqualTo("A\u00a0B");
+    }
+
+    [Test]
+    public async Task CompactTagIdentityMatchesNormalizedNamesAcrossChunks()
     {
         var root = StreamQuery
             .For<QueryState>("article")
@@ -126,6 +204,19 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task NonCompactTagIdentityFallsBackToCaseInsensitiveBytes()
+    {
+        var root = StreamQuery
+            .For<QueryState>("custom-element")
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("start"))
+            .OnEnd(static (ref QueryState state) => state.Events.Add("end"));
+        var state = root.Compile()
+            .Execute("<CuStOm-ElEmEnT></cUsToM-eLeMeNt>"u8, new QueryState(), Utf8InputContract.WellFormedUtf8);
+
+        await Assert.That(state.Events).IsEquivalentTo(["start", "end"]);
+    }
+
+    [Test]
     public async Task QueryTokenizerDoesNotMaterializeUnrequestedAttributeValues()
     {
         var root = StreamQuery
@@ -138,6 +229,33 @@ public sealed class QueryTests
         {
             var tokenizer = new Utf8HtmlTokenizer(execution);
             tokenizer.Write(Encoding.UTF8.GetBytes($"<article ignored='{new string('x', 8192)}' id=story></article>"));
+            tokenizer.Complete();
+            counters = tokenizer.Counters;
+        }
+
+        await Assert.That(state.Events).IsEquivalentTo(["match"]);
+        await Assert.That(counters.MaximumBufferedTokenBytes).IsLessThan(256);
+    }
+
+    [Test]
+    public async Task QueryTokenizerDoesNotCaptureAttributeSyntaxForIrrelevantTags()
+    {
+        var root = StreamQuery
+            .For<QueryState>("article")
+            .Id("story")
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("match"));
+        var state = new QueryState();
+        var ignoredName = new string('a', 4096);
+        var html = Encoding.UTF8.GetBytes(
+            $"<aside {ignoredName}='&amp;&#x1F642;&notit;\r\n{new string('x', 4096)}'>"
+                + "<article id=story></article></aside>"
+        );
+        Utf8HtmlTokenizerCounters counters;
+        using (var execution = root.Compile().CreateExecution(state))
+        {
+            var tokenizer = new Utf8HtmlTokenizer(execution);
+            foreach (var value in html)
+                tokenizer.Write([value]);
             tokenizer.Complete();
             counters = tokenizer.Counters;
         }
@@ -205,7 +323,8 @@ public sealed class QueryTests
     {
         const string html = "<table><div id=inside>lexically nested</div></table>";
         var root = StreamQuery.For<QueryState>("table");
-        root.Descendant("div").Id("inside")
+        root.Descendant("div")
+            .Id("inside")
             .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("match"));
         var lexical = root.Compile().Execute(Encoding.UTF8.GetBytes(html), new QueryState());
 
@@ -219,8 +338,7 @@ public sealed class QueryTests
     public async Task ExplanationAndNodeLimitMakeTheExecutionModelExplicit()
     {
         var root = StreamQuery.For<QueryState>("ul").Class("news-list");
-        root.Descendant("a").Attribute("href")
-            .OnStart(static (ref QueryState _, in Element _) => { }, "title");
+        root.Descendant("a").Attribute("href").OnStart(static (ref QueryState _, in Element _) => { }, "title");
         var explanation = root.Compile().Explanation;
 
         await Assert.That(explanation.ExecutionModel).IsEqualTo(QueryExecutionModel.LexicalStreaming);
@@ -241,6 +359,95 @@ public sealed class QueryTests
             rejected = true;
         }
         await Assert.That(rejected).IsTrue();
+    }
+
+    [Test]
+    public async Task RewritePreservesUntouchedUtf8AndEditsOnlyTerminalMatches()
+    {
+        var root = StreamQuery.For<int>("main");
+        root.Descendant("a").Attribute("href");
+        var source = "<main>é<!--keep--><a href='x'>text</a><a href=y /></main>"u8;
+        var output = new ArrayBufferWriter<byte>();
+
+        var matches = root.Compile()
+            .Rewrite(
+                source,
+                output,
+                0,
+                static (ref int count, in Element _, ref StartTagEditor tag) =>
+                {
+                    count++;
+                    tag.AppendAttribute("data-query-hit"u8, "1"u8);
+                },
+                Utf8InputContract.WellFormedUtf8
+            );
+
+        await Assert.That(matches).IsEqualTo(2);
+        await Assert
+            .That(Encoding.UTF8.GetString(output.WrittenSpan))
+            .IsEqualTo(
+                "<main>é<!--keep--><a href='x' data-query-hit=\"1\">text</a><a href=y data-query-hit=\"1\"/></main>"
+            );
+    }
+
+    [Test]
+    public async Task RewriteDoesNotMaterializeDiscardedCommentPayloads()
+    {
+        var comment = new string('x', 4096);
+        var source = Encoding.UTF8.GetBytes($"<main><!--{comment}--><a href=x>text</a></main>");
+        var expected = Encoding.UTF8.GetBytes($"<main><!--{comment}--><a href=x data-query-hit=\"1\">text</a></main>");
+        var output = new ArrayBufferWriter<byte>();
+        var limits = new HtmlStreamingLimits(maximumBufferedTokenBytes: 64);
+        var query = StreamQuery.For<int>("a").Attribute("href").Compile();
+
+        var matches = query.Rewrite(
+            source,
+            output,
+            0,
+            static (ref int count, in Element _, ref StartTagEditor tag) =>
+            {
+                count++;
+                tag.AppendAttribute("data-query-hit"u8, "1"u8);
+            },
+            Utf8InputContract.WellFormedUtf8,
+            limits
+        );
+
+        await Assert.That(matches).IsEqualTo(1);
+        await Assert.That(output.WrittenSpan.SequenceEqual(expected)).IsTrue();
+    }
+
+    [Test]
+    public async Task RewriteEscapesAttributeValueAndRejectsMalformedUtf8ByDefault()
+    {
+        var query = StreamQuery.For<int>("a").Compile();
+        var output = new ArrayBufferWriter<byte>();
+        query.Rewrite(
+            "<a>"u8,
+            output,
+            0,
+            static (ref int _, in Element _, ref StartTagEditor tag) => tag.AppendAttribute("data-value"u8, "a&\"b"u8)
+        );
+        await Assert.That(Encoding.UTF8.GetString(output.WrittenSpan)).IsEqualTo("<a data-value=\"a&amp;&quot;b\">");
+
+        var rejected = false;
+        output = new ArrayBufferWriter<byte>();
+        try
+        {
+            query.Rewrite(
+                [(byte)'<', (byte)'a', (byte)'>', 0xff],
+                output,
+                0,
+                static (ref int _, in Element _, ref StartTagEditor _) => { }
+            );
+        }
+        catch (DecoderFallbackException)
+        {
+            rejected = true;
+        }
+
+        await Assert.That(rejected).IsTrue();
+        await Assert.That(output.WrittenCount).IsEqualTo(0);
     }
 
     private static ReadOnlySpan<byte> Get(in Element element, string name)

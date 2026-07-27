@@ -3,7 +3,11 @@ using System.Numerics;
 
 namespace AngleSharp.ReadOnlyDom.Streaming;
 
-internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
+internal sealed class QueryExecution<TState>
+    : IUtf8HtmlTokenSink,
+        IUtf8HtmlStartTagSourceRangeSink,
+        IUtf8HtmlStreamingCommentSink,
+        IDisposable
 {
     private readonly QueryPlan<TState> _plan;
     private readonly int[] _activeCounts;
@@ -16,23 +20,39 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
     private TState _state;
     private int _frameCount;
     private int _attributeValueLength;
-    private ulong _pendingTagHash;
-    private int _pendingTagLength;
+    private ulong _pendingTagIdentity;
+    private int _pendingTagIdentityLength;
+    private int _pendingTagNameLength;
     private ulong _pendingCandidateBits;
     private ulong _pendingAttributeBits;
+    private int _pendingAttributeIndex = -1;
     private ulong _seenAttributeBits;
     private bool _disposed;
     private readonly int _maximumNestingDepth;
     private readonly long _maximumQueryCaptureBytes;
+    private readonly RewriteHandler<TState>? _rewriteHandler;
+    private readonly Utf8RewriteCollector? _rewriteCollector;
+    private long _startTagSourceStart = -1;
+    private long _startTagSourceEnd = -1;
     private long _queryCaptureBytes;
+    private int _activeTextNodes;
+    private int _activeCompletedTextCaptures;
 
-    internal QueryExecution(QueryPlan<TState> plan, TState state, HtmlStreamingLimits limits)
+    internal QueryExecution(
+        QueryPlan<TState> plan,
+        TState state,
+        HtmlStreamingLimits limits,
+        RewriteHandler<TState>? rewriteHandler = null,
+        Utf8RewriteCollector? rewriteCollector = null
+    )
     {
         ArgumentNullException.ThrowIfNull(limits);
         _plan = plan;
         _state = state;
         _maximumNestingDepth = limits.MaximumNestingDepth;
         _maximumQueryCaptureBytes = limits.MaximumQueryCaptureBytes;
+        _rewriteHandler = rewriteHandler;
+        _rewriteCollector = rewriteCollector;
         _activeCounts = ArrayPool<int>.Shared.Rent(Math.Max(plan.Nodes.Length, 1));
         _activeCounts.AsSpan(0, plan.Nodes.Length).Clear();
         _frames = ArrayPool<QueryFrame>.Shared.Rent(64);
@@ -46,64 +66,104 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
 
     public TState State => _state;
 
-    public void StartTag(Utf8HtmlName name)
+    public Utf8HtmlTokenCapture Capture =>
+        _activeTextNodes != 0 || _activeCompletedTextCaptures != 0
+            ? Utf8HtmlTokenCapture.Text
+            : Utf8HtmlTokenCapture.None;
+
+    public bool WantsStartTagSourceRanges => _rewriteHandler is not null;
+
+    public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
     {
-        var hash = name.SemanticHash;
-        _pendingTagHash = hash;
-        _pendingTagLength = name.Verbatim.Length;
+        var identityLength = 0;
+        if (!name.TryGetCompactKey(out var identity))
+        {
+            identity = name.SemanticHash;
+            identityLength = name.Verbatim.Length;
+        }
+        _pendingTagIdentity = identity;
+        _pendingTagIdentityLength = identityLength;
+        _pendingTagNameLength = name.Verbatim.Length;
         _pendingCandidateBits = 0;
         _pendingAttributeBits = 0;
-        var candidates = FindTagCandidates(hash, name.Verbatim.Length);
+        _pendingAttributeIndex = -1;
+        var candidates = FindTagCandidates(identity, identityLength);
         while (candidates != 0)
         {
             var index = BitOperations.TrailingZeroCount(candidates);
             candidates &= candidates - 1;
             var node = _plan.Nodes[index];
-            if (!name.SemanticEquals(node.TagNameUtf8) || !ParentMatches(node))
+            if ((identityLength != 0 && !name.SemanticEquals(node.TagNameUtf8)) || !ParentMatches(node))
                 continue;
             _pendingCandidateBits |= 1UL << node.Index;
             _pendingAttributeBits |= node.RequestedAttributeMask;
         }
         ResetAttributes();
+        return _pendingAttributeBits == 0 ? Utf8HtmlStartTagCapture.None : Utf8HtmlStartTagCapture.Attributes;
     }
 
     public bool WantsAttribute(Utf8HtmlName name)
     {
+        _pendingAttributeIndex = -1;
+        var identity = 0UL;
+        var hasCompactIdentity =
+            (_pendingAttributeBits & _plan.CompactAttributeMask) != 0 && name.TryGetCompactKey(out identity);
+
         var attributes = _pendingAttributeBits;
         while (attributes != 0)
         {
             var index = BitOperations.TrailingZeroCount(attributes);
             attributes &= attributes - 1;
-            if (name.SemanticEquals(_plan.AttributeNamesUtf8[index]))
-                return true;
+            var expected = _plan.AttributeIdentities[index];
+            if (hasCompactIdentity)
+            {
+                if (expected.Length != 0 || expected.Value != identity)
+                    continue;
+            }
+            else if (
+                expected.Length == 0
+                || expected.Length != name.Verbatim.Length
+                || !name.SemanticEquals(_plan.AttributeNamesUtf8[index])
+            )
+            {
+                continue;
+            }
+            _pendingAttributeIndex = index;
+            return true;
         }
         return false;
     }
 
     public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value)
     {
-        var attributes = _pendingAttributeBits;
-        while (attributes != 0)
-        {
-            var index = BitOperations.TrailingZeroCount(attributes);
-            attributes &= attributes - 1;
-            if (!name.SemanticEquals(_plan.AttributeNamesUtf8[index]))
-                continue;
-            if (_attributeLengths[index] >= 0)
-                return;
-            EnsureQueryCaptureCapacity(value.Length);
-            EnsureAttributeCapacity(value.Length);
-            _attributeStarts[index] = _attributeValueLength;
-            _attributeLengths[index] = value.Length;
-            _seenAttributeBits |= 1UL << index;
-            value.CopyTo(_attributeValues.AsSpan(_attributeValueLength));
-            _attributeValueLength += value.Length;
-            _queryCaptureBytes += value.Length;
+        var index = _pendingAttributeIndex;
+        _pendingAttributeIndex = -1;
+        if (index < 0 || _attributeLengths[index] >= 0)
             return;
-        }
+        EnsureQueryCaptureCapacity(value.Length);
+        EnsureAttributeCapacity(value.Length);
+        _attributeStarts[index] = _attributeValueLength;
+        _attributeLengths[index] = value.Length;
+        _seenAttributeBits |= 1UL << index;
+        value.CopyTo(_attributeValues.AsSpan(_attributeValueLength));
+        _attributeValueLength += value.Length;
+        _queryCaptureBytes += value.Length;
+    }
+
+    public void StartTagSourceRange(long sourceStart, long sourceEnd)
+    {
+        _startTagSourceStart = sourceStart;
+        _startTagSourceEnd = sourceEnd;
     }
 
     public void StartTagEnd(bool selfClosing)
+    {
+        StartTagEndCore(selfClosing, _startTagSourceStart, _startTagSourceEnd);
+        _startTagSourceStart = -1;
+        _startTagSourceEnd = -1;
+    }
+
+    private void StartTagEndCore(bool selfClosing, long sourceStart, long sourceEnd)
     {
         var matches = 0UL;
         var candidates = _pendingCandidateBits;
@@ -117,7 +177,8 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
             matches |= 1UL << node.Index;
         }
 
-        var closesImmediately = selfClosing || IsVoidTag(_pendingTagHash, _pendingTagLength);
+        var closesImmediately =
+            selfClosing || IsVoidTag(_pendingTagIdentity, _pendingTagIdentityLength, _pendingTagNameLength);
         if (!closesImmediately && _frameCount >= _maximumNestingDepth)
             throw new HtmlStreamingLimitExceededException(
                 HtmlStreamingLimit.NestingDepth,
@@ -140,6 +201,13 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
             starts &= starts - 1;
             _plan.Nodes[index].Start?.Invoke(ref _state, in element);
         }
+        if (_rewriteHandler is not null && (matches & _plan.TerminalNodeMask) != 0)
+        {
+            if (sourceStart < 0 || sourceEnd <= sourceStart)
+                throw new InvalidOperationException("The tokenizer did not provide a valid start-tag source range.");
+            var editor = new StartTagEditor(_rewriteCollector!, sourceStart, sourceEnd, selfClosing);
+            _rewriteHandler.Invoke(ref _state, in element, ref editor);
+        }
         StartCompletedCaptures(matches);
 
         if (closesImmediately)
@@ -149,12 +217,14 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
         }
 
         EnsureFrameCapacity();
-        _frames[_frameCount++] = new QueryFrame(_pendingTagHash, _pendingTagLength, matches);
+        _frames[_frameCount++] = new QueryFrame(_pendingTagIdentity, _pendingTagIdentityLength, matches);
         IncrementActive(matches);
     }
 
     public void Text(ReadOnlySpan<byte> utf8)
     {
+        if (_plan.TextHandlerMask == 0 && _plan.CompletedHandlerMask == 0)
+            return;
         EnsureQueryCaptureCapacity(GetCompletedTextUpperBound(utf8.Length));
         var handlers = _plan.TextHandlerMask;
         while (handlers != 0)
@@ -168,12 +238,23 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
         AppendCompletedText(utf8);
     }
 
+    bool IUtf8HtmlStreamingCommentSink.BeginComment() => false;
+
+    void IUtf8HtmlStreamingCommentSink.CommentChunk(ReadOnlySpan<byte> utf8) { }
+
+    void IUtf8HtmlStreamingCommentSink.EndComment() { }
+
     public void EndTag(Utf8HtmlName name)
     {
-        var hash = name.SemanticHash;
+        var identityLength = 0;
+        if (!name.TryGetCompactKey(out var identity))
+        {
+            identity = name.SemanticHash;
+            identityLength = name.Verbatim.Length;
+        }
         for (var index = _frameCount - 1; index >= 0; index--)
         {
-            if (_frames[index].TagHash != hash || _frames[index].TagLength != name.Verbatim.Length)
+            if (_frames[index].TagIdentity != identity || _frames[index].TagIdentityLength != identityLength)
                 continue;
             for (var popped = _frameCount - 1; popped >= index; popped--)
                 CloseFrame(_frames[popped]);
@@ -182,7 +263,7 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
         }
     }
 
-    private ulong FindTagCandidates(ulong hash, int length)
+    private ulong FindTagCandidates(ulong identity, int identityLength)
     {
         var entries = _plan.TagDispatch;
         var low = 0;
@@ -191,9 +272,9 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
         {
             var middle = (low + high) >>> 1;
             var entry = entries[middle];
-            var comparison = entry.Hash.CompareTo(hash);
+            var comparison = entry.Identity.CompareTo(identity);
             if (comparison == 0)
-                comparison = entry.Length.CompareTo(length);
+                comparison = entry.IdentityLength.CompareTo(identityLength);
             if (comparison < 0)
                 low = middle + 1;
             else if (comparison > 0)
@@ -308,6 +389,8 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
             capture.BeginText();
             var captures = _completedCaptures[index] ??= [];
             captures.Add(capture);
+            if (node.CompletedTextMode != CompletedTextMode.None)
+                _activeCompletedTextCaptures++;
         }
     }
 
@@ -341,6 +424,8 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
         var captureIndex = captures.Count - 1;
         var capture = captures[captureIndex];
         captures.RemoveAt(captureIndex);
+        if (node.CompletedTextMode != CompletedTextMode.None)
+            _activeCompletedTextCaptures--;
         _queryCaptureBytes -= capture.BufferedByteCount;
         try
         {
@@ -364,6 +449,8 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
         {
             var index = BitOperations.TrailingZeroCount(matches);
             matches &= matches - 1;
+            if (_activeCounts[index] == 0 && (_plan.TextHandlerMask & (1UL << index)) != 0)
+                _activeTextNodes++;
             _activeCounts[index]++;
         }
     }
@@ -375,6 +462,8 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
             var index = BitOperations.TrailingZeroCount(matches);
             matches &= matches - 1;
             _activeCounts[index]--;
+            if (_activeCounts[index] == 0 && (_plan.TextHandlerMask & (1UL << index)) != 0)
+                _activeTextNodes--;
         }
     }
 
@@ -478,33 +567,36 @@ internal sealed class QueryExecution<TState> : IUtf8HtmlTokenSink, IDisposable
 
     private static bool IsHtmlSpace(byte value) => value is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\r' or 0x0C;
 
-    private static bool IsVoidTag(ulong hash, int length) =>
-        (length == 2 && (hash == HtmlVoidElements.BrHash || hash == HtmlVoidElements.HrHash))
-        || (
-            length == 3
-            && (
-                hash == HtmlVoidElements.ImgHash
-                || hash == HtmlVoidElements.WbrHash
-                || hash == HtmlVoidElements.ColHash
+    private static bool IsVoidTag(ulong identity, int identityLength, int nameLength) =>
+        identityLength == 0
+        && (
+            (nameLength == 2 && (identity == HtmlVoidElements.Br || identity == HtmlVoidElements.Hr))
+            || (
+                nameLength == 3
+                && (
+                    identity == HtmlVoidElements.Img
+                    || identity == HtmlVoidElements.Wbr
+                    || identity == HtmlVoidElements.Col
+                )
             )
-        )
-        || (
-            length == 4
-            && (
-                hash == HtmlVoidElements.AreaHash
-                || hash == HtmlVoidElements.BaseHash
-                || hash == HtmlVoidElements.LinkHash
-                || hash == HtmlVoidElements.MetaHash
+            || (
+                nameLength == 4
+                && (
+                    identity == HtmlVoidElements.Area
+                    || identity == HtmlVoidElements.Base
+                    || identity == HtmlVoidElements.Link
+                    || identity == HtmlVoidElements.Meta
+                )
             )
-        )
-        || (
-            length == 5
-            && (
-                hash == HtmlVoidElements.EmbedHash
-                || hash == HtmlVoidElements.InputHash
-                || hash == HtmlVoidElements.ParamHash
-                || hash == HtmlVoidElements.TrackHash
+            || (
+                nameLength == 5
+                && (
+                    identity == HtmlVoidElements.Embed
+                    || identity == HtmlVoidElements.Input
+                    || identity == HtmlVoidElements.Param
+                    || identity == HtmlVoidElements.Track
+                )
             )
-        )
-        || (length == 6 && hash == HtmlVoidElements.SourceHash);
+            || (nameLength == 6 && identity == HtmlVoidElements.Source)
+        );
 }

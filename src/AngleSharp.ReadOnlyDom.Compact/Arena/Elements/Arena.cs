@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Runtime.InteropServices;
 using AngleSharp.Common;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser.Tokens.Struct;
@@ -20,6 +21,7 @@ internal sealed class Arena : IDisposable
     private int _unattachedNodeCount;
     private int _textLength;
     private bool _requiresRemap;
+    private readonly ushort _textNameId;
 
     public Arena(
         CompactParserHints hints,
@@ -33,6 +35,7 @@ internal sealed class Arena : IDisposable
             ValidateCapacity(hints.InitialNodeCapacity, nameof(CompactParserHints.InitialNodeCapacity))
         );
         _columns = new MutableNodeColumns(hints.InitialNodeCapacity, trackSourceReferences);
+        _textNameId = _names.GetId("#text");
     }
 
     public ArenaDocument CreateDocument(TextSource source, CompactMetadataOptions options, CompactDocumentLayout layout)
@@ -91,6 +94,16 @@ internal sealed class Arena : IDisposable
         return handle;
     }
 
+    private int AddTextLeaf(StringOrMemory value)
+    {
+        _unattachedNodeCount++;
+        _constructionView?.NodeMaterialized();
+        var handle = _columns.Add(_textNameId, NodeFlags.None, CompactNodeKind.Text);
+        SetValue(handle, value);
+        _nodes.AddEmpty();
+        return handle;
+    }
+
     public ArenaNode Node(int handle)
     {
         var node = _nodes[handle];
@@ -106,14 +119,21 @@ internal sealed class Arena : IDisposable
 
     public StringOrMemory LocalName(int handle)
     {
-        var name = Name(handle);
+        // Generated known names never contain ':'; only custom (prefixed) names need the scan.
+        var id = _columns.NameIds[handle];
+        if (id < GeneratedTagMetadata.KnownNameCount)
+            return GeneratedTagMetadata.GetKnownName(id);
+        var name = _names.GetName(id);
         var separator = name.Memory.Span.IndexOf(':');
         return separator < 0 ? name : (StringOrMemory)name.Memory.Slice(separator + 1);
     }
 
     public StringOrMemory Prefix(int handle)
     {
-        var name = Name(handle);
+        var id = _columns.NameIds[handle];
+        if (id < GeneratedTagMetadata.KnownNameCount)
+            return default;
+        var name = _names.GetName(id);
         var separator = name.Memory.Span.IndexOf(':');
         return separator < 0 ? default : (StringOrMemory)name.Memory.Slice(0, separator);
     }
@@ -252,7 +272,7 @@ internal sealed class Arena : IDisposable
         )
             return;
         var retained = _constructionView?.SelectTextValue(text) ?? text;
-        AddChild(parent, AddLeaf("#text", retained, CompactNodeKind.Text), index);
+        AddChild(parent, AddTextLeaf(retained), index);
     }
 
     private bool ShouldRetainWhitespaceAt(int parent, int? index)
@@ -593,13 +613,104 @@ internal sealed class Arena : IDisposable
 
     private char[] OwnTextValues()
     {
-        var text = Allocate<char>(_textLength);
-        var position = 0;
-        for (var payload = 0; payload < (_payloads?.Count ?? 0); payload++)
-            OwnTextValue(ref _payloads![payload].Value, text, ref position);
-        for (var attribute = 0; attribute < (_attributes?.Count ?? 0); attribute++)
-            OwnTextValue(ref _attributes![attribute].Value, text, ref position);
-        return text;
+        var payloadCount = _payloads?.Count ?? 0;
+        var attributeCount = _attributes?.Count ?? 0;
+
+        // Values are slices of the tokenizer's append-only char buffer (one array per parse) or
+        // interned strings. Copying each backing array's used range once and rebasing the slices
+        // with offset arithmetic is much cheaper than a per-value copy; strings need no copy at all.
+        var regions = new ValueRegion[4];
+        var regionCount = 0;
+        var bulk = true;
+        for (var payload = 0; payload < payloadCount && bulk; payload++)
+            bulk = TrackValueRegion(_payloads![payload].Value, regions, ref regionCount);
+        for (var attribute = 0; attribute < attributeCount && bulk; attribute++)
+            bulk = TrackValueRegion(_attributes![attribute].Value, regions, ref regionCount);
+
+        if (bulk)
+        {
+            var total = 0L;
+            for (var region = 0; region < regionCount; region++)
+                total += regions[region].End - regions[region].Start;
+            // Gaps between retained values (filtered attributes, dropped whitespace) inflate the
+            // range; fall back to the dense copy when the overhead outgrows the retained text.
+            if (total <= Math.Max((long)_textLength * 2, 4096))
+            {
+                var text = Allocate<char>((int)Math.Max(total, 1));
+                var position = 0;
+                for (var region = 0; region < regionCount; region++)
+                {
+                    ref var current = ref regions[region];
+                    current.DestinationStart = position;
+                    current.Array.AsSpan(current.Start, current.End - current.Start).CopyTo(text.AsSpan(position));
+                    position += current.End - current.Start;
+                }
+                for (var payload = 0; payload < payloadCount; payload++)
+                    RebaseValue(ref _payloads![payload].Value, regions, regionCount, text);
+                for (var attribute = 0; attribute < attributeCount; attribute++)
+                    RebaseValue(ref _attributes![attribute].Value, regions, regionCount, text);
+                return text;
+            }
+        }
+
+        var dense = Allocate<char>(_textLength);
+        var densePosition = 0;
+        for (var payload = 0; payload < payloadCount; payload++)
+            OwnTextValue(ref _payloads![payload].Value, dense, ref densePosition);
+        for (var attribute = 0; attribute < attributeCount; attribute++)
+            OwnTextValue(ref _attributes![attribute].Value, dense, ref densePosition);
+        return dense;
+    }
+
+    private struct ValueRegion
+    {
+        public char[] Array;
+        public int Start;
+        public int End;
+        public int DestinationStart;
+    }
+
+    /// <summary>Extends the backing-array regions with one value; false forces the dense fallback.</summary>
+    private static bool TrackValueRegion(in StringOrMemory value, ValueRegion[] regions, ref int regionCount)
+    {
+        if (value.Length == 0)
+            return true;
+        if (!MemoryMarshal.TryGetArray(value.Memory, out var segment))
+            return MemoryMarshal.TryGetString(value.Memory, out _, out _, out _);
+        for (var region = 0; region < regionCount; region++)
+        {
+            ref var current = ref regions[region];
+            if (!ReferenceEquals(current.Array, segment.Array))
+                continue;
+            current.Start = Math.Min(current.Start, segment.Offset);
+            current.End = Math.Max(current.End, segment.Offset + segment.Count);
+            return true;
+        }
+        if (regionCount == regions.Length)
+            return false;
+        regions[regionCount++] = new ValueRegion
+        {
+            Array = segment.Array!,
+            Start = segment.Offset,
+            End = segment.Offset + segment.Count,
+        };
+        return true;
+    }
+
+    private static void RebaseValue(ref StringOrMemory value, ValueRegion[] regions, int regionCount, char[] text)
+    {
+        if (value.Length == 0 || !MemoryMarshal.TryGetArray(value.Memory, out var segment))
+            return;
+        for (var region = 0; region < regionCount; region++)
+        {
+            ref var current = ref regions[region];
+            if (!ReferenceEquals(current.Array, segment.Array))
+                continue;
+            value = new StringOrMemory(
+                text.AsMemory(current.DestinationStart + segment.Offset - current.Start, segment.Count)
+            );
+            return;
+        }
     }
 
     private static void OwnTextValue(ref StringOrMemory value, char[] destination, ref int position)
@@ -682,11 +793,15 @@ internal sealed class Arena : IDisposable
 
     public void SetOwnAttribute(int handle, StringOrMemory name, StringOrMemory value)
     {
-        var existing = GetAttribute(handle, name);
-        if (existing is not null)
+        // Resolve the name once; the duplicate check and the append share the ID.
+        var nameId = _names.GetId(name);
+        for (var existing = FirstAttribute(handle); existing >= 0; existing = _attributes![existing].Next)
         {
-            existing.Value = value;
-            return;
+            if (_attributes![existing].NameId == nameId)
+            {
+                SetAttributeValue(existing, value);
+                return;
+            }
         }
 
         _attributes ??= new PooledValueBuffer<MutableAttribute>(
@@ -697,7 +812,7 @@ internal sealed class Arena : IDisposable
         );
         var payloadIndex = EnsurePayload(handle);
         ref var payload = ref _payloads![payloadIndex];
-        var attributeHandle = _attributes.Add(new MutableAttribute(_names.GetId(name), value));
+        var attributeHandle = _attributes.Add(new MutableAttribute(nameId, value));
         _textLength = checked(_textLength + value.Length);
         var wrapper = new ArenaAttribute(this, attributeHandle);
         _attributeWrappers.Add(wrapper);

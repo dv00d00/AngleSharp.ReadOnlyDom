@@ -153,34 +153,19 @@ public static class CompactQuery
         }
 
         /// <summary>Filters by a whitespace-separated class token.</summary>
-        public ElementQuery WithClass(string token) =>
-            new(
-                _document,
-                _tagId,
-                _start,
-                _endExclusive,
-                true,
-                _document.ResolveNameId("class"),
-                token,
-                _hasAttr,
-                _attrId,
-                _attrValue
-            );
+        public ElementQuery WithClass(string token) => WithClass(_document.ResolveNameId("class"), token);
+
+        /// <summary>Filters by a class token using a previously resolved <c>class</c> attribute name ID.</summary>
+        public ElementQuery WithClass(ushort classNameId, string token) =>
+            new(_document, _tagId, _start, _endExclusive, true, classNameId, token, _hasAttr, _attrId, _attrValue);
 
         /// <summary>Filters by attribute presence or value equality.</summary>
         public ElementQuery WithAttribute(string name, string? value = null) =>
-            new(
-                _document,
-                _tagId,
-                _start,
-                _endExclusive,
-                _hasClass,
-                _classId,
-                _classToken,
-                true,
-                _document.ResolveNameId(name),
-                value
-            );
+            WithAttribute(_document.ResolveNameId(name), value);
+
+        /// <summary>Filters by a previously resolved attribute name ID.</summary>
+        public ElementQuery WithAttribute(ushort nameId, string? value = null) =>
+            new(_document, _tagId, _start, _endExclusive, _hasClass, _classId, _classToken, true, nameId, value);
 
         public Enumerator GetEnumerator() => new(this);
 
@@ -204,22 +189,19 @@ public static class CompactQuery
             if (!_hasClass && !_hasAttr)
                 return true;
 
-            var node = _document.GetNode(handle);
-            if (node.PayloadIndex < 0)
-                return false; // a filter is active but the element carries no attributes
+            // a filter is active but the element carries no attributes
+            if (!_document.TryGetAttributeRange(handle, out var first, out var count))
+                return false;
 
-            var payload = _document.GetPayload(node.PayloadIndex);
             var classOk = !_hasClass;
             var attrOk = !_hasAttr;
-            for (var a = payload.FirstAttribute; a < payload.FirstAttribute + payload.AttributeCount; a++)
+            for (var a = first; a < first + count; a++)
             {
-                var attr = _document.GetAttribute(a);
-                if (_hasClass && !classOk && attr.NameId == _classId)
-                    classOk = HasToken(_document.GetValue(attr.ValueStart, attr.ValueLength), _classToken);
-                if (_hasAttr && !attrOk && attr.NameId == _attrId)
-                    attrOk =
-                        _attrValue is null
-                        || _document.GetValue(attr.ValueStart, attr.ValueLength).SequenceEqual(_attrValue);
+                var nameId = _document.AttributeNameIdAt(a);
+                if (_hasClass && !classOk && nameId == _classId)
+                    classOk = HasToken(_document.AttributeValueSpanAt(a), _classToken);
+                if (_hasAttr && !attrOk && nameId == _attrId)
+                    attrOk = _attrValue is null || _document.AttributeValueSpanAt(a).SequenceEqual(_attrValue);
                 if (classOk && attrOk)
                     return true;
             }

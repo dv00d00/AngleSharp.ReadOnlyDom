@@ -117,6 +117,7 @@ public sealed class Html5LibTokenizerTests
     {
         var sink = new SpecSink();
         var tokenizer = new Utf8HtmlTokenizer(sink);
+        var input = new Utf8HtmlTokenizerInput(tokenizer);
         switch (initialState)
         {
             case "Data state":
@@ -141,8 +142,8 @@ public sealed class Html5LibTokenizerTests
         }
 
         for (var offset = 0; offset < utf8.Length; offset += segmentSize)
-            tokenizer.Write(utf8.AsMemory(offset, Math.Min(segmentSize, utf8.Length - offset)));
-        tokenizer.Complete();
+            input.Write(utf8.AsMemory(offset, Math.Min(segmentSize, utf8.Length - offset)));
+        input.Complete();
         return sink.Tokens.Select(static token => token.Canonical()).ToArray();
     }
 
@@ -270,6 +271,8 @@ public sealed class Html5LibTokenizerTests
 
     private sealed class SpecSink : IUtf8HtmlTokenSink
     {
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
+
         private readonly List<SpecToken> _tokens = [];
         private SpecToken? _startTag;
 
@@ -284,8 +287,15 @@ public sealed class Html5LibTokenizerTests
                 _tokens.Add(SpecToken.Text(value));
         }
 
-        public void StartTag(Utf8HtmlName name) =>
-            _startTag = SpecToken.StartTag(DecodeSemanticName(name), new Dictionary<string, string>(), false);
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
+        {
+            _startTag = SpecToken.StartTag(
+                DecodeSemanticName(name),
+                new Dictionary<string, string>(),
+                false
+            );
+            return Utf8HtmlStartTagCapture.Attributes;
+        }
 
         public bool WantsAttribute(Utf8HtmlName name) => true;
 

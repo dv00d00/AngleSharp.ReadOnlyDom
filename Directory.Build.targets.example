@@ -1,0 +1,32 @@
+<Project>
+  <PropertyGroup
+    Condition="'$(AngleSharpSourceRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\AngleSharp\src\AngleSharp\AngleSharp.Core.csproj')"
+  >
+    <AngleSharpSourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\AngleSharp'))</AngleSharpSourceRoot>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(AngleSharpSourceRoot)' != ''">
+    <!-- Keep the selected solution configuration for this out-of-solution project reference. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
+  </PropertyGroup>
+
+  <Target
+    Name="ValidateAngleSharpSourceRoot"
+    BeforeTargets="PrepareForBuild"
+    Condition="'$(AngleSharpSourceRoot)' != '' and !Exists('$(AngleSharpSourceRoot)\src\AngleSharp\AngleSharp.Core.csproj')"
+  >
+    <Error
+      Text="AngleSharpSourceRoot points to '$(AngleSharpSourceRoot)', but src\AngleSharp\AngleSharp.Core.csproj was not found there."
+    />
+  </Target>
+
+  <ItemGroup
+    Condition="'$(AngleSharpSourceRoot)' != '' and Exists('$(AngleSharpSourceRoot)\src\AngleSharp\AngleSharp.Core.csproj')"
+  >
+    <PackageReference Remove="AngleSharp" />
+    <ProjectReference
+      Include="$(AngleSharpSourceRoot)\src\AngleSharp\AngleSharp.Core.csproj"
+      SetConfiguration="Configuration=$(Configuration)"
+    />
+  </ItemGroup>
+</Project>

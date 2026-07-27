@@ -42,7 +42,7 @@ internal static class Utf8TokenSmoke
                 }
             }
             if (difference is null)
-                Console.WriteLine($"PASS {document.Name,-28} {utf8.Length,12:N0} bytes");
+                Console.WriteLine($"PASS {document.Name, -28} {utf8.Length, 12:N0} bytes");
             else
             {
                 failures++;
@@ -145,6 +145,8 @@ internal static class Utf8TokenSmoke
 
     private sealed class TraceSink : IUtf8HtmlTokenSink, IDisposable
     {
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
+
         private readonly StreamWriter _writer;
         private readonly ArrayBufferWriter<byte> _text = new(256);
 
@@ -158,7 +160,11 @@ internal static class Utf8TokenSmoke
             _text.Advance(utf8.Length);
         }
 
-        public void StartTag(Utf8HtmlName name) => StartTag(name.Verbatim);
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
+        {
+            StartTag(name.Verbatim);
+            return Utf8HtmlStartTagCapture.Attributes;
+        }
 
         public void StartTag(ReadOnlySpan<byte> name)
         {

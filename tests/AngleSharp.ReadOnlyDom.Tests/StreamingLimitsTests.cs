@@ -207,9 +207,12 @@ public sealed class StreamingLimitsTests
 
     private sealed class NullSink : IUtf8HtmlTokenSink
     {
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
+
         public void Text(ReadOnlySpan<byte> utf8) { }
 
-        public void StartTag(Utf8HtmlName name) { }
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name) =>
+            Utf8HtmlStartTagCapture.Attributes;
 
         public bool WantsAttribute(Utf8HtmlName name) => true;
 
