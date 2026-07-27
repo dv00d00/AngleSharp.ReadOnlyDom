@@ -299,10 +299,11 @@ public sealed class Utf8HtmlTokenizerTests
     {
         var sink = new RecordingSink();
         var tokenizer = new Utf8HtmlTokenizer(sink);
+        var input = new Utf8HtmlTokenizerInput(tokenizer);
         for (var offset = 0; offset < utf8.Length; offset += segmentSize)
-            tokenizer.Write(utf8.AsMemory(offset, Math.Min(segmentSize, utf8.Length - offset)));
-        tokenizer.Complete();
-        return (sink.Events, tokenizer.Counters);
+            input.Write(utf8.AsMemory(offset, Math.Min(segmentSize, utf8.Length - offset)));
+        input.Complete();
+        return (sink.Events, input.Counters);
     }
 
     private static async Task<(IReadOnlyList<string> Events, Utf8HtmlTokenizerCounters Counters)> TokenizeEncoded(
@@ -388,6 +389,8 @@ public sealed class Utf8HtmlTokenizerTests
 
     private sealed class RecordingSink : IUtf8HtmlTokenSink
     {
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
+
         private readonly List<string> _events = [];
 
         public IReadOnlyList<string> Events => _events;
@@ -402,7 +405,11 @@ public sealed class Utf8HtmlTokenizerTests
                 _events.Add("text:" + text);
         }
 
-        public void StartTag(Utf8HtmlName name) => StartTag(name.Verbatim);
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
+        {
+            StartTag(name.Verbatim);
+            return Utf8HtmlStartTagCapture.Attributes;
+        }
 
         public void StartTag(ReadOnlySpan<byte> name) => _events.Add("start:" + DecodeSemanticName(name));
 

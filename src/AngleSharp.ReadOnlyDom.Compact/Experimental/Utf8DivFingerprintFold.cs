@@ -1,6 +1,5 @@
 #if NET10_0
 using System.Buffers;
-using System.Text;
 
 namespace AngleSharp.ReadOnlyDom.Compact.Experimental;
 
@@ -15,6 +14,8 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
 {
     public const ulong OffsetBasis = 14695981039346656037UL;
     public const ulong Prime = 1099511628211UL;
+
+    public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
 
     private Frame[] _frames = ArrayPool<Frame>.Shared.Rent(32);
     private DivResult[] _results = ArrayPool<DivResult>.Shared.Rent(64);
@@ -58,7 +59,7 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
         }
     }
 
-    public void StartTag(Utf8HtmlName name)
+    public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
     {
         _pendingTagHash = name.SemanticHash;
         _pendingTagLength = name.Verbatim.Length;
@@ -69,6 +70,9 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
         _pendingClassHash = OffsetBasis;
         _pendingHasId = false;
         _pendingHasClass = false;
+        return _pendingIsDiv
+            ? Utf8HtmlStartTagCapture.Attributes
+            : Utf8HtmlStartTagCapture.None;
     }
 
     public bool WantsAttribute(Utf8HtmlName name) =>
@@ -119,29 +123,32 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
         if (_frameCount == 0 || _templateDepth != 0 || utf8.IsEmpty)
             return;
 
-        var remaining = utf8;
-        Span<char> chars = stackalloc char[2];
-        while (!remaining.IsEmpty)
+        var offset = 0;
+        while (offset < utf8.Length)
         {
             uint first;
             uint second = uint.MaxValue;
-            int consumed;
-            if (remaining[0] < 0x80)
+            var firstByte = utf8[offset];
+            if (firstByte < 0x80)
             {
-                first = remaining[0];
-                consumed = 1;
-            }
-            else if (Rune.DecodeFromUtf8(remaining, out var rune, out consumed) == OperationStatus.Done)
-            {
-                var written = rune.EncodeToUtf16(chars);
-                first = chars[0];
-                if (written == 2)
-                    second = chars[1];
+                first = firstByte;
+                offset++;
             }
             else
             {
-                first = '\uFFFD';
-                consumed = 1;
+                var length = TrustedUtf8.SequenceLength(firstByte);
+                var scalar = TrustedUtf8.DecodeScalar(utf8[offset..], length);
+                offset += length;
+                if (scalar <= 0xFFFF)
+                {
+                    first = scalar;
+                }
+                else
+                {
+                    scalar -= 0x10000;
+                    first = 0xD800 + (scalar >> 10);
+                    second = 0xDC00 + (scalar & 0x3FF);
+                }
             }
 
             for (var index = 0; index < _frameCount; index++)
@@ -153,7 +160,6 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
                 if (second != uint.MaxValue)
                     AppendChar(ref _results[resultIndex].TextHash, second);
             }
-            remaining = remaining[consumed..];
         }
     }
 
@@ -215,28 +221,29 @@ public sealed class Utf8DivFingerprintFold : IUtf8HtmlTokenSink, IDisposable
     private static ulong HashUtf8(ReadOnlySpan<byte> utf8)
     {
         var hash = OffsetBasis;
-        var remaining = utf8;
-        Span<char> chars = stackalloc char[2];
-        while (!remaining.IsEmpty)
+        var offset = 0;
+        while (offset < utf8.Length)
         {
-            if (remaining[0] < 0x80)
+            var firstByte = utf8[offset];
+            if (firstByte < 0x80)
             {
-                AppendChar(ref hash, remaining[0]);
-                remaining = remaining[1..];
+                AppendChar(ref hash, firstByte);
+                offset++;
                 continue;
             }
 
-            if (Rune.DecodeFromUtf8(remaining, out var rune, out var consumed) != OperationStatus.Done)
+            var length = TrustedUtf8.SequenceLength(firstByte);
+            var scalar = TrustedUtf8.DecodeScalar(utf8[offset..], length);
+            offset += length;
+            if (scalar <= 0xFFFF)
             {
-                AppendChar(ref hash, '\uFFFD');
-                remaining = remaining[1..];
+                AppendChar(ref hash, scalar);
                 continue;
             }
 
-            var written = rune.EncodeToUtf16(chars);
-            for (var index = 0; index < written; index++)
-                AppendChar(ref hash, chars[index]);
-            remaining = remaining[consumed..];
+            scalar -= 0x10000;
+            AppendChar(ref hash, 0xD800 + (scalar >> 10));
+            AppendChar(ref hash, 0xDC00 + (scalar & 0x3FF));
         }
         return hash;
     }

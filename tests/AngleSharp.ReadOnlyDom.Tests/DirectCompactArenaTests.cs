@@ -56,6 +56,26 @@ public sealed class CompactParserTests
     }
 
     [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task ResolvedNameIdsCanBeReusedAcrossQueriesAndAttributeReads(CompactDocumentLayout layout)
+    {
+        using var document = CompactParser
+            .CreateParser(layout: layout)
+            .ParseCompactDocument("<main class='selected wide' data-kind=sample>text</main>");
+        var mainName = document.Name("main");
+        var className = document.Name("class");
+        var dataKind = document.Name("data-kind");
+
+        var main = document.Elements(mainName).WithClass(className, "wide").WithAttribute(dataKind, "sample").First();
+
+        await Assert.That(main.Exists).IsTrue();
+        await Assert.That(main.HasClass(className, "selected")).IsTrue();
+        await Assert.That(main.HasAttr(dataKind)).IsTrue();
+        await Assert.That(main.Attr(dataKind).ToString()).IsEqualTo("sample");
+    }
+
+    [Test]
     public async Task Utf8StreamConstructsCompactDocumentThroughBoundedSource()
     {
         var source = Encoding.UTF8.GetBytes("<main data-kind=stream>café</main>");
@@ -70,6 +90,76 @@ public sealed class CompactParserTests
 
     [Test]
     public async Task CoreNodeIsExactlySixteenBytes() => await Assert.That(Unsafe.SizeOf<CompactNode>()).IsEqualTo(16);
+
+    [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task ValuesSurviveTokenizerBufferReuseAfterParsing(CompactDocumentLayout layout)
+    {
+        var source = new StringBuilder("<body>");
+        for (var i = 0; i < 64; i++)
+            source.Append("<div data-idx='item ").Append(i).Append(" &amp; more'>value ").Append(i).Append(" &lt;ok&gt;</div>");
+        source.Append("</body>");
+        var html = source.ToString();
+
+        using var document = CompactParser.CreateParser(layout: layout).ParseCompactDocument(html);
+        ScribbleSharedCharPool(html.Length);
+
+        var idxName = document.Name("data-idx");
+        var index = 0;
+        foreach (var div in document.Elements("div"))
+        {
+            await Assert.That(div.Attr(idxName).ToString()).IsEqualTo($"item {index} & more");
+            await Assert.That(div.Text()).IsEqualTo($"value {index} <ok>");
+            index++;
+        }
+        await Assert.That(index).IsEqualTo(64);
+    }
+
+    [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task SparselyRetainedTextSurvivesTokenizerBufferReuse(CompactDocumentLayout layout)
+    {
+        // Long whitespace-only runs pass through the tokenizer's shared buffer and are then
+        // dropped, so almost none of the buffered text is retained. This drives the freeze onto
+        // its dense-copy path while the previous test's dense retention keeps the bulk path covered.
+        var source = new StringBuilder("<body><div>a</div>");
+        for (var i = 0; i < 32; i++)
+            source.Append("<div>").Append(new string(' ', 512)).Append("</div>");
+        source.Append("<div>z</div></body>");
+        var html = source.ToString();
+
+        using var document = CompactParser.CreateParser(layout: layout).ParseCompactDocument(html);
+        ScribbleSharedCharPool(html.Length);
+
+        var texts = new List<string>();
+        foreach (var div in document.Elements("div"))
+        {
+            var text = div.Text();
+            if (text.Length != 0)
+                texts.Add(text);
+        }
+        await Assert.That(texts).IsEquivalentTo(["a", "z"]);
+    }
+
+    /// <summary>
+    /// Makes dangling slices visible: if the freeze left any value pointing into the tokenizer's
+    /// returned buffer, re-renting similarly sized arrays and overwriting them corrupts that data
+    /// before the assertions read it back.
+    /// </summary>
+    private static void ScribbleSharedCharPool(int sourceLength)
+    {
+        var rented = new List<char[]>();
+        for (var i = 0; i < 8; i++)
+        {
+            var buffer = System.Buffers.ArrayPool<char>.Shared.Rent(Math.Max(sourceLength, 1));
+            buffer.AsSpan().Fill('!');
+            rented.Add(buffer);
+        }
+        foreach (var buffer in rented)
+            System.Buffers.ArrayPool<char>.Shared.Return(buffer);
+    }
 
     [Test]
     [Arguments(CompactDocumentLayout.FrozenColumns)]
@@ -492,10 +582,16 @@ public sealed class CompactParserTests
         using var actual = CompactParser.CreateParser(layout: layout).ParseCompactDocument(html);
         var actualContent = actual.Elements("div").WithAttribute("id", "content").First();
         var actualTemplate = actual.Elements("template").First();
+        var expectedContent = expected.QuerySelector("#content")!.TextContent;
+        var destination = new char[actualContent.TextLength()];
 
-        await Assert.That(actualContent.Text()).IsEqualTo(expected.QuerySelector("#content")!.TextContent);
+        await Assert.That(actualContent.Text()).IsEqualTo(expectedContent);
+        await Assert.That(actualContent.TryWriteText(destination, out var written)).IsTrue();
+        await Assert.That(new string(destination, 0, written)).IsEqualTo(expectedContent);
         await Assert.That(actualTemplate.Text()).IsEqualTo(expected.QuerySelector("template")!.TextContent);
         await Assert.That(actualTemplate.TextLength()).IsEqualTo(0);
+        await Assert.That(actualTemplate.TryWriteText([], out var templateWritten)).IsTrue();
+        await Assert.That(templateWritten).IsEqualTo(0);
     }
 
     [Test]

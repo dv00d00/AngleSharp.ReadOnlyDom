@@ -66,6 +66,7 @@ public static class BackpressuredQueryExecution
         limits ??= HtmlStreamingLimits.Default;
         using var execution = plan.CreateExecution(state, limits);
         var tokenizer = new Utf8HtmlTokenizer(execution, limits);
+        var input = new Utf8HtmlTokenizerInput(tokenizer, limits: limits);
 
         while (true)
         {
@@ -83,7 +84,7 @@ public static class BackpressuredQueryExecution
                     for (var offset = 0; offset < segment.Length; offset += inputSliceSize)
                     {
                         var length = Math.Min(inputSliceSize, segment.Length - offset);
-                        tokenizer.Write(segment.Slice(offset, length));
+                        input.Write(segment.Slice(offset, length));
                         if (state.PublishableUtf8.Length >= flushThreshold)
                         {
                             await PublishAvailableAsync(writer, state, cancellationToken).ConfigureAwait(false);
@@ -100,7 +101,7 @@ public static class BackpressuredQueryExecution
                 break;
         }
 
-        tokenizer.Complete();
+        input.Complete();
         await PublishAvailableAsync(writer, state, cancellationToken).ConfigureAwait(false);
 
         return execution.State;

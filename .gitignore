@@ -202,4 +202,6 @@ pip-log.txt
 /benchmarks/**/BenchmarkDotNet.Artifacts/
 /benchmarks/**/temp/
 /BenchmarkDotNet.Artifacts/
+/BenchmarkDotNet.Artifacts.*/
 /artifacts/benchmarks/
+/Directory.Build.targets

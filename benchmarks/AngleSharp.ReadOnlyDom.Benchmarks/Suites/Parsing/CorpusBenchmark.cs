@@ -8,6 +8,7 @@ using BenchmarkDotNet.Toolchains.InProcess.Emit;
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
 [Config(typeof(Config))]
+[BenchmarkCategory("Parsing")]
 [MemoryDiagnoser]
 public class CorpusBenchmark
 {

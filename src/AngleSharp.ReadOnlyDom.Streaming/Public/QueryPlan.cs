@@ -1,4 +1,6 @@
-﻿using System.IO.Pipelines;
+﻿using System.Buffers;
+using System.IO.Pipelines;
+using System.Text;
 
 namespace AngleSharp.ReadOnlyDom.Streaming;
 
@@ -8,6 +10,8 @@ public sealed class QueryPlan<TState>
         QueryPlanNode<TState>[] nodes,
         string[] attributeNames,
         byte[][] attributeNamesUtf8,
+        CompiledNameIdentity[] attributeIdentities,
+        ulong compactAttributeMask,
         CompiledTagDispatch[] tagDispatch,
         QueryExplanation explanation
     )
@@ -15,6 +19,8 @@ public sealed class QueryPlan<TState>
         Nodes = nodes;
         AttributeNames = attributeNames;
         AttributeNamesUtf8 = attributeNamesUtf8;
+        AttributeIdentities = attributeIdentities;
+        CompactAttributeMask = compactAttributeMask;
         TagDispatch = tagDispatch;
         TextHandlerMask = nodes.Aggregate(
             0UL,
@@ -24,15 +30,24 @@ public sealed class QueryPlan<TState>
             0UL,
             static (bits, node) => node.Completed is null ? bits : bits | (1UL << node.Index)
         );
+        var parentMask = nodes.Aggregate(
+            0UL,
+            static (bits, node) => node.ParentIndex < 0 ? bits : bits | (1UL << node.ParentIndex)
+        );
+        var nodeMask = nodes.Length == 64 ? UInt64.MaxValue : (1UL << nodes.Length) - 1;
+        TerminalNodeMask = nodeMask & ~parentMask;
         Explanation = explanation;
     }
 
     internal QueryPlanNode<TState>[] Nodes { get; }
     internal string[] AttributeNames { get; }
     internal byte[][] AttributeNamesUtf8 { get; }
+    internal CompiledNameIdentity[] AttributeIdentities { get; }
+    internal ulong CompactAttributeMask { get; }
     internal CompiledTagDispatch[] TagDispatch { get; }
     internal ulong TextHandlerMask { get; }
     internal ulong CompletedHandlerMask { get; }
+    internal ulong TerminalNodeMask { get; }
 
     public QueryExplanation Explanation { get; }
 
@@ -42,13 +57,69 @@ public sealed class QueryPlan<TState>
     internal QueryExecution<TState> CreateExecution(TState state, HtmlStreamingLimits? limits = null) =>
         new(this, state, limits ?? HtmlStreamingLimits.Default);
 
-    public TState Execute(ReadOnlySpan<byte> utf8, TState state, HtmlStreamingLimits? limits = null)
+    /// <summary>Executes the plan over UTF-8, replacing malformed input with U+FFFD.</summary>
+    public TState Execute(ReadOnlySpan<byte> utf8, TState state, HtmlStreamingLimits? limits = null) =>
+        Execute(utf8, state, Utf8InputContract.ArbitraryBytes, limits);
+
+    /// <summary>
+    /// Executes the plan with an explicit input contract. Select <see cref="Utf8InputContract.WellFormedUtf8"/>
+    /// only when the complete input is guaranteed to be valid UTF-8.
+    /// </summary>
+    public TState Execute(
+        ReadOnlySpan<byte> utf8,
+        TState state,
+        Utf8InputContract inputContract,
+        HtmlStreamingLimits? limits = null
+    )
     {
+        if (inputContract is not (Utf8InputContract.ArbitraryBytes or Utf8InputContract.WellFormedUtf8))
+            throw new ArgumentOutOfRangeException(nameof(inputContract));
+
         limits ??= HtmlStreamingLimits.Default;
         using var execution = CreateExecution(state, limits);
         var tokenizer = new Utf8HtmlTokenizer(execution, limits);
+        if (inputContract == Utf8InputContract.WellFormedUtf8)
+        {
+            tokenizer.Write(utf8);
+            tokenizer.Complete();
+        }
+        else
+        {
+            var input = new Utf8HtmlTokenizerInput(tokenizer, limits: limits);
+            input.Write(utf8);
+            input.Complete();
+        }
+        return execution.State;
+    }
+
+    /// <summary>
+    /// Rewrites matching terminal query nodes into <paramref name="output"/> while copying every untouched source
+    /// byte verbatim. Arbitrary input is validated once before tokenization; callers that already guarantee valid
+    /// UTF-8 can explicitly select <see cref="Utf8InputContract.WellFormedUtf8"/> to skip that pass.
+    /// </summary>
+    public TState Rewrite(
+        ReadOnlySpan<byte> utf8,
+        IBufferWriter<byte> output,
+        TState state,
+        RewriteHandler<TState> handler,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes,
+        HtmlStreamingLimits? limits = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(handler);
+        if (inputContract == Utf8InputContract.ArbitraryBytes && !System.Text.Unicode.Utf8.IsValid(utf8))
+            throw new DecoderFallbackException("Query rewriting requires well-formed UTF-8 input.");
+        if (inputContract is not (Utf8InputContract.ArbitraryBytes or Utf8InputContract.WellFormedUtf8))
+            throw new ArgumentOutOfRangeException(nameof(inputContract));
+
+        limits ??= HtmlStreamingLimits.Default;
+        var collector = new Utf8RewriteCollector();
+        using var execution = new QueryExecution<TState>(this, state, limits, handler, collector);
+        var tokenizer = new Utf8HtmlTokenizer(execution, limits);
         tokenizer.Write(utf8);
         tokenizer.Complete();
+        collector.WriteTo(utf8, output);
         return execution.State;
     }
 
@@ -87,6 +158,7 @@ public sealed class QueryPlan<TState>
         limits ??= HtmlStreamingLimits.Default;
         using var execution = CreateExecution(state, limits);
         var tokenizer = new Utf8HtmlTokenizer(execution, limits);
+        var input = new Utf8HtmlTokenizerInput(tokenizer, limits: limits);
 
         while (true)
         {
@@ -104,7 +176,7 @@ public sealed class QueryPlan<TState>
                     for (var offset = 0; offset < segment.Length; offset += inputSliceSize)
                     {
                         var length = Math.Min(inputSliceSize, segment.Length - offset);
-                        tokenizer.Write(segment.Slice(offset, length));
+                        input.Write(segment.Slice(offset, length));
                         if (!writer.CanGetUnflushedBytes || writer.UnflushedBytes >= flushThreshold)
                             await FlushOutputAsync(writer, cancellationToken).ConfigureAwait(false);
                     }
@@ -119,7 +191,7 @@ public sealed class QueryPlan<TState>
                 break;
         }
 
-        tokenizer.Complete();
+        input.Complete();
         await FlushOutputAsync(writer, cancellationToken).ConfigureAwait(false);
         return execution.State;
     }

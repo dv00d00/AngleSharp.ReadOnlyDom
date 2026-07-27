@@ -31,16 +31,42 @@ public sealed class HtmlTextExtractorTests
         var output = new ArrayBufferWriter<byte>();
         var writer = new NormalizedUtf8Writer(output);
 
-        writer.Append(Encoding.UTF8.GetBytes("  Alpha\u00a0"));
+        writer.Append(Encoding.UTF8.GetBytes("  Alpha\u00a0\u2003"));
         writer.ParagraphBreak();
-        writer.Append("Beta"u8);
+        writer.Append("Beta Ж🙂"u8);
         writer.CellBreak();
         writer.Append("Gamma"u8);
         writer.LineBreak();
         writer.Append("Delta  "u8);
         writer.ParagraphBreak();
 
-        await Assert.That(Encoding.UTF8.GetString(output.WrittenSpan)).IsEqualTo("Alpha\n\nBeta\tGamma\nDelta");
+        await Assert.That(Encoding.UTF8.GetString(output.WrittenSpan))
+            .IsEqualTo("Alpha \u2003\n\nBeta Ж🙂\tGamma\nDelta");
+    }
+
+    [Test]
+    public async Task TrustedWhitespaceClassifierMatchesNormalizationContractForEveryScalar()
+    {
+        var mismatch = -1;
+        Span<byte> encoded = stackalloc byte[4];
+        for (var scalar = 0; scalar <= 0x10FFFF; scalar++)
+        {
+            if (scalar is >= 0xD800 and <= 0xDFFF)
+                continue;
+
+            var length = new Rune(scalar).EncodeToUtf8(encoded);
+            var expected = scalar is 0x09 or 0x0A or 0x0C or 0x0D or 0x20 or 0x00A0;
+            var actual =
+                TrustedUtf8.IndexOfWhiteSpace(encoded[..length], out var whitespaceLength) == 0
+                && whitespaceLength == length;
+            if (actual == expected)
+                continue;
+
+            mismatch = scalar;
+            break;
+        }
+
+        await Assert.That(mismatch).IsEqualTo(-1);
     }
 
     [Test]
@@ -87,7 +113,7 @@ public sealed class HtmlTextExtractorTests
     public async Task BufferedAndBackpressuredExtractionProduceIdenticalBytes()
     {
         var html = Encoding.UTF8.GetBytes(
-            "<html><body><h1>Hello</h1><p>From <b>streaming</b>.</p><table><tr><td>A</td><td>B</td></tr></table></body></html>"
+            "<html><body><h1>Hello\u00a0world</h1><p>From <b>streaming</b>.</p><table><tr><td>A</td><td>B</td></tr></table></body></html>"
         );
         var buffered = HtmlTextExtractor.Default.ExtractUtf8(html);
         await using var inputStream = new MemoryStream(html);
@@ -95,10 +121,11 @@ public sealed class HtmlTextExtractorTests
         var reader = PipeReader.Create(inputStream, new StreamPipeReaderOptions(leaveOpen: true));
         var writer = PipeWriter.Create(outputStream, new StreamPipeWriterOptions(leaveOpen: true));
 
-        await HtmlTextExtractor.Default.ExtractAsync(reader, writer, flushThreshold: 8, inputSliceSize: 3);
+        await HtmlTextExtractor.Default.ExtractAsync(reader, writer, flushThreshold: 8, inputSliceSize: 1);
         await reader.CompleteAsync();
         await writer.CompleteAsync();
 
+        await Assert.That(Encoding.UTF8.GetString(buffered)).IsEqualTo("Hello world\n\nFrom streaming.\n\nA\tB");
         await Assert.That(outputStream.ToArray().SequenceEqual(buffered)).IsTrue();
     }
 }

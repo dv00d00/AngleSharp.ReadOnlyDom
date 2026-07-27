@@ -7,6 +7,7 @@ using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
+[BenchmarkCategory("Extraction")]
 [MemoryDiagnoser]
 public class CompactExtractionPlanBenchmark
 {

@@ -19,11 +19,6 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
                 return RetainedMemoryRunner.Run(args.Skip(1).ToArray());
             }
 
-            if (args.Length > 0 && args[0].Equals("--collection-shapes", StringComparison.OrdinalIgnoreCase))
-            {
-                return CollectionShapeRunner.Run(args.Skip(1).ToArray());
-            }
-
 #if NET10_0
             if (args.Length > 0 && args[0].Equals("--utf8-token-smoke", StringComparison.OrdinalIgnoreCase))
             {
@@ -50,25 +45,19 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
                 return 0;
             }
 
-            if (args.Length > 0 && args[0].Equals("--compact-corpus", StringComparison.OrdinalIgnoreCase))
-            {
-                return CompactCorpusRunner.Run(args.Skip(1).ToArray());
-            }
-
             if (args.Length > 0 && args[0].Equals("--query-workloads", StringComparison.OrdinalIgnoreCase))
             {
                 return QueryWorkloadRunner.Run(args.Skip(1).ToArray());
             }
-
-            if (args.Length > 0 && args[0].Equals("--compact-trace", StringComparison.OrdinalIgnoreCase))
-            {
-                return CompactTraceRunner.Run(args.Skip(1).ToArray());
-            }
 #endif
 
+            var job =
+                Environment.GetEnvironmentVariable("AS_BENCH_LONG") == "1"
+                    ? Job.Default.WithId("Sustained").WithLaunchCount(1).WithWarmupCount(10).WithIterationCount(10)
+                    : Job.ShortRun;
             var config = ManualConfig
                 .Create(DefaultConfig.Instance)
-                .AddJob(Job.ShortRun.WithGcServer(true))
+                .AddJob(job.WithGcServer(true))
                 .AddColumn(StatisticColumn.OperationsPerSecond);
             if (Environment.GetEnvironmentVariable("AS_BENCH_HARDWARE_COUNTERS") == "1")
                 config.AddHardwareCounters(HardwareCounter.TotalCycles);
