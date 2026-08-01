@@ -493,7 +493,7 @@ internal sealed class Arena : IDisposable
             order: null,
             remap: null
         );
-        _columns.ReleaseConstructionColumns();
+        _columns.ReleaseConstructionColumns(options.HasFlag(CompactMetadataOptions.ParentLinks));
         _nodes?.Dispose();
         _attributeWrappers?.Dispose();
         return new CompactDocument(

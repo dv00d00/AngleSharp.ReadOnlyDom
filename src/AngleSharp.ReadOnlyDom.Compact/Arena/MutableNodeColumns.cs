@@ -60,8 +60,13 @@ internal sealed class MutableNodeColumns : IDisposable
         return handle;
     }
 
-    public void ReleaseConstructionColumns()
+    public void ReleaseConstructionColumns(bool retainParents)
     {
+        if (!retainParents)
+        {
+            Return(Parents, false);
+            Parents = [];
+        }
         Return(PreviousSiblings, false);
         PreviousSiblings = [];
         Return(LastChildren, false);
