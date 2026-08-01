@@ -1,4 +1,5 @@
 using System.Text;
+using AngleSharp.Html.Construction;
 using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.ReadOnlyDom.Compact.Arena;
@@ -105,7 +106,14 @@ public static class CompactParser
         if (options.HasFlag(CompactMetadataOptions.SourceLocations))
             effectiveParserOptions.IsKeepingSourceReferences = true;
         ApplyAttributeFilter(ref effectiveParserOptions, attributeFilter);
-        return new HtmlParser(effectiveParserOptions, CreateContext(options, hints, layout));
+        var factory = new ArenaConstructionFactory(
+            hints ?? new CompactParserHints(),
+            options.HasFlag(CompactMetadataOptions.SourceLocations),
+            options,
+            layout
+        );
+        var context = BrowsingContext.New(Configuration.Default.With(_ => factory));
+        return new ArenaHtmlParser(effectiveParserOptions, context, factory);
     }
 
     public static CompactDocument ParseCompactDocument(
@@ -156,9 +164,13 @@ public static class CompactParser
         CancellationToken cancel = default
     )
     {
-        var document = await parser
-            .ParseDocumentAsync<ArenaDocument, ArenaElement>(source, sourceMode, encoding, middleware, cancel)
-            .ConfigureAwait(false);
+        var document = parser is ArenaHtmlParser arenaParser
+            ? await arenaParser
+                .ParseArenaDocumentAsync(source, sourceMode, encoding, middleware, cancel)
+                .ConfigureAwait(false)
+            : await parser
+                .ParseDocumentAsync<ArenaDocument, ArenaElement>(source, sourceMode, encoding, middleware, cancel)
+                .ConfigureAwait(false);
         try
         {
             return document.CreateCompactDocument();
@@ -189,7 +201,9 @@ public static class CompactParser
 
     private static CompactDocument Parse(IHtmlParser parser, TextSource source, TokenizerMiddleware? middleware)
     {
-        var document = parser.ParseDocument<ArenaDocument, ArenaElement>(source, middleware);
+        var document = parser is ArenaHtmlParser arenaParser
+            ? arenaParser.ParseArenaDocument(source, middleware)
+            : parser.ParseDocument<ArenaDocument, ArenaElement>(source, middleware);
         try
         {
             return document.CreateCompactDocument();
@@ -198,5 +212,42 @@ public static class CompactParser
         {
             document.Dispose();
         }
+    }
+
+    private sealed class ArenaHtmlParser : HtmlParser
+    {
+        private readonly ArenaConstructionFactory _factory;
+
+        public ArenaHtmlParser(
+            HtmlParserOptions options,
+            IBrowsingContext context,
+            ArenaConstructionFactory factory
+        )
+            : base(options, context)
+        {
+            _factory = factory;
+        }
+
+        public ArenaDocument ParseArenaDocument(TextSource source, TokenizerMiddleware? middleware) =>
+            ParseDocument(
+                source,
+                (IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>)_factory,
+                middleware
+            );
+
+        public Task<ArenaDocument> ParseArenaDocumentAsync(
+            Stream source,
+            HtmlStreamSourceMode sourceMode,
+            Encoding? encoding,
+            TokenizerMiddleware? middleware,
+            CancellationToken cancel
+        ) => ParseDocumentAsync(
+            source,
+            sourceMode,
+            (IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>)_factory,
+            encoding,
+            middleware,
+            cancel
+        );
     }
 }
