@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("small", "full", "retained", "compact", "query", "extraction", "scraping", "utf8", "utf8-baseline", "plan", "long-streaming", "utf8-tokenizer", "utf8-rodom", "utf8-dom", "all")]
+    [ValidateSet("small", "full", "retained", "compact", "compact-stages", "query", "extraction", "scraping", "utf8", "utf8-baseline", "plan", "long-streaming", "utf8-tokenizer", "utf8-rodom", "utf8-dom", "all")]
     [string] $Tier = "all",
     [switch] $HardwareCounters
 )
@@ -54,6 +54,9 @@ function Invoke-Benchmark([string] $filter, [string] $name, [string] $corpusTier
 
 if ($Tier -in @("compact", "all")) {
     Invoke-Benchmark "*CompactBuildBenchmark*" "compact"
+}
+if ($Tier -in @("compact-stages", "all")) {
+    Invoke-Benchmark "*CompactBuildStageBenchmark*" "compact-stages"
 }
 if ($Tier -in @("plan", "extraction", "all")) {
     Invoke-Benchmark "*CompactExtractionPlanBenchmark*" "plan"

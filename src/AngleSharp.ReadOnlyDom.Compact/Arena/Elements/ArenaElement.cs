@@ -45,7 +45,7 @@ internal class ArenaElement : ArenaNode, IConstructableElement
 
     public virtual IConstructableNode ShallowCopy()
     {
-        var copy = Arena.CreateElement(LocalName, Prefix, NamespaceUri, Flags);
+        var copy = Arena.CreateElement(LocalName, Prefix, Flags);
         Arena.CopyAttributes(NodeHandle, copy.NodeHandle);
         return copy;
     }

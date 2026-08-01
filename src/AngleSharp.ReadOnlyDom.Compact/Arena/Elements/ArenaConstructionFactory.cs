@@ -37,14 +37,7 @@ internal sealed class ArenaConstructionFactory
         NodeFlags flags = NodeFlags.None
     )
     {
-        var canonical =
-            localName.Memory.Span.IndexOf('-') >= 0 ? NodeFlags.None : GeneratedTagMetadata.GetFlags(localName);
-        return document.Arena.CreateElement(
-            localName,
-            prefix,
-            NamespaceNames.HtmlUri,
-            flags | canonical | NodeFlags.HtmlMember
-        );
+        return document.Arena.CreateElement(localName, prefix, GetHtmlFlags(localName, flags));
     }
 
     public ArenaElement CreateNoScript(ArenaDocument document, bool scripting) => Create(document, TagNames.NoScript);
@@ -57,36 +50,12 @@ internal sealed class ArenaConstructionFactory
     ) => document.Arena.CreateLeaf(name, default, CompactNodeKind.Other);
 
     public IConstructableMathElement CreateMath(ArenaDocument document, StringOrMemory name = default)
-    {
-        var flags = NodeFlags.MathMember;
-        if (
-            name.Equals(TagNames.Mn)
-            || name.Equals(TagNames.Mo)
-            || name.Equals(TagNames.Mi)
-            || name.Equals(TagNames.Ms)
-            || name.Equals(TagNames.Mtext)
-        )
-        {
-            flags |= NodeFlags.MathTip | NodeFlags.Special | NodeFlags.Scoped;
-        }
-        else if (name.Equals(TagNames.AnnotationXml))
-        {
-            flags |= NodeFlags.Special | NodeFlags.Scoped;
-        }
-
-        return (IConstructableMathElement)
-            document.Arena.CreateElement(name, default, NamespaceNames.MathMlUri, flags, ElementMarker.Math);
-    }
+        => (IConstructableMathElement)
+            document.Arena.CreateElement(name, default, GetMathFlags(name), ElementMarker.Math);
 
     public IConstructableSvgElement CreateSvg(ArenaDocument document, StringOrMemory name = default)
-    {
-        var flags = NodeFlags.SvgMember;
-        if (name.Equals(TagNames.Desc) || name.Equals(TagNames.ForeignObject) || name.Equals(TagNames.Title))
-            flags |= NodeFlags.HtmlTip | NodeFlags.Special | NodeFlags.Scoped;
-
-        return (IConstructableSvgElement)
-            document.Arena.CreateElement(name, default, NamespaceNames.SvgUri, flags, ElementMarker.Svg);
-    }
+        => (IConstructableSvgElement)
+            document.Arena.CreateElement(name, default, GetSvgFlags(name), ElementMarker.Svg);
 
     public IConstructableMetaElement CreateMeta(ArenaDocument document) =>
         (IConstructableMetaElement)CreateKnown(document, TagNames.Meta, ElementMarker.Meta);
@@ -133,13 +102,7 @@ internal sealed class ArenaConstructionFactory
 
     private static ArenaElement CreateKnown(ArenaDocument document, StringOrMemory name, ElementMarker marker)
     {
-        return document.Arena.CreateElement(
-            name,
-            default,
-            NamespaceNames.HtmlUri,
-            GeneratedTagMetadata.GetFlags(name) | NodeFlags.HtmlMember,
-            marker
-        );
+        return document.Arena.CreateElement(name, default, GetHtmlFlags(name), marker);
     }
 
     ArenaHandle IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>.Create(
@@ -149,12 +112,10 @@ internal sealed class ArenaConstructionFactory
         NodeFlags flags
     )
     {
-        var canonical =
-            localName.Memory.Span.IndexOf('-') >= 0 ? NodeFlags.None : GeneratedTagMetadata.GetFlags(localName);
         var handle = document.Arena.CreateElementHandle(
             localName,
             prefix,
-            flags | canonical | NodeFlags.HtmlMember
+            GetHtmlFlags(localName, flags)
         );
         return new ArenaHandle(document.Arena, handle);
     }
@@ -179,13 +140,7 @@ internal sealed class ArenaConstructionFactory
     ArenaHandle IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>.CreateSvg(
         ArenaDocument document,
         StringOrMemory name
-    )
-    {
-        var flags = NodeFlags.SvgMember;
-        if (name.Equals(TagNames.Desc) || name.Equals(TagNames.ForeignObject) || name.Equals(TagNames.Title))
-            flags |= NodeFlags.HtmlTip | NodeFlags.Special | NodeFlags.Scoped;
-        return new ArenaHandle(document.Arena, document.Arena.CreateElementHandle(name, default, flags));
-    }
+    ) => new(document.Arena, document.Arena.CreateElementHandle(name, default, GetSvgFlags(name)));
 
     ArenaHandle IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>.CreateMeta(ArenaDocument document) =>
         CreateKnownHandle(document, TagNames.Meta);
@@ -251,12 +206,22 @@ internal sealed class ArenaConstructionFactory
 
     private static ArenaHandle CreateKnownHandle(ArenaDocument document, StringOrMemory name)
     {
-        var handle = document.Arena.CreateElementHandle(
-            name,
-            default,
-            GeneratedTagMetadata.GetFlags(name) | NodeFlags.HtmlMember
-        );
+        var handle = document.Arena.CreateElementHandle(name, default, GetHtmlFlags(name));
         return new ArenaHandle(document.Arena, handle);
+    }
+
+    private static NodeFlags GetHtmlFlags(StringOrMemory name, NodeFlags flags = NodeFlags.None)
+    {
+        var canonical = name.Memory.Span.IndexOf('-') >= 0 ? NodeFlags.None : GeneratedTagMetadata.GetFlags(name);
+        return flags | canonical | NodeFlags.HtmlMember;
+    }
+
+    private static NodeFlags GetSvgFlags(StringOrMemory name)
+    {
+        var flags = NodeFlags.SvgMember;
+        if (name.Equals(TagNames.Desc) || name.Equals(TagNames.ForeignObject) || name.Equals(TagNames.Title))
+            flags |= NodeFlags.HtmlTip | NodeFlags.Special | NodeFlags.Scoped;
+        return flags;
     }
 
     private static NodeFlags GetMathFlags(StringOrMemory name)

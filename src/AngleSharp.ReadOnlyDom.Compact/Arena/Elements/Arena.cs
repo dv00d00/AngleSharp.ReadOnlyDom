@@ -57,7 +57,6 @@ internal sealed class Arena : IDisposable
     public ArenaElement CreateElement(
         StringOrMemory name,
         StringOrMemory prefix,
-        StringOrMemory namespaceUri,
         NodeFlags flags,
         ElementMarker marker = ElementMarker.None
     )
@@ -163,6 +162,8 @@ internal sealed class Arena : IDisposable
     public NodeFlags Flags(int handle) => _columns.Flags[handle];
 
     public CompactNodeKind Kind(int handle) => _columns.Kinds[handle];
+
+    internal int NodeCount => _columns.Count;
 
     public int Parent(int handle) => _columns.Parents[handle];
 

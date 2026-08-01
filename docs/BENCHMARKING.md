@@ -9,6 +9,7 @@ Run a maintained tier from the repository root:
 ./scripts/bench.ps1 small
 ./scripts/bench.ps1 full
 ./scripts/bench.ps1 compact
+./scripts/bench.ps1 compact-stages
 ./scripts/bench.ps1 extraction
 ./scripts/bench.ps1 scraping
 ./scripts/bench.ps1 query
@@ -30,6 +31,7 @@ manual measurements, and correctness runners live under `Support`.
 | --- | --- | --- |
 | `small`, `full` | `CorpusBenchmark` | Mature AngleSharp versus read-only and compact DOM over checked-in pages |
 | `compact` | `CompactBuildBenchmark` | Read-only DOM versus compact layouts and parser reuse |
+| `compact-stages` | `CompactBuildStageBenchmark` | Arena setup/rent, tree construction, and frozen publication costs |
 | `extraction` | `CompactExtractionPlanBenchmark`, `LongSyntheticConstructionBenchmark`, `QqArticleScraperBenchmark` | Equivalent owned results across materialized and construction-time extraction |
 | `scraping` | `LongSyntheticConstructionBenchmark`, `QqArticleScraperBenchmark` | End-to-end target-near-EOF and real-page scraping |
 | `query` | `HttpClientStreamingQueryBenchmark`, `QueryWorkloadRunner` | Deterministic socket streaming plus repeated representative query workloads |
