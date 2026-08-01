@@ -1,6 +1,6 @@
-# AngleSharp generic construction gaps
+# AngleSharp generic construction notes
 
-## Foster parenting uses core DOM concrete types
+## Handle-oriented tree construction
 
 FsCheck differential testing against AngleSharp 1.5.2 reduced a mismatch to malformed table content such as:
 
@@ -11,12 +11,13 @@ FsCheck differential testing against AngleSharp 1.5.2 reduced a mismatch to malf
 The standard mutable DOM foster-parents `div` into `body` before `table`. A DOM built through
 `IDomConstructionElementFactory<TDocument, TElement>` places it outside `html`.
 
-`HtmlDomBuilder<TDocument, TElement>.AddElementWithFoster` checks `el is HtmlTemplateElement` and
-`el is HtmlTableElement`. Those are AngleSharp core concrete types, so a custom constructable element can never satisfy
-the checks. The generic path should use tag identity and flags, or construction capabilities, instead of core DOM types.
+The original `HtmlDomBuilder<TDocument, TElement>.AddElementWithFoster` checked `el is HtmlTemplateElement` and
+`el is HtmlTableElement`. Those AngleSharp core concrete types prevented a custom constructable element from matching
+mutable parser behavior.
 
-This is relevant to the opaque-handle construction sink considered by issue #6: a direct indexed DOM cannot match the
-mutable parser on foster-parenting cases until the generic builder removes these concrete-type assumptions.
+The handle-oriented `HtmlTreeBuilder<TDocument, TNode>` now uses parser flags and HTML tag identity instead. Compact parsing
+therefore handles foster parenting, templates, and formatting adoption directly through `ArenaHandle`, without a parallel
+object tree. Differential and smoke coverage retains the malformed-table case above as a regression contract.
 
 ## UTF-8 token-source adapter
 

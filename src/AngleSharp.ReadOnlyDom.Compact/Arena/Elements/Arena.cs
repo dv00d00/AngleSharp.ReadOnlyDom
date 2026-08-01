@@ -127,6 +127,8 @@ internal sealed class Arena : IDisposable
 
     public StringOrMemory Name(int handle) => _names.GetName(_columns.NameIds[handle]);
 
+    internal ushort NameId(int handle) => _columns.NameIds[handle];
+
     public StringOrMemory LocalName(int handle)
     {
         // Generated known names never contain ':'; only custom (prefixed) names need the scan.
