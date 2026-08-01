@@ -10,7 +10,7 @@ internal sealed class NameTable
     private readonly Dictionary<StringOrMemory, ushort> _ids = [];
 #endif
     private List<string>? _customNames;
-    
+
     public int CustomCount => _customNames?.Count ?? 0;
 
     public ushort GetId(StringOrMemory name)

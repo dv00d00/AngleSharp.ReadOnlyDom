@@ -29,7 +29,7 @@ internal class ArenaElement : ArenaNode, IConstructableElement
 
     public StringOrMemory GetAttribute(StringOrMemory _, StringOrMemory name)
     {
-        return Arena.GetAttribute(NodeHandle, name)?.Value ?? StringOrMemory.Empty;
+        return Arena.GetAttributeValue(NodeHandle, name);
     }
 
     public void SetAttributes(StructAttributes attributes)
@@ -39,7 +39,7 @@ internal class ArenaElement : ArenaNode, IConstructableElement
         Arena.CompleteAttributes(NodeHandle);
     }
 
-    public bool HasAttribute(StringOrMemory name) => Arena.GetAttribute(NodeHandle, name) is not null;
+    public bool HasAttribute(StringOrMemory name) => Arena.HasAttribute(NodeHandle, name);
 
     public void SetupElement() { }
 

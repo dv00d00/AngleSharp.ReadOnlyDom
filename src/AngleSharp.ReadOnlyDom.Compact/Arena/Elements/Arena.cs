@@ -830,10 +830,11 @@ internal sealed class Arena : IDisposable
         _columns.ChildCounts[handle] = 0;
     }
 
-    public void SetOwnAttribute(int handle, StringOrMemory name, StringOrMemory value)
+    public void SetOwnAttribute(int handle, StringOrMemory name, StringOrMemory value) =>
+        SetOwnAttribute(handle, _names.GetId(name), value);
+
+    private void SetOwnAttribute(int handle, ushort nameId, StringOrMemory value)
     {
-        // Resolve the name once; the duplicate check and the append share the ID.
-        var nameId = _names.GetId(name);
         for (var existing = FirstAttribute(handle); existing >= 0; existing = _attributes![existing].Next)
         {
             if (_attributes![existing].NameId == nameId)
@@ -846,14 +847,11 @@ internal sealed class Arena : IDisposable
         _attributes ??= new PooledValueBuffer<MutableAttribute>(
             ValidateCapacity(_hints.InitialAttributeCapacity, nameof(CompactParserHints.InitialAttributeCapacity))
         );
-        _attributeWrappers ??= new PooledReferenceBuffer<ArenaAttribute>(
-            ValidateCapacity(_hints.InitialAttributeCapacity, nameof(CompactParserHints.InitialAttributeCapacity))
-        );
         var payloadIndex = EnsurePayload(handle);
         ref var payload = ref _payloads![payloadIndex];
         var attributeHandle = _attributes.Add(new MutableAttribute(nameId, value));
         _textLength = checked(_textLength + value.Length);
-        _attributeWrappers.AddEmpty();
+        _attributeWrappers?.AddEmpty();
         if (payload.FirstAttribute < 0)
             payload.FirstAttribute = attributeHandle;
         else
@@ -865,11 +863,22 @@ internal sealed class Arena : IDisposable
 
     private ArenaAttribute AttributeNode(int handle)
     {
-        var wrapper = _attributeWrappers![handle];
+        var wrappers = _attributeWrappers;
+        if (wrappers is null)
+        {
+            wrappers = new PooledReferenceBuffer<ArenaAttribute>(
+                ValidateCapacity(_hints.InitialAttributeCapacity, nameof(CompactParserHints.InitialAttributeCapacity))
+            );
+            for (var i = 0; i < _attributes!.Count; i++)
+                wrappers.AddEmpty();
+            _attributeWrappers = wrappers;
+        }
+
+        var wrapper = wrappers[handle];
         if (wrapper is null)
         {
             wrapper = new ArenaAttribute(this, handle);
-            _attributeWrappers[handle] = wrapper;
+            wrappers[handle] = wrapper;
         }
         return wrapper;
     }
@@ -888,8 +897,11 @@ internal sealed class Arena : IDisposable
 
     public void CopyAttributes(int source, int destination)
     {
-        foreach (var attribute in Attributes(source))
-            SetOwnAttribute(destination, attribute.Name, attribute.Value);
+        var attributes = _attributes;
+        if (attributes is null)
+            return;
+        for (var attribute = FirstAttribute(source); attribute >= 0; attribute = attributes[attribute].Next)
+            SetOwnAttribute(destination, attributes[attribute].NameId, attributes[attribute].Value);
     }
 
     private void SetValue(int handle, StringOrMemory value)
