@@ -1,13 +1,18 @@
 #if NET10_0
 
+using System.IO.Pipelines;
 using System.Text;
 using AngleSharp.Html.Parser;
+using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.ReadOnlyDom.Compact;
 using AngleSharp.ReadOnlyDom.Filters;
 using AngleSharp.ReadOnlyDom.Html;
 using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.Text;
 using BenchmarkDotNet.Attributes;
 using AngleSharpDocument = AngleSharp.Dom.IDocument;
+using MutableDocument = AngleSharp.Dom.Document;
+using MutableElement = AngleSharp.Dom.Element;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
@@ -51,9 +56,20 @@ public class QqArticleScraperBenchmark
         _expected = AngleSharpDom();
 
         AssertEqual(nameof(AngleSharpScraperOptionsCss), AngleSharpScraperOptionsCss());
+        AssertEqual(nameof(AngleSharpUtf8Css), AngleSharpUtf8Css());
+        AssertEqual(nameof(AngleSharpUtf8BodyFilteredCss), AngleSharpUtf8BodyFilteredCss());
+        AssertEqual(nameof(AngleSharpUtf8QqSubtreesCss), AngleSharpUtf8QqSubtreesCss());
         AssertEqual(nameof(ReadOnlyMinimalBodyFiltered), ReadOnlyMinimalBodyFiltered());
+        AssertEqual(nameof(ReadOnlyUtf8BodyFiltered), ReadOnlyUtf8BodyFiltered());
+        AssertEqual(nameof(ReadOnlyUtf8QqSubtrees), ReadOnlyUtf8QqSubtrees());
         AssertEqual(nameof(CompactFrozenResolvedIds), CompactFrozenResolvedIds());
+        AssertEqual(nameof(CompactUtf8FrozenResolvedIds), CompactUtf8FrozenResolvedIds());
+        AssertEqual(nameof(CompactUtf8QqSubtrees), CompactUtf8QqSubtrees());
         AssertEqual(nameof(QueryCompiledUtf8Fold), QueryCompiledUtf8Fold());
+        AssertEqual(
+            nameof(QuerySegmented4KiBUtf8Fold),
+            QuerySegmented4KiBUtf8Fold().AsTask().GetAwaiter().GetResult()
+        );
         AssertEqual(nameof(QueryCompletedElementFold), QueryCompletedElementFold());
 
         Console.WriteLine(
@@ -61,7 +77,7 @@ public class QqArticleScraperBenchmark
                 + $"{_expected.Count:N0} article-link objects."
         );
     }
-    
+
     public List<Article> AngleSharpDom()
     {
         using var document = _angleSharp.ParseDocument(_html);
@@ -98,6 +114,37 @@ public class QqArticleScraperBenchmark
         return output;
     }
 
+    [Benchmark]
+    public List<Article> AngleSharpUtf8Css()
+    {
+        using var document = _angleSharpScraper.ParseDocument(
+            new TextSource(new ReadOnlyByteTextSource(_utf8, Encoding.UTF8))
+        );
+        return ScrapeAngleSharpCss(document);
+    }
+
+    [Benchmark]
+    public List<Article> AngleSharpUtf8BodyFilteredCss()
+    {
+        var filter = new FirstTagAndAllChildren("body");
+        using var document = _angleSharpScraper.ParseDocument<MutableDocument, MutableElement>(
+            new TextSource(new ReadOnlyByteTextSource(_utf8, Encoding.UTF8)),
+            filter.Loop
+        );
+        return ScrapeAngleSharpCss(document);
+    }
+
+    [Benchmark]
+    public List<Article> AngleSharpUtf8QqSubtreesCss()
+    {
+        var filter = new QqNewsListTokenFilter();
+        using var document = _angleSharpScraper.ParseDocument<MutableDocument, MutableElement>(
+            new TextSource(new ReadOnlyByteTextSource(_utf8, Encoding.UTF8)),
+            filter.Loop
+        );
+        return ScrapeAngleSharpCss(document);
+    }
+
     private static string RepeatBody(string source, int copies)
     {
         var bodyOpen = source.IndexOf("<body", StringComparison.OrdinalIgnoreCase);
@@ -124,10 +171,47 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
+    public List<Article> ReadOnlyUtf8BodyFiltered()
+    {
+        var filter = new FirstTagAndAllChildren("body");
+        using var document = _readOnlyMinimal.ParseReadOnlyDocument(_utf8, Encoding.UTF8, filter.Loop);
+        return ScrapeReadOnly(document);
+    }
+
+    [Benchmark]
+    public List<Article> ReadOnlyUtf8QqSubtrees()
+    {
+        var filter = new QqNewsListTokenFilter();
+        using var document = _readOnlyMinimal.ParseReadOnlyDocument(_utf8, Encoding.UTF8, filter.Loop);
+        return ScrapeReadOnly(document);
+    }
+
+    [Benchmark]
     public List<Article> CompactFrozenResolvedIds()
     {
         var filter = new FirstTagAndAllChildren("body");
         using var document = _compact.ParseCompactDocument(_html, filter.Loop);
+        return ScrapeCompact(document);
+    }
+
+    [Benchmark]
+    public List<Article> CompactUtf8FrozenResolvedIds()
+    {
+        var filter = new FirstTagAndAllChildren("body");
+        using var document = _compact.ParseCompactDocument(_utf8, Encoding.UTF8, filter.Loop);
+        return ScrapeCompact(document);
+    }
+
+    [Benchmark]
+    public List<Article> CompactUtf8QqSubtrees()
+    {
+        var filter = new QqNewsListTokenFilter();
+        using var document = _compact.ParseCompactDocument(_utf8, Encoding.UTF8, filter.Loop);
+        return ScrapeCompact(document);
+    }
+
+    private static List<Article> ScrapeCompact(CompactDocument document)
+    {
         var ul = document.Name("ul");
         var li = document.Name("li");
         var anchor = document.Name("a");
@@ -162,15 +246,38 @@ public class QqArticleScraperBenchmark
                 }
             }
         }
-
         return output;
     }
-    
+
     [Benchmark]
     public List<Article> QueryCompiledUtf8Fold()
     {
         var state = ArticleQuery.Execute(_utf8, new ArticleStateMachine(), Utf8InputContract.WellFormedUtf8);
         return state.DetachResults();
+    }
+
+    [Benchmark]
+    public async ValueTask<List<Article>> QuerySegmented4KiBUtf8Fold()
+    {
+        var pipe = new Pipe(
+            new PipeOptions(
+                pauseWriterThreshold: 16 * 1024,
+                resumeWriterThreshold: 8 * 1024,
+                minimumSegmentSize: 4 * 1024,
+                useSynchronizationContext: false
+            )
+        );
+        var producer = WriteSegmentsAsync(pipe.Writer, _utf8, 4 * 1024);
+        try
+        {
+            var state = await ArticleQuery.ExecuteAsync(pipe.Reader, new ArticleStateMachine());
+            await producer;
+            return state.DetachResults();
+        }
+        finally
+        {
+            await pipe.Reader.CompleteAsync();
+        }
     }
 
     [Benchmark]
@@ -222,17 +329,17 @@ public class QqArticleScraperBenchmark
     private static QueryPlan<ArticleStateMachine> CreateArticleQuery()
     {
         var list = StreamQuery.For<ArticleStateMachine>("ul").Class("news-list");
-        
+
         var card = list.Descendant("li").Attribute("dt-eid", "em_item_article")
             .OnStart(static (ref state, in element) => state.StartCard(element), "dt-params")
             .OnEnd(static (ref state) => state.EndCard());
-        
+
         var link = card.Descendant("a")
             .Attribute("href")
             .OnStart(static (ref state, in element) => state.StartLink(element), "href")
             .OnText(static (ref state, text) => state.AppendText(text))
             .OnEnd(static (ref state) => state.EndLink());
-        
+
         link.Descendant("img").OnStart(static (ref state, in element) => state.Image(element), "src", "alt");
         return list.Compile();
     }
@@ -339,15 +446,136 @@ public class QqArticleScraperBenchmark
         new()
         {
             IsKeepingSourceReferences = trackSources,
+            IsNotSupportingFrames = true,
             SkipComments = true,
             SkipProcessingInstructions = true,
             SkipScriptText = true,
             SkipRawText = true,
+            SkipRCDataText = true,
             SkipPlaintext = true,
             SkipCDATA = true,
             DisableElementPositionTracking = !trackSources,
             ShouldEmitAttribute = static (ref _, name) => name.Span is "class" or "dt-eid" or "dt-params" or "href" or "src" or "alt",
         };
+
+    /// <summary>
+    /// Scraper-specific upper bound: the tokenizer still reads the full input, but the tree builder
+    /// sees only ul.news-list subtrees. This is deliberately not a general-purpose DOM parse.
+    /// </summary>
+    private struct QqNewsListTokenFilter
+    {
+        private int _depth;
+
+        public TokenConsumptionResult Loop(ref StructHtmlToken token, TokenConsumer next)
+        {
+            if (_depth == 0)
+            {
+                if (!IsNewsList(ref token))
+                    return TokenConsumptionResult.Continue;
+
+                _depth = 1;
+                next(ref token);
+                return TokenConsumptionResult.Continue;
+            }
+
+            var opensScope = OpensScope(ref token);
+            var closesScope = token.Type == HtmlTokenType.EndTag;
+            next(ref token);
+
+            if (opensScope)
+                _depth++;
+            else if (closesScope)
+                _depth--;
+
+            return TokenConsumptionResult.Continue;
+        }
+
+        private static bool IsNewsList(ref StructHtmlToken token)
+        {
+            if (
+                token.Type != HtmlTokenType.StartTag
+                || !token.Name.Memory.Span.SequenceEqual("ul".AsSpan())
+            )
+                return false;
+
+            for (var index = 0; index < token.Attributes.Count; index++)
+            {
+                var attribute = token.Attributes[index];
+                if (
+                    attribute.Name.Memory.Span.SequenceEqual("class".AsSpan())
+                    && ContainsHtmlClass(attribute.Value.Memory.Span, "news-list")
+                )
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool OpensScope(ref StructHtmlToken token)
+        {
+            if (token.Type != HtmlTokenType.StartTag || token.IsSelfClosing)
+                return false;
+
+            var name = token.Name.Memory.Span;
+            return !(
+                name
+                    is "area"
+                        or "base"
+                        or "br"
+                        or "col"
+                        or "embed"
+                        or "hr"
+                        or "img"
+                        or "input"
+                        or "link"
+                        or "meta"
+                        or "param"
+                        or "source"
+                        or "track"
+                        or "wbr"
+            );
+        }
+
+        private static bool ContainsHtmlClass(ReadOnlySpan<char> value, ReadOnlySpan<char> expected)
+        {
+            while (!value.IsEmpty)
+            {
+                var start = 0;
+                while (start < value.Length && IsHtmlSpace(value[start]))
+                    start++;
+                value = value[start..];
+                if (value.IsEmpty)
+                    return false;
+
+                var length = 0;
+                while (length < value.Length && !IsHtmlSpace(value[length]))
+                    length++;
+                if (value[..length].SequenceEqual(expected))
+                    return true;
+                value = value[length..];
+            }
+
+            return false;
+        }
+
+        private static bool IsHtmlSpace(char value) => value is '\t' or '\n' or '\f' or '\r' or ' ';
+    }
+
+    private static async ValueTask WriteSegmentsAsync(PipeWriter writer, byte[] input, int segmentSize)
+    {
+        try
+        {
+            for (var offset = 0; offset < input.Length; offset += segmentSize)
+            {
+                var length = Math.Min(segmentSize, input.Length - offset);
+                await writer.WriteAsync(input.AsMemory(offset, length));
+            }
+        }
+        finally
+        {
+            await writer.CompleteAsync();
+        }
+    }
 
     public sealed record Article(string Title, string Url, string? ImageUrl, string? ImageAlt, string CardMetadata);
 
@@ -394,7 +622,7 @@ public class QqArticleScraperBenchmark
         {
             if (_href is not null)
                 AddArticle(_results, _title.ToString(), _href, _imageUrl, _imageAlt, _cardMetadata);
-            
+
             _href = null;
             _imageUrl = null;
             _imageAlt = null;

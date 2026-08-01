@@ -53,12 +53,18 @@ sections and a small result near EOF. Every lane consumes the complete input, so
 materialization rather than early termination.
 
 `QqArticleScraperBenchmark` has two parameters: the checked-in 125 KB QQ page producing 16 owned articles and a 4x body
-variant producing 64. Its nine lanes retain only architecture-level comparisons:
+variant producing 64. Its 13 lanes separate general architecture comparisons from a deliberately scraper-specific
+upper bound:
 
-- default and scraper-configured mature AngleSharp;
-- explicit UTF-8 memory and bounded streaming AngleSharp input;
-- filtered read-only DOM and identity-resolved compact DOM;
-- native UTF-8 fold, compiled callback query, and completed-element query.
+- scraper-configured mature AngleSharp from UTF-16 and UTF-8, with body and `ul.news-list` token filters;
+- filtered read-only DOM and identity-resolved compact DOM from UTF-16 and UTF-8;
+- the same `ul.news-list` pre-DOM filter applied to mutable, read-only, and compact builders;
+- contiguous and bounded 4 KiB segmented UTF-8 folds, plus the completed-element query.
+
+The `ul.news-list` lanes are QQ-specific by design: the tokenizer consumes the complete input, but only matching
+subtrees reach the tree builder. They measure the maximum benefit of construction-time filtering, not a general DOM
+parse. The segmented fold uses a bounded `Pipe` (16 KiB pause / 8 KiB resume thresholds) so it includes real async
+producer-consumer and segment-boundary costs.
 
 Global setup requires every lane to return the same `List<Article>` values.
 
