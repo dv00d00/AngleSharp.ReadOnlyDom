@@ -53,11 +53,12 @@ sections and a small result near EOF. Every lane consumes the complete input, so
 materialization rather than early termination.
 
 `QqArticleScraperBenchmark` has two parameters: the checked-in 125 KB QQ page producing 16 owned articles and a 4x body
-variant producing 64. Its 13 lanes separate general architecture comparisons from a deliberately scraper-specific
-upper bound:
+variant producing 64. Its 16 lanes are categorized as `Natural`, `Optimized`, or `QqSpecificUpperBound` so ordinary
+public-API usage is not conflated with a deliberately scraper-specific maximum:
 
-- scraper-configured mature AngleSharp from UTF-16 and UTF-8, with body and `ul.news-list` token filters;
-- filtered read-only DOM and identity-resolved compact DOM from UTF-16 and UTF-8;
+- natural stock AngleSharp + CSS, unfiltered read-only DOM, unfiltered compact DOM, and completed-element streaming;
+- scraper-configured AngleSharp from UTF-16 and UTF-8, with an optional body token filter;
+- optimized read-only DOM and identity-resolved compact DOM from UTF-16 and UTF-8;
 - the same `ul.news-list` pre-DOM filter applied to mutable, read-only, and compact builders;
 - contiguous and bounded 4 KiB segmented UTF-8 folds, plus the completed-element query.
 
