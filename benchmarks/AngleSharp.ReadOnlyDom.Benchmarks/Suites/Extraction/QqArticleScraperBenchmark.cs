@@ -28,7 +28,12 @@ public class QqArticleScraperBenchmark
     private static readonly QueryPlan<ArticleStateMachine> CompletedArticleQuery = CreateCompletedArticleQuery();
     private readonly HtmlParser _angleSharp = new();
     private readonly HtmlParser _angleSharpScraper = new(CreateOptions(trackSources: false));
+    private readonly HtmlParser _readOnlyNatural = new(
+        new HtmlParserOptions(),
+        ReadOnlyParser.CreateContext(ReadOnlyMetadataProfile.Minimal)
+    );
     private readonly HtmlParser _readOnlyMinimal = CreateReadOnlyParser(ReadOnlyMetadataProfile.Minimal);
+    private readonly HtmlParser _compactNatural = CompactParser.CreateParser();
 
     private readonly HtmlParser _compact = CompactParser.CreateParser(
         parserOptions: CreateOptions(trackSources: false)
@@ -59,9 +64,11 @@ public class QqArticleScraperBenchmark
         AssertEqual(nameof(AngleSharpUtf8Css), AngleSharpUtf8Css());
         AssertEqual(nameof(AngleSharpUtf8BodyFilteredCss), AngleSharpUtf8BodyFilteredCss());
         AssertEqual(nameof(AngleSharpUtf8QqSubtreesCss), AngleSharpUtf8QqSubtreesCss());
+        AssertEqual(nameof(ReadOnlyNaturalQuery), ReadOnlyNaturalQuery());
         AssertEqual(nameof(ReadOnlyMinimalBodyFiltered), ReadOnlyMinimalBodyFiltered());
         AssertEqual(nameof(ReadOnlyUtf8BodyFiltered), ReadOnlyUtf8BodyFiltered());
         AssertEqual(nameof(ReadOnlyUtf8QqSubtrees), ReadOnlyUtf8QqSubtrees());
+        AssertEqual(nameof(CompactNaturalQuery), CompactNaturalQuery());
         AssertEqual(nameof(CompactFrozenResolvedIds), CompactFrozenResolvedIds());
         AssertEqual(nameof(CompactUtf8FrozenResolvedIds), CompactUtf8FrozenResolvedIds());
         AssertEqual(nameof(CompactUtf8QqSubtrees), CompactUtf8QqSubtrees());
@@ -78,13 +85,16 @@ public class QqArticleScraperBenchmark
         );
     }
 
+    [Benchmark(Baseline = true)]
+    [BenchmarkCategory("Natural")]
     public List<Article> AngleSharpDom()
     {
         using var document = _angleSharp.ParseDocument(_html);
         return ScrapeAngleSharpCss(document);
     }
 
-    [Benchmark(Baseline = true)]
+    [Benchmark]
+    [BenchmarkCategory("Optimized")]
     public List<Article> AngleSharpScraperOptionsCss()
     {
         using var document = _angleSharpScraper.ParseDocument(_html);
@@ -115,6 +125,7 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
+    [BenchmarkCategory("Optimized")]
     public List<Article> AngleSharpUtf8Css()
     {
         using var document = _angleSharpScraper.ParseDocument(
@@ -124,6 +135,7 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
+    [BenchmarkCategory("Optimized")]
     public List<Article> AngleSharpUtf8BodyFilteredCss()
     {
         var filter = new FirstTagAndAllChildren("body");
@@ -135,6 +147,7 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
+    [BenchmarkCategory("QqSpecificUpperBound")]
     public List<Article> AngleSharpUtf8QqSubtreesCss()
     {
         var filter = new QqNewsListTokenFilter();
@@ -163,6 +176,15 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
+    [BenchmarkCategory("Natural")]
+    public List<Article> ReadOnlyNaturalQuery()
+    {
+        using var document = _readOnlyNatural.ParseReadOnlyDocument(_html);
+        return ScrapeReadOnly(document);
+    }
+
+    [Benchmark]
+    [BenchmarkCategory("Optimized")]
     public List<Article> ReadOnlyMinimalBodyFiltered()
     {
         var filter = new FirstTagAndAllChildren("body");
@@ -171,6 +193,7 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
+    [BenchmarkCategory("Optimized")]
     public List<Article> ReadOnlyUtf8BodyFiltered()
     {
         var filter = new FirstTagAndAllChildren("body");
@@ -179,6 +202,7 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
+    [BenchmarkCategory("QqSpecificUpperBound")]
     public List<Article> ReadOnlyUtf8QqSubtrees()
     {
         var filter = new QqNewsListTokenFilter();
@@ -187,6 +211,15 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
+    [BenchmarkCategory("Natural")]
+    public List<Article> CompactNaturalQuery()
+    {
+        using var document = _compactNatural.ParseCompactDocument(_html);
+        return ScrapeCompact(document);
+    }
+
+    [Benchmark]
+    [BenchmarkCategory("Optimized")]
     public List<Article> CompactFrozenResolvedIds()
     {
         var filter = new FirstTagAndAllChildren("body");
@@ -195,6 +228,7 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
+    [BenchmarkCategory("Optimized")]
     public List<Article> CompactUtf8FrozenResolvedIds()
     {
         var filter = new FirstTagAndAllChildren("body");
@@ -203,6 +237,7 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
+    [BenchmarkCategory("QqSpecificUpperBound")]
     public List<Article> CompactUtf8QqSubtrees()
     {
         var filter = new QqNewsListTokenFilter();
@@ -250,6 +285,7 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
+    [BenchmarkCategory("Optimized")]
     public List<Article> QueryCompiledUtf8Fold()
     {
         var state = ArticleQuery.Execute(_utf8, new ArticleStateMachine(), Utf8InputContract.WellFormedUtf8);
@@ -257,6 +293,7 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
+    [BenchmarkCategory("Optimized")]
     public async ValueTask<List<Article>> QuerySegmented4KiBUtf8Fold()
     {
         var pipe = new Pipe(
@@ -281,6 +318,7 @@ public class QqArticleScraperBenchmark
     }
 
     [Benchmark]
+    [BenchmarkCategory("Natural")]
     public List<Article> QueryCompletedElementFold()
     {
         var state = CompletedArticleQuery.Execute(_utf8, new ArticleStateMachine(), Utf8InputContract.WellFormedUtf8);
