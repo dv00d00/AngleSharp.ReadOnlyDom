@@ -511,7 +511,7 @@ public class TopLevelSmoke
             );
             foreach (var element in missing)
             {
-                TestContext.Current!.Output.WriteLine(element.SourceReference!.ToString());
+                TestContext.Current!.Output.WriteLine(element.SourceReference?.ToString() ?? "<unknown source>");
                 TestContext.Current!.Output.WriteLine(element.OuterHtml);
                 TestContext.Current!.Output.WriteLine("=============================");
             }
@@ -543,7 +543,7 @@ public class TopLevelSmoke
             );
             foreach (var element in missing)
             {
-                TestContext.Current!.Output.WriteLine(element.SourceReference!.ToString());
+                TestContext.Current!.Output.WriteLine(element.SourceReference?.ToString() ?? "<unknown source>");
                 TestContext.Current!.Output.WriteLine(element.OuterHtml);
                 TestContext.Current!.Output.WriteLine("=============================");
             }
@@ -596,7 +596,7 @@ public class TopLevelSmoke
             );
             foreach (var element in missing)
             {
-                TestContext.Current!.Output.WriteLine(element.SourceReference!.ToString());
+                TestContext.Current!.Output.WriteLine(element.SourceReference?.ToString() ?? "<unknown source>");
                 TestContext.Current!.Output.WriteLine(element.OuterHtml);
                 TestContext.Current!.Output.WriteLine("=============================");
             }
