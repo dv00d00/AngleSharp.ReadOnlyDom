@@ -291,8 +291,7 @@ public sealed class CompactDocument : IDisposable
                 handle = contentEnd - 1;
                 continue;
             }
-            var node = GetNode(handle);
-            if (node.Kind == CompactNodeKind.Element && node.NameId == nameId)
+            if (KindAt(handle) == CompactNodeKind.Element && NameIdAt(handle) == nameId)
                 count++;
         }
         return count;
@@ -428,12 +427,12 @@ public sealed class CompactDocument : IDisposable
     {
         for (var handle = 0; handle < _nodeCount; handle++)
         {
-            if (GetNode(handle).NameId == id)
+            if (NameIdAt(handle) == id)
                 return true;
         }
         for (var attribute = 0; attribute < _attributeCount; attribute++)
         {
-            if (GetAttribute(attribute).NameId == id)
+            if (AttributeNameIdAt(attribute) == id)
                 return true;
         }
         return false;
