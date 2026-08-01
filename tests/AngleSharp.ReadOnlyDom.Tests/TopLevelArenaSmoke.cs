@@ -7,7 +7,7 @@ namespace AngleSharp.Readonly.Tests;
 
 public class TopLevelArenaSmoke
 {
-    private const string BaseDir = @".\temp\";
+    private static readonly string BaseDir = Path.Combine(AppContext.BaseDirectory, "temp");
 
     private static readonly ConcurrentDictionary<string, string> FileContents = new();
     private static readonly ConcurrentDictionary<string, IHtmlDocument> ParsedMutableDocs = new();
@@ -22,7 +22,7 @@ public class TopLevelArenaSmoke
     ];
 
     private static string GetHtml(string fileName) =>
-        FileContents.GetOrAdd(fileName, static fileName => File.ReadAllText(BaseDir + fileName));
+        FileContents.GetOrAdd(fileName, static fileName => File.ReadAllText(Path.Combine(BaseDir, fileName)));
 
     private static (IHtmlDocument Mutable, CompactDocument Arena) GetDocs(
         string fileName,
