@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using AngleSharp.Common;
+using AngleSharp.Html.Construction;
 using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.ReadOnlyDom.Compact.Arena;
@@ -283,6 +284,7 @@ public sealed class CompactAggregatePlan
 {
     private readonly CompactAggregateSelector _scope;
     private readonly CompactAggregateFieldDefinition[] _fields;
+    private readonly ArenaConstructionFactory _factory;
     private readonly string[] _retainedAttributes;
     private readonly IBrowsingContext _context;
     private readonly HtmlParserOptions _parserOptions;
@@ -299,14 +301,14 @@ public sealed class CompactAggregatePlan
         Requirements = BuildRequirements(scope, fields);
         _retainedAttributes = [.. Requirements.RetainedAttributes];
 
-        var factory = new ArenaConstructionFactory(
+        _factory = new ArenaConstructionFactory(
             new CompactParserHints(),
             trackSourceReferences: false,
             CompactMetadataOptions.None,
             CompactDocumentLayout.FrozenColumns,
             new CompactAggregateDefinition(this)
         );
-        _context = BrowsingContext.New(Configuration.Default.With(_ => factory));
+        _context = BrowsingContext.New(Configuration.Default.With(_ => _factory));
         _parserOptions = CompactParser.CreateParserOptions(CompactMetadataOptions.None);
         _parserOptions.ShouldEmitAttribute = ShouldRetainAttribute;
     }
@@ -326,7 +328,11 @@ public sealed class CompactAggregatePlan
             next(ref token);
             return TokenConsumptionResult.Continue;
         };
-        var document = parser.ParseDocument<ArenaDocument, ArenaElement>(textSource, middleware);
+        var document = parser.ParseDocument(
+            textSource,
+            (IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>)_factory,
+            middleware
+        );
         try
         {
             document.SetTokensProcessed(tokensProcessed);

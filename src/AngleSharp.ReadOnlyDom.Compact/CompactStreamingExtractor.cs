@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using AngleSharp.Common;
+using AngleSharp.Html.Construction;
 using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.ReadOnlyDom.Compact.Arena;
@@ -55,6 +56,7 @@ public static class CompactStreamingExtractor
 
 public sealed class CompactStreamingExtractionPlan
 {
+    private readonly ArenaConstructionFactory _factory;
     private readonly IBrowsingContext _context;
     private readonly HtmlParserOptions _parserOptions;
 
@@ -63,14 +65,14 @@ public sealed class CompactStreamingExtractionPlan
         ArgumentException.ThrowIfNullOrWhiteSpace(tag);
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
 
-        var factory = new ArenaConstructionFactory(
+        _factory = new ArenaConstructionFactory(
             new CompactParserHints(),
             trackSourceReferences: false,
             CompactMetadataOptions.None,
             CompactDocumentLayout.FrozenColumns,
             new CompactStreamingExtractionDefinition(tag, id)
         );
-        _context = BrowsingContext.New(Configuration.Default.With(_ => factory));
+        _context = BrowsingContext.New(Configuration.Default.With(_ => _factory));
         _parserOptions = CompactParser.CreateParserOptions(CompactMetadataOptions.None);
         _parserOptions.ShouldEmitAttribute = ShouldRetainAttribute;
     }
@@ -87,7 +89,11 @@ public sealed class CompactStreamingExtractionPlan
             next(ref token);
             return TokenConsumptionResult.Continue;
         };
-        var document = parser.ParseDocument<ArenaDocument, ArenaElement>(textSource, middleware);
+        var document = parser.ParseDocument(
+            textSource,
+            (IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>)_factory,
+            middleware
+        );
         try
         {
             document.SetTokensProcessed(tokensProcessed);
