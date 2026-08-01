@@ -8,6 +8,9 @@ namespace AngleSharp.ReadOnlyDom.Compact.Arena;
 
 internal readonly struct ArenaHandle : IHtmlTreeConstructionNode<ArenaHandle>
 {
+    private static readonly ushort TemplateNameId = GetKnownNameId(TagNames.Template);
+    private static readonly ushort FormNameId = GetKnownNameId(TagNames.Form);
+    private static readonly ushort ScriptNameId = GetKnownNameId(TagNames.Script);
     private readonly Arena? _arena;
     private readonly int _handle;
 
@@ -20,9 +23,9 @@ internal readonly struct ArenaHandle : IHtmlTreeConstructionNode<ArenaHandle>
     internal Arena Arena => _arena!;
     internal int Value => _handle;
     public bool IsNull => _arena is null;
-    public bool IsTemplate => IsHtml(TagNames.Template);
-    public bool IsForm => IsHtml(TagNames.Form);
-    public bool IsScript => IsHtml(TagNames.Script);
+    public bool IsTemplate => IsHtml(TemplateNameId);
+    public bool IsForm => IsHtml(FormNameId);
+    public bool IsScript => IsHtml(ScriptNameId);
     public StringOrMemory NodeName => Arena.Name(_handle);
     public StringOrMemory LocalName => Arena.LocalName(_handle);
     public StringOrMemory Prefix => Arena.Prefix(_handle);
@@ -104,5 +107,11 @@ internal readonly struct ArenaHandle : IHtmlTreeConstructionNode<ArenaHandle>
 
     public override int GetHashCode() => HashCode.Combine(_arena is null ? 0 : RuntimeHelpers.GetHashCode(_arena), _handle);
 
-    private bool IsHtml(StringOrMemory name) => Flags.HasFlag(NodeFlags.HtmlMember) && LocalName.Equals(name);
+    private bool IsHtml(ushort nameId) =>
+        (Arena.Flags(_handle) & NodeFlags.HtmlMember) != 0 && Arena.NameId(_handle) == nameId;
+
+    private static ushort GetKnownNameId(StringOrMemory name) =>
+        GeneratedTagMetadata.TryGetKnownNameId(name, out var id)
+            ? id
+            : throw new InvalidOperationException($"Expected a generated name ID for '{name}'.");
 }
