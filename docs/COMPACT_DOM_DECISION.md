@@ -5,13 +5,13 @@ representation. It remains independent from the object-oriented read-only DOM hi
 
 ## Surviving design
 
-AngleSharp constructs through short-lived reference facades backed by a mutable arena. The default result is a frozen view
-over that arena, not a second materialized tree:
+AngleSharp constructs through opaque value handles backed by a mutable arena. The default result is a frozen view over
+that arena, not a second materialized tree:
 
-1. AngleSharp finishes all construction calls against the reference facades.
+1. AngleSharp finishes all construction calls against `ArenaHandle` values; no CLR node wrapper is created.
 2. The arena verifies that document order still matches construction order and no detached nodes remain.
 3. Node and attribute names are interned during construction, and logical text length is maintained incrementally.
-4. Reference-facade buffers are released; the document takes ownership of the arena columns and input source.
+4. Construction-only columns are released; the document takes ownership of the query columns and input source.
 5. `CompactDocument` accessors synthesize the same public node, payload, and attribute views directly from the columns.
 6. `CompactDocument.Dispose()` returns the arena columns and name-ID buffers and disposes the source.
 
@@ -118,6 +118,7 @@ length scan, or a publication-time name-ID pass. Removing the per-document name 
 specialized lookup that beats the current dictionary, not a broad generated switch. The larger remaining capability
 boundary is safe foreign-content suppression in AngleSharp's tree builder.
 
-The compact construction path uses stable arena-backed facades at AngleSharp's existing generic builder boundary. The full
-Packed and FrozenColumns smoke matrix covers templates, foreign content, foster parenting, and formatting adoption. A new
-upstream opaque-handle sink is therefore optional future wrapper-removal work, not a correctness prerequisite.
+The compact construction path uses stable `ArenaHandle` values at AngleSharp's handle-oriented tree-construction boundary.
+The full Packed and FrozenColumns smoke matrix covers templates, foreign content, foster parenting, and formatting
+adoption. Object-backed construction remains available through AngleSharp's compatibility adapter, but Compact parsing no
+longer pays for a parallel wrapper tree.

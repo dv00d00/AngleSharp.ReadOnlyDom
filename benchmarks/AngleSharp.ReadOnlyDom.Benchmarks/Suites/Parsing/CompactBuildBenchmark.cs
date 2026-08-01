@@ -10,7 +10,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 [MemoryDiagnoser]
 public class CompactBuildBenchmark
 {
-    private static readonly string StructuralPage = CreateStructuralPage();
+    internal static readonly string StructuralPage = CreateStructuralPage();
     private readonly HtmlParser _standardParser = new();
     private readonly HtmlParser _readOnlyParser = ReadOnlyParser.CreateParser(ReadOnlyMetadataProfile.Minimal);
     private readonly HtmlParser _compactParser = CompactParser.CreateParser();

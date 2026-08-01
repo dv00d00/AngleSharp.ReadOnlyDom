@@ -7,6 +7,21 @@ using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.Compact;
 
+internal interface IArenaHtmlParser
+{
+    ArenaDocument CreateArenaDocument(TextSource source);
+
+    ArenaDocument ParseArenaDocument(TextSource source, TokenizerMiddleware? middleware = null);
+
+    Task<ArenaDocument> ParseArenaDocumentAsync(
+        Stream source,
+        HtmlStreamSourceMode sourceMode,
+        Encoding? encoding,
+        TokenizerMiddleware? middleware,
+        CancellationToken cancel
+    );
+}
+
 public static class CompactParser
 {
     private static readonly Func<IBrowsingContext, ArenaConstructionFactory> Service =
@@ -164,7 +179,7 @@ public static class CompactParser
         CancellationToken cancel = default
     )
     {
-        var document = parser is ArenaHtmlParser arenaParser
+        var document = parser is IArenaHtmlParser arenaParser
             ? await arenaParser
                 .ParseArenaDocumentAsync(source, sourceMode, encoding, middleware, cancel)
                 .ConfigureAwait(false)
@@ -201,7 +216,7 @@ public static class CompactParser
 
     private static CompactDocument Parse(IHtmlParser parser, TextSource source, TokenizerMiddleware? middleware)
     {
-        var document = parser is ArenaHtmlParser arenaParser
+        var document = parser is IArenaHtmlParser arenaParser
             ? arenaParser.ParseArenaDocument(source, middleware)
             : parser.ParseDocument<ArenaDocument, ArenaElement>(source, middleware);
         try
@@ -214,7 +229,7 @@ public static class CompactParser
         }
     }
 
-    private sealed class ArenaHtmlParser : HtmlParser
+    private sealed class ArenaHtmlParser : HtmlParser, IArenaHtmlParser
     {
         private readonly ArenaConstructionFactory _factory;
 
@@ -227,6 +242,9 @@ public static class CompactParser
         {
             _factory = factory;
         }
+
+        public ArenaDocument CreateArenaDocument(TextSource source) =>
+            ((IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>)_factory).CreateDocument(source);
 
         public ArenaDocument ParseArenaDocument(TextSource source, TokenizerMiddleware? middleware) =>
             ParseDocument(
