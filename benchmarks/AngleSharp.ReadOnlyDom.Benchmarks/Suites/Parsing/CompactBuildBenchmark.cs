@@ -11,11 +11,19 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 public class CompactBuildBenchmark
 {
     private static readonly string StructuralPage = CreateStructuralPage();
+    private readonly HtmlParser _standardParser = new();
     private readonly HtmlParser _readOnlyParser = ReadOnlyParser.CreateParser(ReadOnlyMetadataProfile.Minimal);
     private readonly HtmlParser _compactParser = CompactParser.CreateParser();
     private readonly HtmlParser _compactParserNoAttributes = CompactParser.CreateParser(
         attributeFilter: static (ref _, _) => false
     );
+
+    [Benchmark]
+    public int ParseStandard()
+    {
+        using var document = _standardParser.ParseDocument(StructuralPage);
+        return document.ChildNodes.Length;
+    }
 
     [Benchmark(Baseline = true)]
     public int ParseReadOnly()
