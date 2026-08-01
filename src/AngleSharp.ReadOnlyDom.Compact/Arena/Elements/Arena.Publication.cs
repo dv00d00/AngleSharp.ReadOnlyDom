@@ -1,4 +1,5 @@
 using System.Buffers;
+using AngleSharp.Dom;
 using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.Compact.Arena;
@@ -185,4 +186,118 @@ internal sealed partial class Arena
     }
 
     private static T[] Allocate<T>(int length) => ArrayPool<T>.Shared.Rent(length);
+
+    private void AddPreOrder(int handle, int[] order, ref int count)
+    {
+        order[count++] = handle;
+        for (var child = FinalFirstChild(handle); child >= 0; child = _columns.NextSiblings[child])
+            AddPreOrder(child, order, ref count);
+    }
+
+    private int FinalFirstChild(int handle) =>
+        _columns.TemplateFirstChild(handle) is var template && template >= 0
+            ? template
+            : _columns.FirstChildren[handle];
+
+    private void FillSubtreeEnds(
+        Span<int> destination,
+        int outputCount,
+        bool preservesConstructionHandles,
+        int[]? order,
+        int[]? remap
+    )
+    {
+        var open = ArrayPool<int>.Shared.Rent(outputCount);
+        var openCount = 0;
+        try
+        {
+            for (var outputHandle = 0; outputHandle < outputCount; outputHandle++)
+            {
+                var constructionHandle = preservesConstructionHandles ? outputHandle : order![outputHandle];
+                var constructionParent = _columns.Parents[constructionHandle];
+                var outputParent =
+                    constructionParent < 0 ? -1
+                    : preservesConstructionHandles ? constructionParent
+                    : remap![constructionParent];
+
+                while (openCount > 0 && open[openCount - 1] != outputParent)
+                    destination[open[--openCount]] = outputHandle;
+
+                open[openCount++] = outputHandle;
+            }
+
+            while (openCount > 0)
+                destination[open[--openCount]] = outputCount;
+        }
+        finally
+        {
+            ArrayPool<int>.Shared.Return(open);
+        }
+    }
+
+    private CompactTemplateBoundary[] CreateTemplateBoundaries(
+        int outputCount,
+        bool preservesConstructionHandles,
+        int[]? order,
+        int[]? remap
+    )
+    {
+        List<CompactTemplateBoundary>? boundaries = null;
+        for (var outputHandle = 0; outputHandle < outputCount; outputHandle++)
+        {
+            var constructionHandle = preservesConstructionHandles ? outputHandle : order![outputHandle];
+            if (!IsHtmlTemplate(constructionHandle))
+                continue;
+
+            var constructionStart = _columns.TemplateFirstChild(constructionHandle);
+            var contentStart =
+                constructionStart < 0 ? -1
+                : preservesConstructionHandles ? constructionStart
+                : remap![constructionStart];
+            var contentEnd = contentStart;
+            if (contentStart >= 0)
+            {
+                contentEnd = outputHandle + 1;
+                while (contentEnd < outputCount)
+                {
+                    var candidate = preservesConstructionHandles ? contentEnd : order![contentEnd];
+                    if (!IsDescendantOf(candidate, constructionHandle))
+                        break;
+                    contentEnd++;
+                }
+            }
+
+            (boundaries ??= []).Add(new CompactTemplateBoundary(outputHandle, contentStart, contentEnd));
+        }
+        return boundaries?.ToArray() ?? [];
+    }
+
+    private bool IsDescendantOf(int candidate, int ancestor)
+    {
+        for (var parent = _columns.Parents[candidate]; parent >= 0; parent = _columns.Parents[parent])
+            if (parent == ancestor)
+                return true;
+        return false;
+    }
+
+    private bool IsHtmlTemplate(int handle) =>
+        (_columns.Flags[handle] & NodeFlags.HtmlMember) != 0
+        && _names.GetName(_columns.NameIds[handle]).Equals(TagNames.Template);
+
+    private static CompactSourceLocation GetSource(ISourceReference? source)
+    {
+        if (source is null)
+            return new CompactSourceLocation(-1, 0, 0);
+        var position = source.Position;
+        return new CompactSourceLocation(position.Index, position.Line, position.Column);
+    }
+
+    private static string[] CopyCustomNames(NameTable nameTable)
+    {
+        if (nameTable.CustomCount == 0)
+            return [];
+        var names = Allocate<string>(nameTable.CustomCount);
+        nameTable.CopyCustomNamesTo(names);
+        return names;
+    }
 }
