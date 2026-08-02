@@ -2,6 +2,9 @@
 using System.Text;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Compact;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
+using AngleSharp.ReadOnlyDom.Compact.Projection;
+using AngleSharp.ReadOnlyDom.Compact.Query;
 using AngleSharp.ReadOnlyDom.Html;
 using AngleSharp.ReadOnlyDom.Streaming;
 using BenchmarkDotNet.Attributes;
@@ -18,9 +21,9 @@ public class LongSyntheticConstructionBenchmark
 {
     private readonly HtmlParser _readOnlyParser = new(default, ReadOnlyParser.DefaultContext);
     private readonly HtmlParser _compactParser = CompactParser.CreateParser();
-    private readonly CompactAggregatePlan _aggregatePlan = CompactAggregate
-        .First(CompactAggregateSelector.Tag("article").WithId("content"))
-        .Field("text", CompactAggregateProjection.SelfNormalizedText(), required: true)
+    private readonly CompactProjectionPlan _projectionPlan = CompactProjection
+        .First(CompactProjectionSelector.Tag("article").WithId("content"))
+        .Field("text", CompactFieldProjection.SelfNormalizedText(), required: true)
         .Compile();
 
     private readonly QueryPlan<RawFoldState> _rawUtf8Plan = CreateRawUtf8Plan();
@@ -38,15 +41,15 @@ public class LongSyntheticConstructionBenchmark
         _utf8 = Encoding.UTF8.GetBytes(_html);
         var readOnly = ReadOnlyParseAndTraverse();
         var compact = CompactParseAndScan();
-        var aggregate = EofAggregateConstruction();
+        var projection = EofProjectionConstruction();
         var rawUtf8 = NativeUtf8RawFold();
         var completedUtf8 = NativeUtf8CompletedElementFold();
         AssertEqual("compact scan", readOnly, compact);
-        AssertEqual("EOF aggregate", readOnly, aggregate);
+        AssertEqual("EOF projection", readOnly, projection);
         AssertEqual("native UTF-8 raw fold", readOnly, rawUtf8);
         AssertEqual("native UTF-8 completed-element fold", readOnly, completedUtf8);
 
-        var counters = _aggregatePlan.Execute(_html).Counters;
+        var counters = _projectionPlan.Execute(_html).Counters;
         Console.WriteLine(
             $"Synthetic fixture: {Encoding.UTF8.GetByteCount(_html):N0} UTF-8 bytes, "
                 + $"{NoiseBlocks:N0} noise blocks, target near EOF, {counters.TokensProcessed:N0} tokens, "
@@ -70,9 +73,9 @@ public class LongSyntheticConstructionBenchmark
     }
 
     [Benchmark]
-    public string EofAggregateConstruction()
+    public string EofProjectionConstruction()
     {
-        var result = _aggregatePlan.Execute(_html);
+        var result = _projectionPlan.Execute(_html);
         return result.Rows.Count == 0 ? string.Empty : result.Rows[0]["text"].ToString();
     }
 

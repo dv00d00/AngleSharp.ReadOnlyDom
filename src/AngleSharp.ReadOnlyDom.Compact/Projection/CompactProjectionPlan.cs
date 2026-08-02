@@ -1,26 +1,26 @@
 using System.Text;
-using AngleSharp.Html.Construction;
 using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.ReadOnlyDom.Compact.Arena;
+using AngleSharp.ReadOnlyDom.Compact.Document;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
 using AngleSharp.Text;
-using ConstructionArena = AngleSharp.ReadOnlyDom.Compact.Arena.Arena;
 
-namespace AngleSharp.ReadOnlyDom.Compact;
+namespace AngleSharp.ReadOnlyDom.Compact.Projection;
 
-public sealed partial class CompactAggregatePlan
+public sealed partial class CompactProjectionPlan
 {
-    private readonly CompactAggregateSelector _scope;
-    private readonly CompactAggregateFieldDefinition[] _fields;
-    private readonly ArenaConstructionFactory _factory;
-    private readonly string[] _retainedAttributes;
     private readonly IBrowsingContext _context;
+    private readonly ArenaConstructionFactory _factory;
+    private readonly CompactProjectionFieldDefinition[] _fields;
     private readonly HtmlParserOptions _parserOptions;
+    private readonly string[] _retainedAttributes;
+    private readonly CompactProjectionSelector _scope;
 
-    internal CompactAggregatePlan(
-        CompactAggregateSelector scope,
-        CompactAggregateCardinality cardinality,
-        CompactAggregateFieldDefinition[] fields
+    internal CompactProjectionPlan(
+        CompactProjectionSelector scope,
+        CompactProjectionCardinality cardinality,
+        CompactProjectionFieldDefinition[] fields
     )
     {
         _scope = scope;
@@ -31,20 +31,20 @@ public sealed partial class CompactAggregatePlan
 
         _factory = new ArenaConstructionFactory(
             new CompactParserHints(),
-            trackSourceReferences: false,
+            false,
             CompactMetadataOptions.None,
             CompactDocumentLayout.FrozenColumns,
-            new CompactAggregateDefinition(this)
+            new CompactProjectionDefinition(this)
         );
         _context = BrowsingContext.New(Configuration.Default.With(_ => _factory));
         _parserOptions = CompactParser.CreateParserOptions(CompactMetadataOptions.None);
         _parserOptions.ShouldEmitAttribute = ShouldRetainAttribute;
     }
 
-    public CompactAggregateCardinality Cardinality { get; }
-    public CompactAggregateRequirements Requirements { get; }
+    internal CompactProjectionCardinality Cardinality { get; }
+    internal CompactProjectionRequirements Requirements { get; }
 
-    public CompactAggregateResult Execute(string source)
+    public CompactProjectionResult Execute(string source)
     {
         ArgumentNullException.ThrowIfNull(source);
         var parser = new HtmlParser(_parserOptions, _context);
@@ -58,26 +58,20 @@ public sealed partial class CompactAggregatePlan
         };
         var document = parser.ParseDocument(
             textSource,
-            (IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>)_factory,
+            _factory,
             middleware
         );
         try
         {
             document.SetTokensProcessed(tokensProcessed);
             var consumed = Math.Min(source.Length, document.Source.Index);
-            return document.CreateAggregateResult(Encoding.UTF8.GetByteCount(source.AsSpan(0, consumed)));
+            return document.CreateProjectionResult(Encoding.UTF8.GetByteCount(source.AsSpan(0, consumed)));
         }
         finally
         {
             document.Dispose();
         }
     }
-
-    public string Explain() =>
-        $"mode=eof-construction-aggregate; cardinality={Cardinality.ToString().ToLowerInvariant()}; "
-        + $"fields={_fields.Length}; inspect=[{string.Join(',', Requirements.InspectedAttributes)}]; "
-        + $"retain=[{string.Join(',', Requirements.RetainedAttributes)}]; text={Requirements.RetainsText}; "
-        + "termination=end-of-document; output=owned";
 
     private bool ShouldRetainAttribute(ref StructHtmlToken token, ReadOnlyMemory<char> name)
     {
@@ -88,9 +82,9 @@ public sealed partial class CompactAggregatePlan
         return CompactConstructionAttributePolicy.IsRequiredByTreeBuilder(ref token, attribute);
     }
 
-    private static CompactAggregateRequirements BuildRequirements(
-        CompactAggregateSelector scope,
-        CompactAggregateFieldDefinition[] fields
+    private static CompactProjectionRequirements BuildRequirements(
+        CompactProjectionSelector scope,
+        CompactProjectionFieldDefinition[] fields
     )
     {
         var inspected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -104,14 +98,15 @@ public sealed partial class CompactAggregatePlan
             if (projection.Attribute is not null)
                 retained.Add(projection.Attribute);
         }
+
         retained.UnionWith(inspected);
-        return new CompactAggregateRequirements(
+        return new CompactProjectionRequirements(
             inspected.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
             retained.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
-            fields.Any(static field => field.Projection.Kind != CompactAggregateProjectionKind.Attribute)
+            fields.Any(static field => field.Projection.Kind != CompactFieldProjectionKind.Attribute)
         );
 
-        void AddSelector(CompactAggregateSelector selector)
+        void AddSelector(CompactProjectionSelector selector)
         {
             foreach (var step in selector.Steps)
             {

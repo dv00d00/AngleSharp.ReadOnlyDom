@@ -1,19 +1,21 @@
 using AngleSharp.Dom;
 using AngleSharp.Html.Construction;
 using AngleSharp.Html.Parser.Tokens.Struct;
+using AngleSharp.ReadOnlyDom.Compact.Document;
+using AngleSharp.ReadOnlyDom.Compact.Projection;
 using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.Compact.Arena;
 
 /// <summary>
-/// The construction-time document handed to AngleSharp's tree builder. Topology is reached through
-/// <see cref="ArenaHandle"/> and the factory's node accessors, so this carries document state only.
+///     The construction-time document handed to AngleSharp's tree builder. Topology is reached through
+///     <see cref="ArenaHandle" /> and the factory's node accessors, so this carries document state only.
 /// </summary>
 internal sealed class ArenaDocument : IConstructableDocumentState, IDisposable
 {
-    private bool _ownershipTransferred;
-    private readonly CompactMetadataOptions _options;
     private readonly CompactDocumentLayout _layout;
+    private readonly CompactMetadataOptions _options;
+    private bool _ownershipTransferred;
 
     public ArenaDocument(
         Arena arena,
@@ -37,24 +39,14 @@ internal sealed class ArenaDocument : IConstructableDocumentState, IDisposable
     public IDisposable? Builder { get; set; }
     public QuirksMode QuirksMode { get; set; }
 
-    public void AddComment(ref StructHtmlToken token) => Arena.AddComment(NodeHandle, ref token);
-
-    public void TrackError(Exception exception) { }
-
-    public CompactDocument CreateCompactDocument()
+    public void AddComment(ref StructHtmlToken token)
     {
-        if (_layout == CompactDocumentLayout.Packed || !Arena.CanFreeze(NodeHandle))
-            return Arena.Finalize(NodeHandle, _options);
-
-        var result = Arena.Freeze(NodeHandle, _options, Source);
-        _ownershipTransferred = true;
-        return result;
+        Arena.AddComment(NodeHandle, ref token);
     }
 
-    public CompactAggregateResult CreateAggregateResult(int inputBytesConsumed) =>
-        Arena.CreateAggregateResult(NodeHandle, inputBytesConsumed);
-
-    public void SetTokensProcessed(int count) => Arena.SetTokensProcessed(count);
+    public void TrackError(Exception exception)
+    {
+    }
 
     public void Dispose()
     {
@@ -69,5 +61,25 @@ internal sealed class ArenaDocument : IConstructableDocumentState, IDisposable
             if (!_ownershipTransferred)
                 Arena.Dispose();
         }
+    }
+
+    public CompactDocument CreateCompactDocument()
+    {
+        if (_layout == CompactDocumentLayout.Packed || !Arena.CanFreeze(NodeHandle))
+            return Arena.Finalize(NodeHandle, _options);
+
+        var result = Arena.Freeze(NodeHandle, _options, Source);
+        _ownershipTransferred = true;
+        return result;
+    }
+
+    public CompactProjectionResult CreateProjectionResult(int inputBytesConsumed)
+    {
+        return Arena.CreateProjectionResult(NodeHandle, inputBytesConsumed);
+    }
+
+    public void SetTokensProcessed(int count)
+    {
+        Arena.SetTokensProcessed(count);
     }
 }

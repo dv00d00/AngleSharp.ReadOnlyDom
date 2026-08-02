@@ -2,6 +2,7 @@
 using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.ReadOnlyDom.Compact;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
 using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;

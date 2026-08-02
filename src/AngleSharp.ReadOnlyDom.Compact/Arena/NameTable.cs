@@ -30,6 +30,7 @@ internal sealed class NameTable
             id = checked((ushort)(GeneratedTagMetadata.KnownNameCount + _customNames.Count));
             _customNames.Add(ownedName);
         }
+
         _ids.Add(ownedName, id);
 #else
         if (_ids.TryGetValue(name, out var id))
@@ -51,14 +52,16 @@ internal sealed class NameTable
         return id;
     }
 
-    public void CopyCustomNamesTo(string[] destination) => _customNames?.CopyTo(destination);
+    public void CopyCustomNamesTo(string[] destination)
+    {
+        _customNames?.CopyTo(destination);
+    }
 
     public StringOrMemory GetName(ushort id)
     {
         if (id < GeneratedTagMetadata.KnownNameCount)
             return GeneratedTagMetadata.GetKnownName(id);
-        else
-            return _customNames![id - GeneratedTagMetadata.KnownNameCount];
+        return _customNames![id - GeneratedTagMetadata.KnownNameCount];
     }
 
     public bool TryGetId(StringOrMemory name, out ushort id)

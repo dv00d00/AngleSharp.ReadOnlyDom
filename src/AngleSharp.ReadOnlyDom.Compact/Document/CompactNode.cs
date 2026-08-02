@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace AngleSharp.ReadOnlyDom.Compact;
+namespace AngleSharp.ReadOnlyDom.Compact.Document;
 
 public enum CompactNodeKind : byte
 {
@@ -9,7 +9,7 @@ public enum CompactNodeKind : byte
     Text,
     Comment,
     ProcessingInstruction,
-    Other,
+    Other
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -80,11 +80,11 @@ public enum CompactMetadataOptions
 {
     None = 0,
     ParentLinks = 1 << 0,
-    SourceLocations = 1 << 1,
+    SourceLocations = 1 << 1
 }
 
 public enum CompactDocumentLayout
 {
     FrozenColumns,
-    Packed,
+    Packed
 }

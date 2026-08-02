@@ -1,6 +1,6 @@
 using AngleSharp.Html.Parser;
 
-namespace AngleSharp.ReadOnlyDom.Compact;
+namespace AngleSharp.ReadOnlyDom.Compact.Parsing;
 
 public static class CompactParserProfiles
 {
@@ -17,6 +17,6 @@ public static class CompactParserProfiles
             SkipCDATA = true,
             SkipPlaintext = true,
             SkipScriptText = true,
-            SkipRawText = true,
+            SkipRawText = true
         };
 }

@@ -1,11 +1,24 @@
 ﻿using System.Buffers;
 using AngleSharp.Dom;
+using AngleSharp.ReadOnlyDom.Compact.Document;
 
 namespace AngleSharp.ReadOnlyDom.Compact.Arena;
 
 internal sealed class MutableNodeColumns : IDisposable
 {
-    private int _count;
+    public int[] ChildCounts;
+    public int[] FirstChildren;
+    public NodeFlags[] Flags;
+    public CompactNodeKind[] Kinds;
+    public int[] LastChildren;
+
+    public ushort[] NameIds;
+    public int[] NextSiblings;
+    public int[] Parents;
+    public int[] PayloadIndexes;
+    public int[] PreviousSiblings;
+    public ISourceReference?[]? SourceReferences;
+    public int[]? TemplateFirstChildren;
 
     public MutableNodeColumns(int initialCapacity, bool trackSourceReferences)
     {
@@ -24,25 +37,30 @@ internal sealed class MutableNodeColumns : IDisposable
         SourceReferences = trackSourceReferences ? Allocate<ISourceReference?>(initialCapacity) : null;
     }
 
-    public ushort[] NameIds;
-    public NodeFlags[] Flags;
-    public CompactNodeKind[] Kinds;
-    public int[] Parents;
-    public int[] FirstChildren;
-    public int[] LastChildren;
-    public int[] PreviousSiblings;
-    public int[] NextSiblings;
-    public int[] ChildCounts;
-    public int[]? TemplateFirstChildren;
-    public int[] PayloadIndexes;
-    public ISourceReference?[]? SourceReferences;
+    public int Count { get; private set; }
 
-    public int Count => _count;
+    public void Dispose()
+    {
+        Return(NameIds, false);
+        Return(Flags, false);
+        Return(Kinds, false);
+        Return(Parents, false);
+        Return(FirstChildren, false);
+        Return(LastChildren, false);
+        Return(PreviousSiblings, false);
+        Return(NextSiblings, false);
+        Return(ChildCounts, false);
+        if (TemplateFirstChildren is not null)
+            Return(TemplateFirstChildren, false);
+        Return(PayloadIndexes, false);
+        if (SourceReferences is not null)
+            Return(SourceReferences, true);
+    }
 
     public int Add(ushort nameId, NodeFlags flags, CompactNodeKind kind)
     {
         EnsureCapacity();
-        var handle = _count++;
+        var handle = Count++;
         NameIds[handle] = nameId;
         Flags[handle] = flags;
         Kinds[handle] = kind;
@@ -67,6 +85,7 @@ internal sealed class MutableNodeColumns : IDisposable
             Return(Parents, false);
             Parents = [];
         }
+
         Return(PreviousSiblings, false);
         PreviousSiblings = [];
         Return(LastChildren, false);
@@ -75,27 +94,9 @@ internal sealed class MutableNodeColumns : IDisposable
         ChildCounts = [];
     }
 
-    public void Dispose()
-    {
-        Return(NameIds, false);
-        Return(Flags, false);
-        Return(Kinds, false);
-        Return(Parents, false);
-        Return(FirstChildren, false);
-        Return(LastChildren, false);
-        Return(PreviousSiblings, false);
-        Return(NextSiblings, false);
-        Return(ChildCounts, false);
-        if (TemplateFirstChildren is not null)
-            Return(TemplateFirstChildren, false);
-        Return(PayloadIndexes, false);
-        if (SourceReferences is not null)
-            Return(SourceReferences, true);
-    }
-
     private void EnsureCapacity()
     {
-        if (_count < NameIds.Length)
+        if (Count < NameIds.Length)
             return;
         var size = checked(NameIds.Length * 2);
         Grow(ref NameIds, size, false);
@@ -114,31 +115,38 @@ internal sealed class MutableNodeColumns : IDisposable
             Grow(ref SourceReferences, size, true);
     }
 
-    public int TemplateFirstChild(int handle) => TemplateFirstChildren?[handle] ?? -1;
+    public int TemplateFirstChild(int handle)
+    {
+        return TemplateFirstChildren?[handle] ?? -1;
+    }
 
     public void SetTemplateFirstChild(int handle, int child)
     {
         if (TemplateFirstChildren is null)
         {
             TemplateFirstChildren = Allocate<int>(NameIds.Length);
-            TemplateFirstChildren.AsSpan(0, _count).Fill(-1);
+            TemplateFirstChildren.AsSpan(0, Count).Fill(-1);
         }
+
         TemplateFirstChildren[handle] = child;
     }
 
-    private static T[] Allocate<T>(int capacity) => ArrayPool<T>.Shared.Rent(capacity);
+    private static T[] Allocate<T>(int capacity)
+    {
+        return ArrayPool<T>.Shared.Rent(capacity);
+    }
 
     private void Grow<T>(ref T[] values, int capacity, bool clear)
     {
         var next = ArrayPool<T>.Shared.Rent(capacity);
-        values.AsSpan(0, _count).CopyTo(next);
-        ArrayPool<T>.Shared.Return(values, clearArray: clear);
+        values.AsSpan(0, Count).CopyTo(next);
+        ArrayPool<T>.Shared.Return(values, clear);
         values = next;
     }
 
     private static void Return<T>(T[] values, bool clear)
     {
         if (values.Length != 0)
-            ArrayPool<T>.Shared.Return(values, clearArray: clear);
+            ArrayPool<T>.Shared.Return(values, clear);
     }
 }

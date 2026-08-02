@@ -13,7 +13,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="AngleSharp.ReadOnlyDom.Benchmarks" />
-    <InternalsVisibleTo Include="AngleSharp.ReadOnlyDom.Compact" />
     <InternalsVisibleTo Include="AngleSharp.ReadOnlyDom.Tests" />
   </ItemGroup>
 </Project>

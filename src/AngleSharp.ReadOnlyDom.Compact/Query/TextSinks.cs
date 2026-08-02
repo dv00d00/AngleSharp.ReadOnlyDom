@@ -1,10 +1,10 @@
 using System.Buffers;
 using System.Text;
 
-namespace AngleSharp.ReadOnlyDom.Compact;
+namespace AngleSharp.ReadOnlyDom.Compact.Query;
 
 /// <summary>
-/// Accepts text chunks without requiring an intermediate string.
+///     Accepts text chunks without requiring an intermediate string.
 /// </summary>
 public interface ISpanSink
 {
@@ -13,15 +13,24 @@ public interface ISpanSink
 
 public readonly struct StringBuilderSink(StringBuilder builder) : ISpanSink
 {
-    public void Append(ReadOnlySpan<char> value) => builder.Append(value);
+    public void Append(ReadOnlySpan<char> value)
+    {
+        builder.Append(value);
+    }
 }
 
 public readonly struct TextWriterSink(TextWriter writer) : ISpanSink
 {
-    public void Append(ReadOnlySpan<char> value) => writer.Write(value);
+    public void Append(ReadOnlySpan<char> value)
+    {
+        writer.Write(value);
+    }
 }
 
 public readonly struct BufferWriterSink(IBufferWriter<char> writer) : ISpanSink
 {
-    public void Append(ReadOnlySpan<char> value) => writer.Write(value);
+    public void Append(ReadOnlySpan<char> value)
+    {
+        writer.Write(value);
+    }
 }

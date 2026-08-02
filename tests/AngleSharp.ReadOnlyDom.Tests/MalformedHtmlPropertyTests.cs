@@ -3,6 +3,9 @@ using AngleSharp.Dom;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom;
+using AngleSharp.ReadOnlyDom.Compact.Document;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
+using AngleSharp.ReadOnlyDom.Compact.Projection;
 using AngleSharp.ReadOnlyDom.Html;
 using FsCheck;
 using FsCheck.Fluent;
@@ -105,11 +108,11 @@ public class MalformedHtmlPropertyTests
     }
 
     [Test]
-    public void GeneratedMalformedHtmlMatchesAngleSharpForEofAggregateIdText()
+    public void GeneratedMalformedHtmlMatchesAngleSharpForEofProjectionIdText()
     {
-        var plan = CompactAggregate
-            .First(CompactAggregateSelector.Tag("div").WithId("content"))
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+        var plan = CompactProjection
+            .First(CompactProjectionSelector.Tag("div").WithId("content"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
         var property = Prop.ForAll(
             MalformedHtml().ToArbitrary(),
@@ -124,7 +127,7 @@ public class MalformedHtmlPropertyTests
                 if (actual.Rows.Count != (expected is not null ? 1 : 0) || actualText != expectedText)
                 {
                     throw new InvalidOperationException(
-                        $"EOF aggregate mismatch for generated HTML:\n{Escape(source)}\n\nMutable:\n{Escape(expectedText)}\n\nAggregate:\n{Escape(actualText)}"
+                        $"EOF projection mismatch for generated HTML:\n{Escape(source)}\n\nMutable:\n{Escape(expectedText)}\n\nProjection:\n{Escape(actualText)}"
                     );
                 }
             }
@@ -134,11 +137,11 @@ public class MalformedHtmlPropertyTests
     }
 
     [Test]
-    public void GeneratedMalformedHtmlMatchesAngleSharpForEofAggregateText()
+    public void GeneratedMalformedHtmlMatchesAngleSharpForEofProjectionText()
     {
-        var plan = CompactAggregate
-            .First(CompactAggregateSelector.Tag("article").WithClass("result"))
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+        var plan = CompactProjection
+            .First(CompactProjectionSelector.Tag("article").WithClass("result"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
         var property = Prop.ForAll(
             MalformedHtml().ToArbitrary(),
@@ -153,7 +156,7 @@ public class MalformedHtmlPropertyTests
                 if (actual.Rows.Count != (expected is null ? 0 : 1) || actualText != expectedText)
                 {
                     throw new InvalidOperationException(
-                        $"EOF aggregate mismatch for generated HTML:\n{Escape(source)}\n\nMutable:\n{Escape(expectedText)}\n\nAggregate:\n{Escape(actualText)}"
+                        $"EOF projection mismatch for generated HTML:\n{Escape(source)}\n\nMutable:\n{Escape(expectedText)}\n\nProjection:\n{Escape(actualText)}"
                     );
                 }
             }

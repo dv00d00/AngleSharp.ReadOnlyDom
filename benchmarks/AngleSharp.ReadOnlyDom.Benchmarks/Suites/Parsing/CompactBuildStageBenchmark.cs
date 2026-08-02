@@ -1,6 +1,8 @@
 #if NET10_0
 using AngleSharp.ReadOnlyDom.Compact;
 using AngleSharp.ReadOnlyDom.Compact.Arena;
+using AngleSharp.ReadOnlyDom.Compact.Document;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
 using AngleSharp.Text;
 using BenchmarkDotNet.Attributes;
 

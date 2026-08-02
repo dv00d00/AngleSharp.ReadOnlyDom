@@ -1,19 +1,23 @@
 ﻿using System.Text;
 using AngleSharp.ReadOnlyDom;
 using AngleSharp.ReadOnlyDom.Compact;
+using AngleSharp.ReadOnlyDom.Compact.Document;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
+using AngleSharp.ReadOnlyDom.Compact.Projection;
+using AngleSharp.ReadOnlyDom.Compact.Query;
 
 const string Html = """
-    <!doctype html>
-    <html>
-      <body>
-        <article id="content" class="guide" data-kind="sample">
-          <h1>Parsing <em>real</em> HTML </h1>
-          <p>Use the <a href="/parser">HTML parser</a>, not regex. </p>
-          <ul><li>Correct tables </li><li>Malformed markup</li></ul>
-        </article>
-      </body>
-    </html>
-    """;
+                    <!doctype html>
+                    <html>
+                      <body>
+                        <article id="content" class="guide" data-kind="sample">
+                          <h1>Parsing <em>real</em> HTML </h1>
+                          <p>Use the <a href="/parser">HTML parser</a>, not regex. </p>
+                          <ul><li>Correct tables </li><li>Malformed markup</li></ul>
+                        </article>
+                      </body>
+                    </html>
+                    """;
 
 RunReadOnlyDom();
 RunCompactDom();
@@ -53,26 +57,21 @@ static void RunCompactDom()
 
 static void RunConstructionTimeViews()
 {
-    Heading("COMPACT STREAMING — construction-time results, no escaping DOM");
+    Heading("COMPACT EOF PROJECTION — construction-time topology, owned results");
 
-    var aggregatePlan = CompactAggregate
-        .First(CompactAggregateSelector.Tag("article").WithId("content"))
+    var projectionPlan = CompactProjection
+        .First(CompactProjectionSelector.Tag("article").WithId("content"))
         .Field(
             "title",
-            CompactAggregateProjection.FirstNormalizedText(CompactAggregateSelector.Tag("h1")),
+            CompactFieldProjection.FirstNormalizedText(CompactProjectionSelector.Tag("h1")),
             required: true
         )
-        .Field("kind", CompactAggregateProjection.SelfAttribute("data-kind"), required: true)
-        .Field("text", CompactAggregateProjection.SelfNormalizedText())
+        .Field("kind", CompactFieldProjection.SelfAttribute("data-kind"), required: true)
+        .Field("text", CompactFieldProjection.SelfNormalizedText())
         .Compile();
-    var aggregate = aggregatePlan.Execute(Html);
+    var projection = projectionPlan.Execute(Html);
 
-    Console.WriteLine($"aggregate JSON   : {aggregate.ToJson()}");
-    Console.WriteLine(
-        $"aggregate work   : {aggregate.Counters.TokensProcessed} tokens, "
-            + $"{aggregate.Counters.NodesMaterialized} topology nodes, "
-            + $"{aggregate.Counters.RowsProduced} owned row"
-    );
+    Console.WriteLine($"projection JSON  : {CompactProjectionJson.SerializeFirst(projection)}");
     Console.WriteLine("lifetime         : returned values are owned; the construction arena is already disposed");
     Console.WriteLine("input boundary   : current APIs still consume a rooted string and parse through EOF");
 }

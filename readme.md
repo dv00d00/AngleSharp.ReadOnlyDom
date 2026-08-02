@@ -31,15 +31,14 @@ clone both repositories into the same parent directory:
 $workspace = 'C:\src\anglesharp-work'
 New-Item -ItemType Directory -Force $workspace | Out-Null
 
-git clone --branch codex/tokenizer-consumer-seam https://github.com/dv00d00/AngleSharp.git "$workspace\AngleSharp"
-git clone --branch codex/rust-capture-demand https://github.com/dv00d00/AngleSharp.ReadOnlyDom.git "$workspace\AngleSharp.ReadOnlyDom"
+git clone --branch devel https://github.com/dv00d00/AngleSharp.git "$workspace\AngleSharp"
+git clone --branch main https://github.com/dv00d00/AngleSharp.ReadOnlyDom.git "$workspace\AngleSharp.ReadOnlyDom"
 
 Set-Location "$workspace\AngleSharp.ReadOnlyDom"
-Copy-Item Directory.Build.targets.example Directory.Build.targets
 ```
 
-The targets file replaces explicit AngleSharp package references with the fork's `AngleSharp.Core.csproj`; it does not
-inject the fork into the standalone streaming or Markdown projects. Sibling clones named `AngleSharp` and
+The tracked targets file replaces explicit AngleSharp package references with the fork's `AngleSharp.Core.csproj`; it
+does not inject the fork into the standalone streaming or Markdown projects. Sibling clones named `AngleSharp` and
 `AngleSharp.ReadOnlyDom` are detected automatically. For any other layout, set the source root before restoring:
 
 ```powershell
@@ -69,8 +68,8 @@ For Rider, make `AngleSharpSourceRoot` a persistent user variable and restart Ri
 )
 ```
 
-`Directory.Build.targets` is intentionally local and ignored; edit it when a checkout needs a fixed machine-specific
-path. Recopy the example to reset it.
+`Directory.Build.targets` is part of the repository so CI, temporary worktrees, and fresh clones all use the same
+override logic. Keep machine-specific paths out of it and set `AngleSharpSourceRoot` in the environment instead.
 
 ## Read-only DOM
 

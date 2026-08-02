@@ -1,23 +1,25 @@
 ﻿using AngleSharp.Common;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser.Tokens.Struct;
+using AngleSharp.ReadOnlyDom.Compact.Document;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
+using AngleSharp.ReadOnlyDom.Compact.Projection;
 using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.Compact.Arena;
 
 internal sealed partial class Arena : IDisposable
 {
-    private static ReadOnlySpan<char> WhiteSpace => " \t\r\n";
     private readonly MutableNodeColumns _columns;
-    private readonly NameTable _names = new();
-    private readonly CompactParserHints _hints;
     private readonly ICompactConstructionViewState? _constructionView;
-    private PooledValueBuffer<MutableNodePayload>? _payloads;
-    private PooledValueBuffer<MutableAttribute>? _attributes;
-    private int _unattachedNodeCount;
-    private int _textLength;
-    private bool _requiresRemap;
+    private readonly CompactParserHints _hints;
+    private readonly NameTable _names = new();
     private readonly ushort _textNameId;
+    private PooledValueBuffer<MutableAttribute>? _attributes;
+    private PooledValueBuffer<MutableNodePayload>? _payloads;
+    private bool _requiresRemap;
+    private int _textLength;
+    private int _unattachedNodeCount;
 
     public Arena(
         CompactParserHints hints,
@@ -29,6 +31,17 @@ internal sealed partial class Arena : IDisposable
         _constructionView = constructionView;
         _columns = new MutableNodeColumns(hints.InitialNodeCapacity, trackSourceReferences);
         _textNameId = _names.GetId("#text");
+    }
+
+    private static ReadOnlySpan<char> WhiteSpace => " \t\r\n";
+
+    internal int NodeCount => _columns.Count;
+
+    public void Dispose()
+    {
+        _attributes?.Dispose();
+        _payloads?.Dispose();
+        _columns.Dispose();
     }
 
     public ArenaDocument CreateDocument(TextSource source, CompactMetadataOptions options, CompactDocumentLayout layout)
@@ -50,8 +63,10 @@ internal sealed partial class Arena : IDisposable
         return AddState(qualifiedName, flags, CompactNodeKind.Element);
     }
 
-    internal int CreateLeafHandle(StringOrMemory name, StringOrMemory value, CompactNodeKind kind) =>
-        AddLeaf(name, value, kind);
+    internal int CreateLeafHandle(StringOrMemory name, StringOrMemory value, CompactNodeKind kind)
+    {
+        return AddLeaf(name, value, kind);
+    }
 
     private int AddLeaf(StringOrMemory name, StringOrMemory value, CompactNodeKind kind)
     {
@@ -69,9 +84,15 @@ internal sealed partial class Arena : IDisposable
         return handle;
     }
 
-    public StringOrMemory Name(int handle) => _names.GetName(_columns.NameIds[handle]);
+    public StringOrMemory Name(int handle)
+    {
+        return _names.GetName(_columns.NameIds[handle]);
+    }
 
-    internal ushort NameId(int handle) => _columns.NameIds[handle];
+    internal ushort NameId(int handle)
+    {
+        return _columns.NameIds[handle];
+    }
 
     public StringOrMemory LocalName(int handle)
     {
@@ -81,7 +102,7 @@ internal sealed partial class Arena : IDisposable
             return GeneratedTagMetadata.GetKnownName(id);
         var name = _names.GetName(id);
         var separator = name.Memory.Span.IndexOf(':');
-        return separator < 0 ? name : (StringOrMemory)name.Memory.Slice(separator + 1);
+        return separator < 0 ? name : name.Memory.Slice(separator + 1);
     }
 
     public StringOrMemory Prefix(int handle)
@@ -94,10 +115,12 @@ internal sealed partial class Arena : IDisposable
         return separator < 0 ? default : (StringOrMemory)name.Memory.Slice(0, separator);
     }
 
-    public StringOrMemory NamespaceUri(int handle) =>
-        (_columns.Flags[handle] & NodeFlags.SvgMember) != 0 ? NamespaceNames.SvgUri
-        : (_columns.Flags[handle] & NodeFlags.MathMember) != 0 ? NamespaceNames.MathMlUri
-        : NamespaceNames.HtmlUri;
+    public StringOrMemory NamespaceUri(int handle)
+    {
+        return (_columns.Flags[handle] & NodeFlags.SvgMember) != 0 ? NamespaceNames.SvgUri
+            : (_columns.Flags[handle] & NodeFlags.MathMember) != 0 ? NamespaceNames.MathMlUri
+            : NamespaceNames.HtmlUri;
+    }
 
     public StringOrMemory Value(int handle)
     {
@@ -105,19 +128,35 @@ internal sealed partial class Arena : IDisposable
         return payload < 0 ? default : _payloads![payload].Value;
     }
 
-    public NodeFlags Flags(int handle) => _columns.Flags[handle];
+    public NodeFlags Flags(int handle)
+    {
+        return _columns.Flags[handle];
+    }
 
-    public CompactNodeKind Kind(int handle) => _columns.Kinds[handle];
+    public CompactNodeKind Kind(int handle)
+    {
+        return _columns.Kinds[handle];
+    }
 
-    internal int NodeCount => _columns.Count;
+    public int Parent(int handle)
+    {
+        return _columns.Parents[handle];
+    }
 
-    public int Parent(int handle) => _columns.Parents[handle];
+    internal int FirstChild(int handle)
+    {
+        return _columns.FirstChildren[handle];
+    }
 
-    internal int FirstChild(int handle) => _columns.FirstChildren[handle];
+    internal int NextSibling(int handle)
+    {
+        return _columns.NextSiblings[handle];
+    }
 
-    internal int NextSibling(int handle) => _columns.NextSiblings[handle];
-
-    public int ChildCount(int handle) => _columns.ChildCounts[handle];
+    public int ChildCount(int handle)
+    {
+        return _columns.ChildCounts[handle];
+    }
 
     public int ChildAt(int handle, int index)
     {
@@ -129,7 +168,10 @@ internal sealed partial class Arena : IDisposable
         return child;
     }
 
-    public ISourceReference? SourceReference(int handle) => _columns.SourceReferences?[handle];
+    public ISourceReference? SourceReference(int handle)
+    {
+        return _columns.SourceReferences?[handle];
+    }
 
     public void SetSourceReference(int handle, ISourceReference? value)
     {
@@ -148,6 +190,7 @@ internal sealed partial class Arena : IDisposable
             AppendChild(parent, child);
             return;
         }
+
         if ((uint)index.Value > (uint)_columns.ChildCounts[parent])
             throw new ArgumentOutOfRangeException(nameof(index));
         InsertBefore(parent, child, ChildAt(parent, index.Value));
@@ -168,10 +211,8 @@ internal sealed partial class Arena : IDisposable
 
     private bool ShouldRetainWhitespaceAt(int parent, int? index)
     {
-        if (_columns.Kinds[parent] == CompactNodeKind.Element && (_columns.Flags[parent] & NodeFlags.Special) == 0)
-        {
-            return true;
-        }
+        if (_columns.Kinds[parent] == CompactNodeKind.Element &&
+            (_columns.Flags[parent] & NodeFlags.Special) == 0) return true;
 
         var previous = index is > 0 ? ChildAt(parent, index.Value - 1) : _columns.LastChildren[parent];
         while (previous >= 0)
@@ -194,14 +235,16 @@ internal sealed partial class Arena : IDisposable
         return false;
     }
 
-    private bool? IsPhrasingContent(int handle) =>
-        _columns.Kinds[handle] switch
+    private bool? IsPhrasingContent(int handle)
+    {
+        return _columns.Kinds[handle] switch
         {
             CompactNodeKind.Text => true,
             CompactNodeKind.Element => (_columns.Flags[handle] & NodeFlags.Special) == 0,
             CompactNodeKind.Comment or CompactNodeKind.ProcessingInstruction => null,
-            _ => false,
+            _ => false
         };
+    }
 
     public void AddComment(int parent, ref StructHtmlToken token)
     {
@@ -228,19 +271,21 @@ internal sealed partial class Arena : IDisposable
         return _columns.Add(_names.GetId(name), flags, kind);
     }
 
-    public void Dispose()
+    public CompactProjectionResult CreateProjectionResult(int root, int inputBytesConsumed)
     {
-        _attributes?.Dispose();
-        _payloads?.Dispose();
-        _columns.Dispose();
+        return (_constructionView as CompactProjectionExecutionState)?.CreateResult(this, root, inputBytesConsumed)
+               ?? throw new InvalidOperationException("The arena was not configured for projection extraction.");
     }
 
-    public CompactAggregateResult CreateAggregateResult(int root, int inputBytesConsumed) =>
-        (_constructionView as CompactAggregateExecutionState)?.CreateResult(this, root, inputBytesConsumed)
-        ?? throw new InvalidOperationException("The arena was not configured for aggregate extraction.");
+    public void SetTokensProcessed(int count)
+    {
+        _constructionView?.SetTokensProcessed(count);
+    }
 
-    public void SetTokensProcessed(int count) => _constructionView?.SetTokensProcessed(count);
-
-    private static int ValidateCapacity(int capacity, string name) =>
-        capacity > 0 ? capacity : throw new ArgumentOutOfRangeException(name, "Capacity hints must be positive.");
+    private static int ValidateCapacity(int capacity, string name)
+    {
+        return capacity > 0
+            ? capacity
+            : throw new ArgumentOutOfRangeException(name, "Capacity hints must be positive.");
+    }
 }

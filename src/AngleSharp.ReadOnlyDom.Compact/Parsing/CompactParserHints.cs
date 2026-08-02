@@ -1,9 +1,9 @@
-namespace AngleSharp.ReadOnlyDom.Compact;
+namespace AngleSharp.ReadOnlyDom.Compact.Parsing;
 
 /// <summary>
-/// Initial capacities for the arena's pooled buffers. When the input length is known up front,
-/// the parser scales these estimates with the content size; the values given here act as a
-/// floor, never a ceiling, so a small hint does not cap a large document.
+///     Initial capacities for the arena's pooled buffers. When the input length is known up front,
+///     the parser scales these estimates with the content size; the values given here act as a
+///     floor, never a ceiling, so a small hint does not cap a large document.
 /// </summary>
 public sealed class CompactParserHints
 {
