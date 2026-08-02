@@ -109,5 +109,4 @@ public sealed partial class CompactAggregatePlan
             TextBuilderPool.Return(output);
         }
     }
-
 }
