@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using AngleSharp.ReadOnlyDom;
 using AngleSharp.ReadOnlyDom.Compact;
 
@@ -48,20 +48,7 @@ static void RunCompactDom()
     Console.WriteLine($"nodes/attributes : {document.NodeCount}/{document.AttributeCount}");
     Console.WriteLine($"parent retained  : {article.Parent.Exists}");
     Console.WriteLine($"article text     : {Normalize(article.Text())}");
-
-    var plan = CompactExtractionPlan
-        .Start("article")
-        .WithId("content")
-        .TakeFirst()
-        .SelectAttribute("kind", "data-kind", required: true)
-        .SelectNormalizedText("text", required: true)
-        .Compile();
-    var result = plan.Execute(document);
-    var row = result.Rows[0];
-
-    Console.WriteLine($"plan kind        : {row["kind"]} ({row["kind"].Ownership})");
-    Console.WriteLine($"plan text        : {row["text"]} ({row["text"].Ownership})");
-    Console.WriteLine("lifetime         : borrowed plan values require the compact document");
+    Console.WriteLine("lifetime         : borrowed spans require the compact document");
 }
 
 static void RunConstructionTimeViews()
@@ -82,7 +69,6 @@ static void RunConstructionTimeViews()
     var aggregate = aggregatePlan.Execute(Html);
 
     Console.WriteLine($"aggregate JSON   : {aggregate.ToJson()}");
-    Console.WriteLine($"aggregate mode   : {aggregate.ExecutionMode}");
     Console.WriteLine(
         $"aggregate work   : {aggregate.Counters.TokensProcessed} tokens, "
             + $"{aggregate.Counters.NodesMaterialized} topology nodes, "

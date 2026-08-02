@@ -227,64 +227,55 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    [Arguments(CompactDocumentLayout.FrozenColumns)]
-    [Arguments(CompactDocumentLayout.Packed)]
-    public async Task InterpretedExtractionPlanExplainsAndExecutesRequiredFeatures(CompactDocumentLayout layout)
+    public async Task EofAggregateMultiStepPathExplainsAndExecutesRequiredFeatures()
     {
         const string html =
             "<main><section id=content class='selected wide' data-ready><article><a href='/item'> one <b>two</b> </a></article></section></main>";
-        var plan = CompactExtractionPlan
-            .Start("section")
-            .WithId("content")
-            .WithClass("wide")
-            .WithAttribute("data-ready")
-            .Child("article")
-            .Descendant("a")
-            .WithAttribute("href", "/item")
-            .TakeFirst()
-            .SelectAttribute("href", "href", required: true)
-            .SelectNormalizedText("text", required: true)
+        var plan = CompactAggregate
+            .First(
+                CompactAggregateSelector
+                    .Tag("section")
+                    .WithId("content")
+                    .WithClass("wide")
+                    .WithAttribute("data-ready")
+                    .Child("article")
+                    .Descendant("a")
+                    .WithAttribute("href", "/item")
+            )
+            .Field("href", CompactAggregateProjection.SelfAttribute("href"), required: true)
+            .Field("text", CompactAggregateProjection.SelfNormalizedText(), required: true)
             .Compile();
 
-        using var document = CompactParser.CreateParser(layout: layout).ParseCompactDocument(html);
-        var result = plan.Execute(document);
-        var explanation = plan.Explain();
+        var result = plan.Execute(html);
 
         await Assert.That(result.Rows.Count).IsEqualTo(1);
-        await Assert.That(result.Rows[0]["href"].Span.ToString()).IsEqualTo("/item");
-        await Assert.That(result.Rows[0]["href"].Ownership).IsEqualTo(CompactValueOwnership.BorrowedDocumentSlice);
+        await Assert.That(result.Rows[0]["href"].ToString()).IsEqualTo("/item");
         await Assert.That(result.Rows[0]["text"].ToString()).IsEqualTo("one two");
         await Assert.That(result.Rows[0]["text"].Ownership).IsEqualTo(CompactValueOwnership.Owned);
         await Assert.That(result.Counters.RowsProduced).IsEqualTo(1);
         await Assert.That(result.Counters.AttributesInspected).IsGreaterThan(0);
-        await Assert.That(plan.Requirements.MetadataOptions).IsEqualTo(CompactMetadataOptions.None);
-        await Assert.That(explanation).Contains("mode=interpreted compact-preorder");
-        await Assert.That(explanation).Contains("termination=first valid row after path evaluation");
+        await Assert.That(plan.Requirements.InspectedAttributes).Contains("data-ready");
+        await Assert.That(plan.Explain()).Contains("mode=eof-construction-aggregate");
     }
 
     [Test]
     [Arguments("<div id=content><p class=item data-v=one>A<p class=item>B")]
     [Arguments("<table><div id=content><span class=item data-v=one>A</span></div></table>")]
     [Arguments("<div id=content><b><i><span class=item data-v=one>A</b>B</i></span>")]
-    public async Task InterpretedExtractionPlanMatchesAngleSharpOnMalformedMarkup(string html)
+    public async Task EofAggregateMultiStepPathMatchesAngleSharpOnMalformedMarkup(string html)
     {
-        var plan = CompactExtractionPlan
-            .Start("div")
-            .WithId("content")
-            .Descendant("span")
-            .WithClass("item")
-            .TakeAll()
-            .SelectAttribute("value", "data-v", required: true, own: true)
-            .SelectNormalizedText("text")
+        var plan = CompactAggregate
+            .ForEach(CompactAggregateSelector.Tag("div").WithId("content").Descendant("span").WithClass("item"))
+            .Field("value", CompactAggregateProjection.SelfAttribute("data-v"), required: true)
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
             .Compile();
         using var expected = new HtmlParser().ParseDocument(html);
-        using var actual = CompactParser.CreateParser().ParseCompactDocument(html);
 
         var expectedRows = expected
             .QuerySelectorAll("div#content span.item[data-v]")
             .Select(element => $"{element.GetAttribute("data-v")}|{NormalizeWhitespace(element.TextContent)}")
             .ToArray();
-        var result = plan.Execute(actual);
+        var result = plan.Execute(html);
         var actualRows = result.Rows.Select(row => $"{row["value"]}|{row["text"]}").ToArray();
 
         await Assert.That(actualRows).IsEquivalentTo(expectedRows);
@@ -293,23 +284,19 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task ExtractionRequiredFieldsRejectOnlyMissingValues()
+    public async Task EofAggregateRequiredFieldsRejectOnlyMissingValues()
     {
-        using var document = CompactParser
-            .CreateParser()
-            .ParseCompactDocument("<p data-v=''>empty</p><p>missing</p><p data-v=x>value</p>");
-        var required = CompactExtractionPlan
-            .Start("p")
-            .TakeAll()
-            .SelectAttribute("value", "data-v", required: true)
+        const string html = "<p data-v=''>empty</p><p>missing</p><p data-v=x>value</p>";
+        var required = CompactAggregate
+            .ForEach(CompactAggregateSelector.Tag("p"))
+            .Field("value", CompactAggregateProjection.SelfAttribute("data-v"), required: true)
             .Compile()
-            .Execute(document);
-        var optional = CompactExtractionPlan
-            .Start("p")
-            .TakeAll()
-            .SelectAttribute("value", "data-v")
+            .Execute(html);
+        var optional = CompactAggregate
+            .ForEach(CompactAggregateSelector.Tag("p"))
+            .Field("value", CompactAggregateProjection.SelfAttribute("data-v"))
             .Compile()
-            .Execute(document);
+            .Execute(html);
 
         await Assert.That(required.Rows.Count).IsEqualTo(2);
         await Assert.That(required.Rows[0]["value"].Exists).IsTrue();
@@ -524,6 +511,82 @@ public sealed class CompactParserTests
         var result = plan.Execute("<main><p>none</p></main>");
 
         await Assert.That(result.Rows.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task EofAggregateChildAxisRejectsDeeperNesting()
+    {
+        var plan = CompactAggregate
+            .ForEach(CompactAggregateSelector.Tag("ul").Child("li"))
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Compile();
+
+        var result = plan.Execute("<ul><li>direct</li><li><ul><li>nested</li></ul></li></ul>");
+
+        await Assert.That(result.Rows.Count).IsEqualTo(3);
+        await Assert.That(result.Rows[0]["text"].ToString()).IsEqualTo("direct");
+        await Assert.That(result.Rows[2]["text"].ToString()).IsEqualTo("nested");
+    }
+
+    [Test]
+    public async Task EofAggregateChildAxisDoesNotMatchAcrossAnIntermediateElement()
+    {
+        var plan = CompactAggregate
+            .ForEach(CompactAggregateSelector.Tag("main").Child("p"))
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Compile();
+
+        var result = plan.Execute("<main><p>direct</p><div><p>indirect</p></div></main>");
+
+        await Assert.That(result.Rows.Count).IsEqualTo(1);
+        await Assert.That(result.Rows[0]["text"].ToString()).IsEqualTo("direct");
+    }
+
+    [Test]
+    public async Task EofAggregateDescendantAxisMatchesAtAnyDepth()
+    {
+        var plan = CompactAggregate
+            .First(CompactAggregateSelector.Tag("main").Descendant("span").WithClass("target"))
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Compile();
+
+        var result = plan.Execute("<main><div><section><span class=target>deep</span></section></div></main>");
+
+        await Assert.That(result.Rows.Count).IsEqualTo(1);
+        await Assert.That(result.Rows[0]["text"].ToString()).IsEqualTo("deep");
+    }
+
+    [Test]
+    public async Task EofAggregateDescendantChainBacktracksPastANonMatchingAncestor()
+    {
+        // The nearest `section` ancestor of the `p` has no matching `article` above it; matching must
+        // retry the outer `section` rather than giving up on the first candidate.
+        var plan = CompactAggregate
+            .First(CompactAggregateSelector.Tag("article").Descendant("section").Descendant("p"))
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Compile();
+
+        var result = plan.Execute("<article><section><div><p>wanted</p></div></section></article>");
+
+        await Assert.That(result.Rows.Count).IsEqualTo(1);
+        await Assert.That(result.Rows[0]["text"].ToString()).IsEqualTo("wanted");
+    }
+
+    [Test]
+    public async Task EofAggregatePathStepsContributeTheirAttributesToRequirements()
+    {
+        var plan = CompactAggregate
+            .First(CompactAggregateSelector.Tag("main").WithAttribute("data-scope").Child("p").WithId("lead"))
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Compile();
+
+        await Assert.That(plan.Requirements.InspectedAttributes).Contains("data-scope");
+        await Assert.That(plan.Requirements.InspectedAttributes).Contains("id");
+
+        var result = plan.Execute("<main data-scope=a><p id=lead>hit</p></main>");
+
+        await Assert.That(result.Rows.Count).IsEqualTo(1);
+        await Assert.That(result.Rows[0]["text"].ToString()).IsEqualTo("hit");
     }
 
     [Test]

@@ -1,4 +1,4 @@
-#if NET10_0
+﻿#if NET10_0
 using System.Text;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Compact;
@@ -18,12 +18,6 @@ public class LongSyntheticConstructionBenchmark
 {
     private readonly HtmlParser _readOnlyParser = new(default, ReadOnlyParser.DefaultContext);
     private readonly HtmlParser _compactParser = CompactParser.CreateParser();
-    private readonly CompactExtractionPlan _compactPlan = CompactExtractionPlan
-        .Start("article")
-        .WithId("content")
-        .TakeFirst()
-        .SelectNormalizedText("text", required: true)
-        .Compile();
     private readonly CompactAggregatePlan _aggregatePlan = CompactAggregate
         .First(CompactAggregateSelector.Tag("article").WithId("content"))
         .Field("text", CompactAggregateProjection.SelfNormalizedText(), required: true)
@@ -42,11 +36,11 @@ public class LongSyntheticConstructionBenchmark
         _html = CreatePage(NoiseBlocks);
         _utf8 = Encoding.UTF8.GetBytes(_html);
         var readOnly = ReadOnlyParseAndTraverse();
-        var compact = CompactParseAndPlan();
+        var compact = CompactParseAndScan();
         var aggregate = EofAggregateConstruction();
         var rawUtf8 = NativeUtf8RawFold();
         var completedUtf8 = NativeUtf8CompletedElementFold();
-        AssertEqual("compact", readOnly, compact);
+        AssertEqual("compact scan", readOnly, compact);
         AssertEqual("EOF aggregate", readOnly, aggregate);
         AssertEqual("native UTF-8 raw fold", readOnly, rawUtf8);
         AssertEqual("native UTF-8 completed-element fold", readOnly, completedUtf8);
@@ -67,11 +61,11 @@ public class LongSyntheticConstructionBenchmark
     }
 
     [Benchmark]
-    public string CompactParseAndPlan()
+    public string CompactParseAndScan()
     {
         using var document = _compactParser.ParseCompactDocument(_html);
-        var result = _compactPlan.Execute(document);
-        return result.Rows.Count == 0 ? string.Empty : result.Rows[0]["text"].Own();
+        var article = document.Elements("article").WithAttribute("id", "content").First();
+        return article.Exists ? Normalize(article.Text()) : string.Empty;
     }
 
     [Benchmark]
