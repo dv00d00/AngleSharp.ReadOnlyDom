@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/External/">
+    <Project Path="../AngleSharp/src/AngleSharp/AngleSharp.Core.csproj" />
+  </Folder>
   <Folder Name="/Source/">
     <Project Path="src/AngleSharp.ReadOnlyDom/AngleSharp.ReadOnlyDom.csproj" />
     <Project Path="src/AngleSharp.ReadOnlyDom.Compact/AngleSharp.ReadOnlyDom.Compact.csproj" />
