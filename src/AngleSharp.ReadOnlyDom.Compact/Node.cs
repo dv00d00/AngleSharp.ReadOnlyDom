@@ -229,6 +229,13 @@ public readonly struct Node
         return false;
     }
 
+    private struct LengthSink : ISpanSink
+    {
+        internal int Length;
+
+        public void Append(ReadOnlySpan<char> value) => Length += value.Length;
+    }
+
     public struct ChildCursor
     {
         private readonly CompactDocument _document;
