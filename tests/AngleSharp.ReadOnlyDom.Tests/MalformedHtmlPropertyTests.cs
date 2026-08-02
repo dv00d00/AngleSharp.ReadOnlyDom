@@ -3,14 +3,13 @@ using AngleSharp.Dom;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom;
-using AngleSharp.ReadOnlyDom.Compact.Document;
-using AngleSharp.ReadOnlyDom.Compact.Parsing;
-using AngleSharp.ReadOnlyDom.Compact.Projection;
 using AngleSharp.ReadOnlyDom.Html;
 using FsCheck;
 using FsCheck.Fluent;
 #if NET10_0
-using AngleSharp.ReadOnlyDom.Compact;
+using AngleSharp.ReadOnlyDom.Compact.Document;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
+using AngleSharp.ReadOnlyDom.Compact.Projection;
 #endif
 
 namespace AngleSharp.Readonly.Tests;

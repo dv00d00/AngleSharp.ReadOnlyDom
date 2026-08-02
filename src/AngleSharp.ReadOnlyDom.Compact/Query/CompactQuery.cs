@@ -13,12 +13,12 @@ public static class CompactQuery
     }
 
     /// <summary>Resolves a name once for ID-based predicates.</summary>
-    public static ushort Name(this CompactDocument document, string name)
+    internal static ushort Name(this CompactDocument document, string name)
     {
         return document.ResolveNameId(name);
     }
 
-    public static ushort Name(this CompactDocument document, ReadOnlySpan<char> name)
+    internal static ushort Name(this CompactDocument document, ReadOnlySpan<char> name)
     {
         return document.ResolveNameId(name);
     }
@@ -69,7 +69,7 @@ public static class CompactQuery
         );
     }
 
-    public static ElementQuery Elements(this CompactDocument document, ushort tagId)
+    internal static ElementQuery Elements(this CompactDocument document, ushort tagId)
     {
         return new ElementQuery(document, tagId, 0, document.NodeCount, false, default, null, false, default,
             null);
@@ -85,7 +85,7 @@ public static class CompactQuery
         return CreateElements(node, node.Document.ResolveNameId(tag));
     }
 
-    public static ElementQuery Elements(this Node node, ushort tagId)
+    internal static ElementQuery Elements(this Node node, ushort tagId)
     {
         return CreateElements(node, tagId);
     }
@@ -193,7 +193,7 @@ public static class CompactQuery
         }
 
         /// <summary>Filters by a class token using a previously resolved <c>class</c> attribute name ID.</summary>
-        public ElementQuery WithClass(ushort classNameId, string token)
+        internal ElementQuery WithClass(ushort classNameId, string token)
         {
             return new ElementQuery(_document, _tagId, _start, _endExclusive, true, classNameId, token, _hasAttr,
                 _attrId,
@@ -207,7 +207,7 @@ public static class CompactQuery
         }
 
         /// <summary>Filters by a previously resolved attribute name ID.</summary>
-        public ElementQuery WithAttribute(ushort nameId, string? value = null)
+        internal ElementQuery WithAttribute(ushort nameId, string? value = null)
         {
             return new ElementQuery(_document, _tagId, _start, _endExclusive, _hasClass, _classId, _classToken, true,
                 nameId, value);

@@ -8,7 +8,7 @@ using AngleSharp.ReadOnlyDom.Compact.Query;
 
 namespace AngleSharp.Readonly.Tests;
 
-public class TopLevelArenaSmoke
+internal class TopLevelArenaSmoke
 {
     private static readonly string BaseDir = Path.Combine(AppContext.BaseDirectory, "temp");
 

@@ -13,7 +13,7 @@ public enum CompactNodeKind : byte
 }
 
 [StructLayout(LayoutKind.Sequential)]
-public readonly struct CompactNode
+internal readonly struct CompactNode
 {
     internal CompactNode(
         int firstChild,
@@ -41,7 +41,7 @@ public readonly struct CompactNode
 }
 
 [StructLayout(LayoutKind.Sequential)]
-public readonly struct CompactNodePayload
+internal readonly struct CompactNodePayload
 {
     internal CompactNodePayload(int firstAttribute, int valueStart, int valueLength, ushort attributeCount)
     {
@@ -57,7 +57,7 @@ public readonly struct CompactNodePayload
     public ushort AttributeCount { get; }
 }
 
-public readonly struct CompactAttribute
+internal readonly struct CompactAttribute
 {
     internal CompactAttribute(ushort nameId, int valueStart, int valueLength)
     {
@@ -83,7 +83,7 @@ public enum CompactMetadataOptions
     SourceLocations = 1 << 1
 }
 
-public enum CompactDocumentLayout
+internal enum CompactDocumentLayout
 {
     FrozenColumns,
     Packed

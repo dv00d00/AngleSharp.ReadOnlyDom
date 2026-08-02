@@ -83,16 +83,16 @@ public sealed class CompactDocument : IDisposable
         _hasTemplates = templateBoundaries.Length != 0;
     }
 
-    public CompactDocumentLayout Layout =>
+    internal CompactDocumentLayout Layout =>
         _arena is null ? CompactDocumentLayout.Packed : CompactDocumentLayout.FrozenColumns;
 
     public int NodeCount { get; }
 
     public int AttributeCount { get; }
 
-    public int PayloadCount { get; }
+    internal int PayloadCount { get; }
 
-    public int TextLength { get; }
+    internal int TextLength { get; }
 
     public bool HasParentLinks =>
         _arena is null ? _parents is not null : _metadataOptions.HasFlag(CompactMetadataOptions.ParentLinks);
@@ -138,7 +138,7 @@ public sealed class CompactDocument : IDisposable
             ArrayPool<CompactSourceLocation>.Shared.Return(_sources);
     }
 
-    public CompactNode GetNode(int handle)
+    internal CompactNode GetNode(int handle)
     {
         if (_arena is null)
             return _nodes![handle];
@@ -172,7 +172,7 @@ public sealed class CompactDocument : IDisposable
         return _arena is null ? _nodes![handle].SubtreeEndExclusive : _arena.FrozenSubtreeEnd(handle);
     }
 
-    public CompactNodePayload GetPayload(int index)
+    internal CompactNodePayload GetPayload(int index)
     {
         if (_arena is null)
             return _payloads![index];
@@ -185,7 +185,7 @@ public sealed class CompactDocument : IDisposable
         );
     }
 
-    public CompactAttribute GetAttribute(int index)
+    internal CompactAttribute GetAttribute(int index)
     {
         if (_arena is null)
             return _attributes![index];
@@ -275,7 +275,7 @@ public sealed class CompactDocument : IDisposable
     ///     Returns the next node at or after <paramref name="start" /> with the given name ID, or -1.
     ///     Frozen columns use a vectorized scan; packed documents use a scalar scan.
     /// </summary>
-    public int IndexOfName(string name, int start = 0, int endExclusive = int.MaxValue)
+    internal int IndexOfName(string name, int start = 0, int endExclusive = int.MaxValue)
     {
         return IndexOfName(name.AsSpan(), start, endExclusive);
     }
@@ -284,7 +284,7 @@ public sealed class CompactDocument : IDisposable
     ///     Resolves <paramref name="name" /> once, then returns the next matching node at or after
     ///     <paramref name="start" />, or -1.
     /// </summary>
-    public int IndexOfName(ReadOnlySpan<char> name, int start = 0, int endExclusive = int.MaxValue)
+    internal int IndexOfName(ReadOnlySpan<char> name, int start = 0, int endExclusive = int.MaxValue)
     {
         return IndexOfName(ResolveNameId(name), start, endExclusive);
     }
@@ -292,7 +292,7 @@ public sealed class CompactDocument : IDisposable
     /// <summary>
     ///     Returns the next node at or after <paramref name="start" /> with the given pre-resolved name ID, or -1.
     /// </summary>
-    public int IndexOfName(ushort nameId, int start = 0, int endExclusive = int.MaxValue)
+    internal int IndexOfName(ushort nameId, int start = 0, int endExclusive = int.MaxValue)
     {
         if (start < 0)
             start = 0;
@@ -314,14 +314,14 @@ public sealed class CompactDocument : IDisposable
         return -1;
     }
 
-    public string GetName(ushort id)
+    internal string GetName(ushort id)
     {
         return id < GeneratedTagMetadata.KnownNameCount
             ? GeneratedTagMetadata.GetKnownName(id)
             : _names[id - GeneratedTagMetadata.KnownNameCount];
     }
 
-    public ReadOnlySpan<char> GetValue(int start, int length)
+    internal ReadOnlySpan<char> GetValue(int start, int length)
     {
         if (length == 0)
             return [];
@@ -333,14 +333,14 @@ public sealed class CompactDocument : IDisposable
         return memory.Span[..length];
     }
 
-    public int GetParent(int handle)
+    internal int GetParent(int handle)
     {
         if (!HasParentLinks)
             throw new InvalidOperationException("Parent links were not retained.");
         return _arena is null ? _parents![handle] : _arena.FrozenParent(handle);
     }
 
-    public bool TryGetSourceLocation(int handle, out CompactSourceLocation source)
+    internal bool TryGetSourceLocation(int handle, out CompactSourceLocation source)
     {
         if (_arena is not null)
         {
@@ -360,19 +360,19 @@ public sealed class CompactDocument : IDisposable
         return false;
     }
 
-    public int CountElements(string name)
+    internal int CountElements(string name)
     {
         return CountElements(name.AsSpan());
     }
 
     /// <summary>Resolves <paramref name="name" /> once, then counts matching elements.</summary>
-    public int CountElements(ReadOnlySpan<char> name)
+    internal int CountElements(ReadOnlySpan<char> name)
     {
         return CountElements(ResolveNameId(name));
     }
 
     /// <summary>Counts elements using a previously resolved name ID.</summary>
-    public int CountElements(ushort nameId)
+    internal int CountElements(ushort nameId)
     {
         var count = 0;
         for (var handle = 0; handle < NodeCount; handle++)
@@ -449,12 +449,12 @@ public sealed class CompactDocument : IDisposable
     /// <summary>
     ///     Resolves a name only when it occurs in this document. This scans nodes and attributes.
     /// </summary>
-    public ushort FindNameId(string name)
+    internal ushort FindNameId(string name)
     {
         return FindNameId(name.AsSpan());
     }
 
-    public ushort FindNameId(ReadOnlySpan<char> name)
+    internal ushort FindNameId(ReadOnlySpan<char> name)
     {
         var id = ResolveNameId(name);
         return id != ushort.MaxValue && ContainsNameId(id) ? id : ushort.MaxValue;
@@ -463,12 +463,12 @@ public sealed class CompactDocument : IDisposable
     /// <summary>
     ///     Resolves a stable name ID without checking whether it occurs in this document.
     /// </summary>
-    public ushort ResolveNameId(string name)
+    internal ushort ResolveNameId(string name)
     {
         return ResolveNameId(name.AsSpan());
     }
 
-    public ushort ResolveNameId(ReadOnlySpan<char> name)
+    internal ushort ResolveNameId(ReadOnlySpan<char> name)
     {
         if (GeneratedTagMetadata.TryGetKnownNameId(name, out var knownId))
             return knownId;

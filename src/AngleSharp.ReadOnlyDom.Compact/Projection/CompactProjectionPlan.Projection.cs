@@ -7,6 +7,8 @@ namespace AngleSharp.ReadOnlyDom.Compact.Projection;
 
 public sealed partial class CompactProjectionPlan
 {
+    private const int UnresolvedTarget = int.MinValue;
+
     /// <summary>
     ///     Projected values are field-sized: attribute values, headings, normalized subtree text.
     ///     A builder is rented per projected value because a many-row plan projects one value per field
@@ -25,11 +27,25 @@ public sealed partial class CompactProjectionPlan
     )
     {
         var values = new CompactProjectionField[_fields.Length];
-        for (var index = 0; index < _fields.Length; index++)
+        Span<int> targetCache = _targetSlotCount <= 32
+            ? stackalloc int[_targetSlotCount]
+            : new int[_targetSlotCount];
+        targetCache.Fill(UnresolvedTarget);
+
+        foreach (var index in _evaluationOrder)
         {
             var field = _fields[index];
             var projection = field.Projection;
-            var target = projection.Selector is null ? scope : FindFirst(arena, scope, projection.Selector, state);
+            var targetSlot = _targetSlots[index];
+            var target = scope;
+            if (targetSlot >= 0)
+            {
+                ref var cachedTarget = ref targetCache[targetSlot];
+                if (cachedTarget == UnresolvedTarget)
+                    cachedTarget = FindFirst(arena, scope, projection.Selector!, state);
+                target = cachedTarget;
+            }
+
             CompactProjectionValue value = default;
             if (target >= 0)
                 value = projection.Kind switch
@@ -41,7 +57,7 @@ public sealed partial class CompactProjectionPlan
                         state
                     ),
                     CompactFieldProjectionKind.NormalizedText => new CompactProjectionValue(
-                        NormalizeText(arena, target)
+                        NormalizeText(arena, target, state)
                     ),
                     _ => throw new InvalidOperationException("Unknown field projection.")
                 };
@@ -79,8 +95,13 @@ public sealed partial class CompactProjectionPlan
         return default;
     }
 
-    private static string NormalizeText(ConstructionArena arena, int target)
+    private static string NormalizeText(
+        ConstructionArena arena,
+        int target,
+        CompactProjectionExecutionState state
+    )
     {
+        state.NormalizedTextProjected();
         var output = TextBuilderPool.Get();
         try
         {

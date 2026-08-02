@@ -13,9 +13,13 @@ public sealed partial class CompactProjectionPlan
     private readonly IBrowsingContext _context;
     private readonly ArenaConstructionFactory _factory;
     private readonly CompactProjectionFieldDefinition[] _fields;
+    private readonly Lazy<(ArenaConstructionFactory Factory, IBrowsingContext Context)> _diagnosticRuntime;
+    private readonly int[] _evaluationOrder;
     private readonly HtmlParserOptions _parserOptions;
     private readonly string[] _retainedAttributes;
     private readonly CompactProjectionSelector _scope;
+    private readonly int[] _targetSlots;
+    private readonly int _targetSlotCount;
 
     internal CompactProjectionPlan(
         CompactProjectionSelector scope,
@@ -26,15 +30,21 @@ public sealed partial class CompactProjectionPlan
         _scope = scope;
         Cardinality = cardinality;
         _fields = fields;
+        _evaluationOrder = Enumerable
+            .Range(0, fields.Length)
+            .OrderByDescending(index => fields[index].Required)
+            .ToArray();
+        (_targetSlots, _targetSlotCount) = BuildTargetSlots(fields);
         Requirements = BuildRequirements(scope, fields);
         _retainedAttributes = [.. Requirements.RetainedAttributes];
 
-        _factory = new ArenaConstructionFactory(
-            new CompactParserHints(),
-            false,
-            CompactMetadataOptions.None,
-            CompactDocumentLayout.FrozenColumns,
-            new CompactProjectionDefinition(this)
+        _factory = CreateFactory(collectDiagnostics: false);
+        _diagnosticRuntime = new Lazy<(ArenaConstructionFactory, IBrowsingContext)>(
+            () =>
+            {
+                var factory = CreateFactory(collectDiagnostics: true);
+                return (factory, BrowsingContext.New(Configuration.Default.With(_ => factory)));
+            }
         );
         _context = BrowsingContext.New(Configuration.Default.With(_ => _factory));
         _parserOptions = CompactParser.CreateParserOptions(CompactMetadataOptions.None);
@@ -47,7 +57,35 @@ public sealed partial class CompactProjectionPlan
     public CompactProjectionResult Execute(string source)
     {
         ArgumentNullException.ThrowIfNull(source);
-        var parser = new HtmlParser(_parserOptions, _context);
+        return Execute(source, _factory, _context, collectDiagnostics: false);
+    }
+
+    internal CompactProjectionResult ExecuteWithDiagnostics(string source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        var runtime = _diagnosticRuntime.Value;
+        return Execute(source, runtime.Factory, runtime.Context, collectDiagnostics: true);
+    }
+
+    private ArenaConstructionFactory CreateFactory(bool collectDiagnostics)
+    {
+        return new ArenaConstructionFactory(
+            new CompactParserHints(),
+            false,
+            CompactMetadataOptions.None,
+            CompactDocumentLayout.FrozenColumns,
+            new CompactProjectionDefinition(this, collectDiagnostics)
+        );
+    }
+
+    private CompactProjectionResult Execute(
+        string source,
+        ArenaConstructionFactory factory,
+        IBrowsingContext context,
+        bool collectDiagnostics
+    )
+    {
+        var parser = new HtmlParser(_parserOptions, context);
         var textSource = new TextSource(new StringTextSource(source));
         var tokensProcessed = 0;
         TokenizerMiddleware middleware = (ref StructHtmlToken token, TokenConsumer next) =>
@@ -56,16 +94,18 @@ public sealed partial class CompactProjectionPlan
             next(ref token);
             return TokenConsumptionResult.Continue;
         };
-        var document = parser.ParseDocument(
-            textSource,
-            _factory,
-            middleware
-        );
+        var document = collectDiagnostics
+            ? parser.ParseDocument(textSource, factory, middleware)
+            : parser.ParseDocument(textSource, factory);
         try
         {
+            if (!collectDiagnostics)
+                return document.CreateProjectionResult(0);
+
             document.SetTokensProcessed(tokensProcessed);
             var consumed = Math.Min(source.Length, document.Source.Index);
-            return document.CreateProjectionResult(Encoding.UTF8.GetByteCount(source.AsSpan(0, consumed)));
+            var inputBytesConsumed = Encoding.UTF8.GetByteCount(source.AsSpan(0, consumed));
+            return document.CreateProjectionResult(inputBytesConsumed);
         }
         finally
         {
@@ -80,6 +120,39 @@ public sealed partial class CompactProjectionPlan
             if (attribute.Equals(retained, StringComparison.OrdinalIgnoreCase))
                 return true;
         return CompactConstructionAttributePolicy.IsRequiredByTreeBuilder(ref token, attribute);
+    }
+
+    private static (int[] Slots, int Count) BuildTargetSlots(CompactProjectionFieldDefinition[] fields)
+    {
+        var slots = new int[fields.Length];
+        var selectors = new List<CompactProjectionSelector>();
+        for (var index = 0; index < fields.Length; index++)
+        {
+            var selector = fields[index].Projection.Selector;
+            if (selector is null)
+            {
+                slots[index] = -1;
+                continue;
+            }
+
+            var slot = -1;
+            for (var candidate = 0; candidate < selectors.Count; candidate++)
+                if (selector.HasSameStepsAs(selectors[candidate]))
+                {
+                    slot = candidate;
+                    break;
+                }
+
+            if (slot < 0)
+            {
+                slot = selectors.Count;
+                selectors.Add(selector);
+            }
+
+            slots[index] = slot;
+        }
+
+        return (slots, selectors.Count);
     }
 
     private static CompactProjectionRequirements BuildRequirements(

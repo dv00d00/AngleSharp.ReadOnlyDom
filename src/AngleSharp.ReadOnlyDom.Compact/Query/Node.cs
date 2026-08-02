@@ -18,15 +18,15 @@ public readonly struct Node
     }
 
     public bool Exists => _document is not null && Handle >= 0;
-    public int Handle { get; }
+    internal int Handle { get; }
 
-    public CompactDocument Document => _document!;
+    internal CompactDocument Document => _document!;
 
     private CompactNode Raw => _document!.GetNode(Handle);
 
     public CompactNodeKind Kind => _document!.KindAt(Handle);
     public bool IsElement => _document!.KindAt(Handle) == CompactNodeKind.Element;
-    public ushort NameId => _document!.NameIdAt(Handle);
+    internal ushort NameId => _document!.NameIdAt(Handle);
     public string Name => _document!.GetName(_document.NameIdAt(Handle));
 
     public ReadOnlySpan<char> LocalName
@@ -49,7 +49,7 @@ public readonly struct Node
         return Is(_document!.ResolveNameId(tag));
     }
 
-    public bool Is(ushort tagId)
+    internal bool Is(ushort tagId)
     {
         return tagId != ushort.MaxValue
                && _document!.KindAt(Handle) == CompactNodeKind.Element
@@ -69,6 +69,14 @@ public readonly struct Node
                && Handle < ancestor.Raw.SubtreeEndExclusive;
     }
 
+    public bool TryGetSourceLocation(out CompactSourceLocation source)
+    {
+        if (_document is not null)
+            return _document.TryGetSourceLocation(Handle, out source);
+        source = default;
+        return false;
+    }
+
     /// <summary>The attribute value (empty span if absent — use <see cref="HasAttr(string)" /> to disambiguate).</summary>
     public ReadOnlySpan<char> Attr(string name)
     {
@@ -80,8 +88,7 @@ public readonly struct Node
         return Attr(_document!.ResolveNameId(name));
     }
 
-    /// <summary>Gets an attribute using a name ID previously resolved by <see cref="CompactDocument.Name(string)" />.</summary>
-    public ReadOnlySpan<char> Attr(ushort nameId)
+    internal ReadOnlySpan<char> Attr(ushort nameId)
     {
         return TryFindAttribute(nameId, out var value) ? value : default;
     }
@@ -97,7 +104,7 @@ public readonly struct Node
     }
 
     /// <summary>Checks an attribute using a previously resolved name ID.</summary>
-    public bool HasAttr(ushort nameId)
+    internal bool HasAttr(ushort nameId)
     {
         return TryFindAttribute(nameId, out _);
     }
@@ -113,7 +120,7 @@ public readonly struct Node
     }
 
     /// <summary>Checks a class token using a previously resolved <c>class</c> attribute name ID.</summary>
-    public bool HasClass(ushort classNameId, ReadOnlySpan<char> token)
+    internal bool HasClass(ushort classNameId, ReadOnlySpan<char> token)
     {
         if (!TryFindAttribute(classNameId, out var classes))
             return false;
@@ -146,7 +153,7 @@ public readonly struct Node
     ///     string. The sink is a by-ref struct so mutations (e.g. accumulated length) persist and there is no
     ///     allocation or boxing; the JIT specializes the walk per sink type.
     /// </summary>
-    public void WriteText<TSink>(ref TSink sink)
+    internal void WriteText<TSink>(ref TSink sink)
         where TSink : ISpanSink
     {
         var document = _document!;

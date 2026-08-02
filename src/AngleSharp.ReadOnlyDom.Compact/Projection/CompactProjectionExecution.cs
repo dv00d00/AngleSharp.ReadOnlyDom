@@ -6,11 +6,15 @@ using ConstructionArena = AngleSharp.ReadOnlyDom.Compact.Arena.Arena;
 
 namespace AngleSharp.ReadOnlyDom.Compact.Projection;
 
-internal sealed class CompactProjectionDefinition(CompactProjectionPlan plan) : ICompactConstructionViewDefinition
+internal sealed class CompactProjectionDefinition(CompactProjectionPlan plan, bool collectDiagnostics)
+    : ICompactConstructionViewDefinition
 {
     public ICompactConstructionViewState CreateState(TextSource source)
     {
-        return new CompactProjectionExecutionState(SourceIdentity(source), plan);
+        return new CompactProjectionExecutionState(
+            plan,
+            collectDiagnostics ? new CompactProjectionDiagnostics(SourceIdentity(source)) : null
+        );
     }
 
     private static string? SourceIdentity(TextSource source)
@@ -22,22 +26,105 @@ internal sealed class CompactProjectionDefinition(CompactProjectionPlan plan) : 
 internal sealed class CompactProjectionExecutionState : ICompactConstructionViewState
 {
     private readonly CompactProjectionPlan _plan;
+
+    internal CompactProjectionExecutionState(
+        CompactProjectionPlan plan,
+        CompactProjectionDiagnostics? diagnostics
+    )
+    {
+        _plan = plan;
+        Diagnostics = diagnostics;
+    }
+
+    internal CompactProjectionDiagnostics? Diagnostics { get; }
+
+    public void SetTokensProcessed(int count)
+    {
+        Diagnostics?.SetTokensProcessed(count);
+    }
+
+    public void NodeMaterialized()
+    {
+        Diagnostics?.NodeMaterialized();
+    }
+
+    public void AttributeRetained(StringOrMemory value)
+    {
+        Diagnostics?.AttributeRetained(value);
+    }
+
+    public void CompleteAttributes(ConstructionArena arena, int handle)
+    {
+    }
+
+    public StringOrMemory SelectTextValue(StringOrMemory value)
+    {
+        if (!_plan.Requirements.RetainsText)
+            return default;
+
+        Diagnostics?.TextValueRetained(value);
+        return value;
+    }
+
+    public CompactProjectionResult CreateResult(ConstructionArena arena, int root, int inputBytesConsumed)
+    {
+        return _plan.Evaluate(arena, root, this, inputBytesConsumed);
+    }
+
+    internal void CandidateNode()
+    {
+        Diagnostics?.CandidateNode();
+    }
+
+    internal void MatchedScope()
+    {
+        Diagnostics?.MatchedScope();
+    }
+
+    internal void AttributeInspected()
+    {
+        Diagnostics?.AttributeInspected();
+    }
+
+    internal void RowProduced()
+    {
+        Diagnostics?.RowProduced();
+    }
+
+    internal void RowRejected()
+    {
+        Diagnostics?.RowRejected();
+    }
+
+    internal void NormalizedTextProjected()
+    {
+        Diagnostics?.NormalizedTextProjected();
+    }
+
+    internal CompactProjectionCounters Snapshot(int inputBytesConsumed)
+    {
+        return Diagnostics?.Snapshot(inputBytesConsumed) ?? default;
+    }
+}
+
+internal sealed class CompactProjectionDiagnostics
+{
     private readonly string? _source;
     private int _attributesInspected;
     private int _attributesRetained;
     private int _candidateNodes;
     private int _matchedScopes;
     private int _nodesMaterialized;
+    private int _normalizedTextValuesProjected;
     private int _rowsProduced;
     private int _rowsRejected;
     private int _textValuesRetained;
     private int _tokensProcessed;
     private int _valuesDecoded;
 
-    public CompactProjectionExecutionState(string? source, CompactProjectionPlan plan)
+    internal CompactProjectionDiagnostics(string? source)
     {
         _source = source;
-        _plan = plan;
     }
 
     public void SetTokensProcessed(int count)
@@ -56,18 +143,10 @@ internal sealed class CompactProjectionExecutionState : ICompactConstructionView
         ObserveDecoded(value);
     }
 
-    public void CompleteAttributes(ConstructionArena arena, int handle)
+    public void TextValueRetained(StringOrMemory value)
     {
-    }
-
-    public StringOrMemory SelectTextValue(StringOrMemory value)
-    {
-        if (!_plan.Requirements.RetainsText)
-            return default;
-
         _textValuesRetained++;
         ObserveDecoded(value);
-        return value;
     }
 
     public void CandidateNode()
@@ -95,9 +174,9 @@ internal sealed class CompactProjectionExecutionState : ICompactConstructionView
         _rowsRejected++;
     }
 
-    public CompactProjectionResult CreateResult(ConstructionArena arena, int root, int inputBytesConsumed)
+    public void NormalizedTextProjected()
     {
-        return _plan.Evaluate(arena, root, this, inputBytesConsumed);
+        _normalizedTextValuesProjected++;
     }
 
     public CompactProjectionCounters Snapshot(int inputBytesConsumed)
@@ -113,6 +192,7 @@ internal sealed class CompactProjectionExecutionState : ICompactConstructionView
             _valuesDecoded,
             _rowsProduced,
             _rowsRejected,
+            _normalizedTextValuesProjected,
             inputBytesConsumed
         );
     }

@@ -5,11 +5,10 @@ using System.Text;
 using AngleSharp.Dom;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
-using AngleSharp.ReadOnlyDom.Compact.Document;
-using AngleSharp.ReadOnlyDom.Compact.Parsing;
 using AngleSharp.ReadOnlyDom.Html;
 #if NET10_0
-using AngleSharp.ReadOnlyDom.Compact;
+using AngleSharp.ReadOnlyDom.Compact.Document;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
 #endif
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
