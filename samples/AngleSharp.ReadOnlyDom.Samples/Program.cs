@@ -64,7 +64,6 @@ static void RunConstructionTimeViews()
         )
         .Field("kind", CompactAggregateProjection.SelfAttribute("data-kind"), required: true)
         .Field("text", CompactAggregateProjection.SelfNormalizedText())
-        .Field("markdown", CompactAggregateProjection.SelfMarkdown())
         .Compile();
     var aggregate = aggregatePlan.Execute(Html);
 

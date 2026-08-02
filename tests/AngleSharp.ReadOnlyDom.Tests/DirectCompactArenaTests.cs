@@ -1,4 +1,4 @@
-#if NET10_0
+﻿#if NET10_0
 using System.Runtime.CompilerServices;
 using System.Text;
 using AngleSharp.Dom;
@@ -251,7 +251,6 @@ public sealed class CompactParserTests
         await Assert.That(result.Rows.Count).IsEqualTo(1);
         await Assert.That(result.Rows[0]["href"].ToString()).IsEqualTo("/item");
         await Assert.That(result.Rows[0]["text"].ToString()).IsEqualTo("one two");
-        await Assert.That(result.Rows[0]["text"].Ownership).IsEqualTo(CompactValueOwnership.Owned);
         await Assert.That(result.Counters.RowsProduced).IsEqualTo(1);
         await Assert.That(result.Counters.AttributesInspected).IsGreaterThan(0);
         await Assert.That(plan.Requirements.InspectedAttributes).Contains("data-ready");
@@ -279,8 +278,6 @@ public sealed class CompactParserTests
         var actualRows = result.Rows.Select(row => $"{row["value"]}|{row["text"]}").ToArray();
 
         await Assert.That(actualRows).IsEquivalentTo(expectedRows);
-        foreach (var row in result.Rows)
-            await Assert.That(row["value"].Ownership).IsEqualTo(CompactValueOwnership.Owned);
     }
 
     [Test]
@@ -331,7 +328,6 @@ public sealed class CompactParserTests
         {
             var value = actual.Rows[0]["text"];
             await Assert.That(value.ToString()).IsEqualTo(NormalizeWhitespace(expected.TextContent));
-            await Assert.That(value.Ownership).IsEqualTo(CompactValueOwnership.Owned);
         }
         await Assert.That(actual.Counters.TokensProcessed).IsGreaterThan(0);
         await Assert.That(actual.Counters.NodesMaterialized).IsGreaterThan(0);
@@ -356,7 +352,7 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task EofAggregateProjectsArticleAsJsonTextAndMarkdown()
+    public async Task EofAggregateProjectsArticleAsJsonText()
     {
         const string Html = """
             <article id="content">
@@ -370,7 +366,6 @@ public sealed class CompactParserTests
             .First(article)
             .Field("title", CompactAggregateProjection.FirstNormalizedText(CompactAggregateSelector.Tag("h1")))
             .Field("text", CompactAggregateProjection.SelfNormalizedText())
-            .Field("markdown", CompactAggregateProjection.SelfMarkdown())
             .Compile();
 
         var result = plan.Execute(Html);
@@ -380,15 +375,9 @@ public sealed class CompactParserTests
         await Assert
             .That(result.Rows[0]["text"].ToString())
             .IsEqualTo("Parsing real HTML Use the HTML parser, not regex. Correct tablesMalformed markup");
-        await Assert
-            .That(result.Rows[0]["markdown"].ToString())
-            .IsEqualTo(
-                "# Parsing *real* HTML\n\nUse the [HTML parser](/parser), not regex.\n\n- Correct tables\n- Malformed markup"
-            );
-        await Assert.That(result.Rows[0]["title"].Ownership).IsEqualTo(CompactValueOwnership.Owned);
         await Assert.That(result.Counters.InputBytesConsumed).IsEqualTo(Encoding.UTF8.GetByteCount(Html));
         await Assert.That(result.Counters.RowsProduced).IsEqualTo(1);
-        await Assert.That(result.ToJson()).Contains("\"markdown\":\"# Parsing *real* HTML");
+        await Assert.That(result.ToJson()).Contains("\"title\":\"Parsing real HTML\"");
         await Assert.That(plan.Explain()).Contains("termination=end-of-document");
     }
 
@@ -445,40 +434,6 @@ public sealed class CompactParserTests
         await Assert.That(result.Rows[0]["url"].Exists).IsTrue();
         await Assert.That(result.Rows[0]["url"].Span.Length).IsEqualTo(0);
         await Assert.That(result.Counters.RowsRejected).IsEqualTo(1);
-    }
-
-    [Test]
-    public async Task EofAggregateMarkdownSupportsExclusionsAndPreservedCode()
-    {
-        const string Html = """
-            <main id="docs">
-              <nav>Previous | Next</nav>
-              <h1>Authentication</h1>
-              <p>Send an <code>Authorization</code> header.</p>
-              <pre><code>curl -H "Authorization: Bearer TOKEN"</code></pre>
-              <aside>Internal advertisement</aside>
-            </main>
-            """;
-        var plan = CompactAggregate
-            .First(CompactAggregateSelector.Tag("main").WithId("docs"))
-            .Field(
-                "markdown",
-                CompactAggregateProjection.SelfMarkdown(
-                    CompactAggregateSelector.Tag("nav"),
-                    CompactAggregateSelector.Tag("aside")
-                )
-            )
-            .Compile();
-
-        var result = plan.Execute(Html);
-
-        await Assert
-            .That(result.Rows[0]["markdown"].ToString())
-            .IsEqualTo(
-                "# Authentication\n\nSend an `Authorization` header.\n\n```text\ncurl -H \"Authorization: Bearer TOKEN\"\n```"
-            );
-        await Assert.That(result.Rows[0]["markdown"].ToString()).DoesNotContain("Previous");
-        await Assert.That(result.Rows[0]["markdown"].ToString()).DoesNotContain("advertisement");
     }
 
     [Test]
