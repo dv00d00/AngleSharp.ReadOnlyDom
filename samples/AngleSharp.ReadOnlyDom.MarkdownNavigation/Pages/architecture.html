@@ -1,0 +1,13 @@
+<!doctype html>
+<html>
+  <head><title>Navigator architecture</title></head>
+  <body>
+    <article>
+      <h2>Security boundary</h2>
+      <p>The endpoint recognizes a fixed map of checked-in pages. It never accepts a remote URL or an arbitrary filesystem path.</p>
+      <p>The HTML bytes still travel through the real Streaming tokenizer, query plan, capture state, and backpressured publisher.</p>
+      <p>The renderer never writes <code>innerHTML</code>. External links receive <code>noreferrer noopener</code>.</p>
+      <p>Return to the <a href="index.html">navigation index</a> or the <a href="guide.html">extraction guide</a>.</p>
+    </article>
+  </body>
+</html>

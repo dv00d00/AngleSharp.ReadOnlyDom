@@ -1,0 +1,144 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #f5f1e8;
+  color: #17211b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+header,
+main {
+  width: min(920px, calc(100% - 32px));
+  margin-inline: auto;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: end;
+  padding: 48px 0 24px;
+}
+
+.eyebrow {
+  color: #a43a25;
+  font-size: .75rem;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 6px 0 0;
+  font-family: Georgia, serif;
+  font-size: clamp(2rem, 5vw, 4.5rem);
+  line-height: 1;
+}
+
+nav {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  padding: 8px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: #173e2b;
+  color: white;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+.location {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border: 1px solid #ccd2cd;
+  border-radius: 12px 12px 0 0;
+  background: #e9ede8;
+  color: #59645d;
+  font: .78rem ui-monospace, monospace;
+}
+
+#document {
+  min-height: 60vh;
+  padding: clamp(24px, 6vw, 64px);
+  border: 1px solid #ccd2cd;
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  background: rgba(255, 255, 255, .8);
+  box-shadow: 0 20px 55px rgba(30, 45, 36, .08);
+  font: 1.05rem/1.65 Georgia, serif;
+}
+
+details {
+  margin: 16px 0 48px;
+  border: 1px solid #ccd2cd;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .65);
+}
+
+summary {
+  padding: 12px 14px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+textarea {
+  display: block;
+  width: 100%;
+  min-height: 240px;
+  resize: vertical;
+  padding: 16px;
+  border: 0;
+  border-top: 1px solid #ccd2cd;
+  border-radius: 0 0 12px 12px;
+  background: #17211b;
+  color: #e1ede4;
+  font: .85rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+#document h1,
+#document h2,
+#document h3 {
+  scroll-margin-top: 20px;
+  line-height: 1.15;
+}
+
+#document a {
+  color: #a43a25;
+}
+
+pre,
+code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+pre {
+  overflow-x: auto;
+  padding: 16px;
+  border-radius: 8px;
+  background: #17211b;
+  color: #e1ede4;
+}
+
+@media (max-width: 700px) {
+  header,
+  .location {
+    align-items: start;
+    flex-direction: column;
+  }
+}

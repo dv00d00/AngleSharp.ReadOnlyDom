@@ -37,7 +37,7 @@ manual measurements, and correctness runners live under `Support`.
 | `rows` | `ExtractionRowScaleBenchmark` | Many-rows extraction where cost scales with rows x fields rather than with locating one result |
 | `scraping` | `LongSyntheticConstructionBenchmark`, `QqArticleScraperBenchmark` | End-to-end target-near-EOF and real-page scraping |
 | `query` | `HttpClientStreamingQueryBenchmark`, `QueryWorkloadRunner` | Deterministic socket streaming plus repeated representative query workloads |
-| `utf8` | `Utf8TokenizerBenchmark`, `Utf8RodomBenchmark`, `Utf8DomProjectionBenchmark` | Wire-byte tokenizer, compact construction, and mutable-DOM projection paths |
+| `utf8` | `Utf8TokenizerBaselineBenchmark`, `Utf8RodomBenchmark`, `Utf8DomProjectionBenchmark` | Validated wire-byte tokenizer, compact construction, and mutable-DOM projection paths |
 | `utf8-baseline` | `Utf8TokenizerBaselineBenchmark`, `Utf8TokenizerBaselineRunner` | Frozen tokenizer state/pathology matrix over memory and segmented input |
 | `retained` | `RetainedMemoryRunner` | Forced-GC retained size and parse allocation |
 

@@ -163,6 +163,52 @@ public sealed class BackpressuredQueryTests
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task BackpressuredExecutionPublishesReplacementState(bool encoded)
+    {
+        var initialState = new TestOutput();
+        var plan = StreamQuery
+            .For<TestOutput>("html")
+            .OnText(
+                static (ref TestOutput state, ReadOnlySpan<byte> text) =>
+                {
+                    if (!state.IsReplacement)
+                        state = new TestOutput(isReplacement: true);
+                    state.Append(text);
+                }
+            )
+            .Compile();
+        await using var inputStream = new MemoryStream("<html>replacement output</html>"u8.ToArray());
+        await using var outputStream = new MemoryStream();
+        var reader = PipeReader.Create(inputStream, new StreamPipeReaderOptions(leaveOpen: true));
+        var writer = PipeWriter.Create(outputStream, new StreamPipeWriterOptions(leaveOpen: true));
+
+        var finalState = encoded
+            ? await plan.ExecuteEncodedBackpressuredAsync(
+                reader,
+                writer,
+                HtmlInputEncoding.Known(Encoding.UTF8),
+                initialState,
+                flushThreshold: 1,
+                inputSliceSize: 1
+            )
+            : await plan.ExecuteBackpressuredAsync(
+                reader,
+                writer,
+                initialState,
+                flushThreshold: 1,
+                inputSliceSize: 1
+            );
+        await reader.CompleteAsync();
+        await writer.CompleteAsync();
+
+        await Assert.That(ReferenceEquals(finalState, initialState)).IsFalse();
+        await Assert.That(finalState.IsReplacement).IsTrue();
+        await Assert.That(Encoding.UTF8.GetString(outputStream.ToArray())).IsEqualTo("replacement output");
+    }
+
+    [Test]
     public async Task PublishableBackpressurePreservesSplitNbspForNormalizedConsumer()
     {
         var input = new Pipe(new PipeOptions(minimumSegmentSize: 1, useSynchronizationContext: false));
@@ -199,11 +245,13 @@ public sealed class BackpressuredQueryTests
         }
     }
 
-    private sealed class TestOutput : IUtf8PublishSource
+    private sealed class TestOutput(bool isReplacement = false) : IUtf8PublishSource
     {
         private readonly ArrayBufferWriter<byte> _buffer = new();
 
         public ReadOnlyMemory<byte> PublishableUtf8 => _buffer.WrittenMemory;
+
+        internal bool IsReplacement { get; } = isReplacement;
 
         internal int MaximumPublishableBytes { get; private set; }
 

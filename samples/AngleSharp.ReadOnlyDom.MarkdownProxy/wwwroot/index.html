@@ -3,49 +3,36 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RODOM HTML fold</title>
+  <title>RODOM streaming Markdown fold</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <header>
-    <div class="eyebrow">UTF-8 streaming fold</div>
-    <h1>HTML → useful output, absurdly little machinery</h1>
-    <p>Fetch a page and fold completed elements directly into UTF-8 Markdown or plain text.</p>
+    <div class="eyebrow">Bounded UTF-8 streaming fold</div>
+    <h1>HTML bytes → Markdown bytes</h1>
+    <p>Paste HTML. The sample sends that body directly through the streaming query plan—no remote fetcher or proxy.</p>
   </header>
 
   <main>
-    <section class="controls">
-      <form id="fetch-form">
-        <label for="url">Public HTML URL</label>
-        <div class="url-row">
-          <input id="url" name="url" type="url" value="https://example.com/" required>
-          <select id="format" aria-label="Output format">
-            <option value="markdown">Markdown</option>
-            <option value="text">Plain text</option>
-          </select>
+    <form id="convert-form">
+      <section class="pane">
+        <div class="pane-title">
+          <span>HTML input</span>
           <button type="submit">Convert</button>
         </div>
-      </form>
-      <div class="presets" aria-label="Example pages">
-        <button id="back" type="button" disabled>← Back</button>
-        <button data-url="https://example.com/">Example Domain</button>
-        <button data-url="https://en.wikipedia.org/wiki/List_of_HTTP_status_codes">Wikipedia tables</button>
-        <button data-url="https://news.ycombinator.com/">Hacker News table layout</button>
-        <button data-url="https://devblogs.microsoft.com/dotnet/">.NET Blog</button>
-        <button data-url="/demo.html">Local demo</button>
-      </div>
-      <p id="status" role="status">Ready.</p>
-    </section>
+        <textarea id="html" spellcheck="false"><html><body><article>
+  <h1>Hello</h1>
+  <p>HTML bytes become <strong>Markdown</strong>.</p>
+  <ul><li>Bounded input</li><li>Backpressured output</li></ul>
+</article></body></html></textarea>
+      </section>
+    </form>
 
-    <section class="workspace">
-      <article id="preview" class="pane preview"></article>
-      <div class="pane source-pane">
-        <div class="pane-title"><span id="source-title">Markdown</span> <button id="render" type="button">Render</button></div>
-        <textarea id="markdown" spellcheck="false"># Ready
+    <p id="status" role="status">Ready.</p>
 
-Choose a page above or paste Markdown here.</textarea>
-      </div>
-      
+    <section class="pane output-pane">
+      <div class="pane-title"><span>Markdown output</span></div>
+      <textarea id="markdown" spellcheck="false" readonly></textarea>
     </section>
   </main>
 

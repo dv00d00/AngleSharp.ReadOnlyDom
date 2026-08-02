@@ -7,11 +7,6 @@ internal enum QueryRelation : byte
     Child,
 }
 
-public enum QueryExecutionModel : byte
-{
-    LexicalStreaming,
-}
-
 public delegate void StartHandler<TState>(ref TState state, in Element element);
 
 public delegate void TextHandler<TState>(ref TState state, ReadOnlySpan<byte> utf8);

@@ -36,12 +36,12 @@ public static class BackpressuredQueryExecution
                 limits
             )
             .ConfigureAwait(false);
-        await PublishAvailableAsync(writer, state, cancellationToken).ConfigureAwait(false);
+        await PublishAvailableAsync(writer, execution.State, cancellationToken).ConfigureAwait(false);
         return execution.State;
 
         ValueTask FlushIfNeededAsync() =>
-            state.PublishableUtf8.Length >= flushThreshold
-                ? PublishAvailableAsync(writer, state, cancellationToken)
+            execution.State.PublishableUtf8.Length >= flushThreshold
+                ? PublishAvailableAsync(writer, execution.State, cancellationToken)
                 : ValueTask.CompletedTask;
     }
 
@@ -85,9 +85,9 @@ public static class BackpressuredQueryExecution
                     {
                         var length = Math.Min(inputSliceSize, segment.Length - offset);
                         input.Write(segment.Slice(offset, length));
-                        if (state.PublishableUtf8.Length >= flushThreshold)
+                        if (execution.State.PublishableUtf8.Length >= flushThreshold)
                         {
-                            await PublishAvailableAsync(writer, state, cancellationToken).ConfigureAwait(false);
+                            await PublishAvailableAsync(writer, execution.State, cancellationToken).ConfigureAwait(false);
                         }
                     }
                 }
@@ -102,7 +102,7 @@ public static class BackpressuredQueryExecution
         }
 
         input.Complete();
-        await PublishAvailableAsync(writer, state, cancellationToken).ConfigureAwait(false);
+        await PublishAvailableAsync(writer, execution.State, cancellationToken).ConfigureAwait(false);
 
         return execution.State;
     }

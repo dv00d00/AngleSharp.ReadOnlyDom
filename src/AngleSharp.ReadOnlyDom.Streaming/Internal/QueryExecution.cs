@@ -23,6 +23,7 @@ internal sealed class QueryExecution<TState>
     private ulong _pendingTagIdentity;
     private int _pendingTagIdentityLength;
     private int _pendingTagNameLength;
+    private byte[]? _pendingFallbackTagNameUtf8;
     private ulong _pendingCandidateBits;
     private ulong _pendingAttributeBits;
     private int _pendingAttributeIndex = -1;
@@ -55,7 +56,7 @@ internal sealed class QueryExecution<TState>
         _rewriteCollector = rewriteCollector;
         _activeCounts = ArrayPool<int>.Shared.Rent(Math.Max(plan.Nodes.Length, 1));
         _activeCounts.AsSpan(0, plan.Nodes.Length).Clear();
-        _frames = ArrayPool<QueryFrame>.Shared.Rent(64);
+        _frames = ArrayPool<QueryFrame>.Shared.Rent(Math.Min(64, _maximumNestingDepth));
         _attributeValues = ArrayPool<byte>.Shared.Rent(256);
         _attributeStarts = ArrayPool<int>.Shared.Rent(Math.Max(plan.AttributeNames.Length, 1));
         _attributeLengths = ArrayPool<int>.Shared.Rent(Math.Max(plan.AttributeNames.Length, 1));
@@ -75,11 +76,14 @@ internal sealed class QueryExecution<TState>
 
     public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
     {
+        ReleasePendingFallbackTagName();
         var identityLength = 0;
         if (!name.TryGetCompactKey(out var identity))
         {
             identity = name.SemanticHash;
             identityLength = name.Verbatim.Length;
+            _pendingFallbackTagNameUtf8 = ArrayPool<byte>.Shared.Rent(identityLength);
+            name.Verbatim.CopyTo(_pendingFallbackTagNameUtf8);
         }
         _pendingTagIdentity = identity;
         _pendingTagIdentityLength = identityLength;
@@ -187,24 +191,22 @@ internal sealed class QueryExecution<TState>
             );
         EnsureQueryCaptureCapacity(GetCompletedAttributeBytes(matches));
 
-        var element = new Element(
-            _plan.AttributeNames,
-            _plan.AttributeNamesUtf8,
-            _attributeValues,
-            _attributeStarts,
-            _attributeLengths
-        );
         var starts = matches;
         while (starts != 0)
         {
             var index = BitOperations.TrailingZeroCount(starts);
             starts &= starts - 1;
-            _plan.Nodes[index].Start?.Invoke(ref _state, in element);
+            var node = _plan.Nodes[index];
+            if (node.Start is null)
+                continue;
+            var element = CreateElement(node.RequestedAttributeMask);
+            node.Start.Invoke(ref _state, in element);
         }
         if (_rewriteHandler is not null && (matches & _plan.TerminalNodeMask) != 0)
         {
             if (sourceStart < 0 || sourceEnd <= sourceStart)
                 throw new InvalidOperationException("The tokenizer did not provide a valid start-tag source range.");
+            var element = CreateElement(GetRequestedAttributeMask(matches & _plan.TerminalNodeMask));
             var editor = new StartTagEditor(_rewriteCollector!, sourceStart, sourceEnd, selfClosing);
             _rewriteHandler.Invoke(ref _state, in element, ref editor);
         }
@@ -212,13 +214,48 @@ internal sealed class QueryExecution<TState>
 
         if (closesImmediately)
         {
-            CloseMatches(matches);
+            try
+            {
+                CloseMatches(matches);
+            }
+            finally
+            {
+                ReleasePendingFallbackTagName();
+            }
             return;
         }
 
         EnsureFrameCapacity();
-        _frames[_frameCount++] = new QueryFrame(_pendingTagIdentity, _pendingTagIdentityLength, matches);
+        _frames[_frameCount++] = new QueryFrame(
+            _pendingTagIdentity,
+            _pendingTagIdentityLength,
+            _pendingFallbackTagNameUtf8,
+            matches
+        );
+        _pendingFallbackTagNameUtf8 = null;
         IncrementActive(matches);
+    }
+
+    private Element CreateElement(ulong allowedAttributeMask) =>
+        new(
+            _plan.AttributeNames,
+            _plan.AttributeNamesUtf8,
+            _attributeValues,
+            _attributeStarts,
+            _attributeLengths,
+            allowedAttributeMask
+        );
+
+    private ulong GetRequestedAttributeMask(ulong nodes)
+    {
+        var attributes = 0UL;
+        while (nodes != 0)
+        {
+            var index = BitOperations.TrailingZeroCount(nodes);
+            nodes &= nodes - 1;
+            attributes |= _plan.Nodes[index].RequestedAttributeMask;
+        }
+        return attributes;
     }
 
     public void Text(ReadOnlySpan<byte> utf8)
@@ -256,9 +293,18 @@ internal sealed class QueryExecution<TState>
         {
             if (_frames[index].TagIdentity != identity || _frames[index].TagIdentityLength != identityLength)
                 continue;
+            if (
+                identityLength != 0
+                && !name.SemanticEquals(_frames[index].FallbackTagNameUtf8.AsSpan(0, identityLength))
+            )
+                continue;
             for (var popped = _frameCount - 1; popped >= index; popped--)
-                CloseFrame(_frames[popped]);
-            _frameCount = index;
+            {
+                var frame = _frames[popped];
+                _frames[popped] = default;
+                _frameCount = popped;
+                CloseFrame(frame);
+            }
             return;
         }
     }
@@ -288,8 +334,12 @@ internal sealed class QueryExecution<TState>
     public void EndOfFile()
     {
         for (var index = _frameCount - 1; index >= 0; index--)
-            CloseFrame(_frames[index]);
-        _frameCount = 0;
+        {
+            var frame = _frames[index];
+            _frames[index] = default;
+            _frameCount = index;
+            CloseFrame(frame);
+        }
     }
 
     public void Dispose()
@@ -297,6 +347,9 @@ internal sealed class QueryExecution<TState>
         if (_disposed)
             return;
         _disposed = true;
+        ReleasePendingFallbackTagName();
+        for (var index = 0; index < _frameCount; index++)
+            ReleaseFallbackTagName(_frames[index]);
         ArrayPool<int>.Shared.Return(_activeCounts, clearArray: true);
         ArrayPool<QueryFrame>.Shared.Return(_frames, clearArray: true);
         ArrayPool<byte>.Shared.Return(_attributeValues);
@@ -351,8 +404,29 @@ internal sealed class QueryExecution<TState>
 
     private void CloseFrame(QueryFrame frame)
     {
-        CloseMatches(frame.Matches);
-        DecrementActive(frame.Matches);
+        try
+        {
+            CloseMatches(frame.Matches);
+            DecrementActive(frame.Matches);
+        }
+        finally
+        {
+            ReleaseFallbackTagName(frame);
+        }
+    }
+
+    private void ReleasePendingFallbackTagName()
+    {
+        if (_pendingFallbackTagNameUtf8 is null)
+            return;
+        ArrayPool<byte>.Shared.Return(_pendingFallbackTagNameUtf8);
+        _pendingFallbackTagNameUtf8 = null;
+    }
+
+    private static void ReleaseFallbackTagName(QueryFrame frame)
+    {
+        if (frame.FallbackTagNameUtf8 is not null)
+            ArrayPool<byte>.Shared.Return(frame.FallbackTagNameUtf8);
     }
 
     private void CloseMatches(ulong matches)

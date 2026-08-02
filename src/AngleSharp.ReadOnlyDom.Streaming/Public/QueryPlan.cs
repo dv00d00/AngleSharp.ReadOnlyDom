@@ -12,8 +12,7 @@ public sealed class QueryPlan<TState>
         byte[][] attributeNamesUtf8,
         CompiledNameIdentity[] attributeIdentities,
         ulong compactAttributeMask,
-        CompiledTagDispatch[] tagDispatch,
-        QueryExplanation explanation
+        CompiledTagDispatch[] tagDispatch
     )
     {
         Nodes = nodes;
@@ -36,7 +35,6 @@ public sealed class QueryPlan<TState>
         );
         var nodeMask = nodes.Length == 64 ? UInt64.MaxValue : (1UL << nodes.Length) - 1;
         TerminalNodeMask = nodeMask & ~parentMask;
-        Explanation = explanation;
     }
 
     internal QueryPlanNode<TState>[] Nodes { get; }
@@ -48,11 +46,6 @@ public sealed class QueryPlan<TState>
     internal ulong TextHandlerMask { get; }
     internal ulong CompletedHandlerMask { get; }
     internal ulong TerminalNodeMask { get; }
-
-    public QueryExplanation Explanation { get; }
-
-    /// <summary>Resolves the accumulated query state after successful input completion.</summary>
-    public ResolvedQueryPlan<TState, TResult> Resolve<TResult>(Func<TState, TResult> resolver) => new(this, resolver);
 
     internal QueryExecution<TState> CreateExecution(TState state, HtmlStreamingLimits? limits = null) =>
         new(this, state, limits ?? HtmlStreamingLimits.Default);

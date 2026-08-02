@@ -50,7 +50,7 @@ public sealed class StreamingOutcomeQueryTests
     [Test]
     public async Task QueryForestObservesCompetingOutcomesAndResolvesAfterEof()
     {
-        var outcomes = CreateParser().Execute(Encoding.UTF8.GetBytes(Html), new ObservationState());
+        var outcomes = CreateParser().Execute(Encoding.UTF8.GetBytes(Html), new ObservationState()).Resolve();
 
         await Assert
             .That(outcomes.Select(static item => item.Kind))
@@ -80,7 +80,7 @@ public sealed class StreamingOutcomeQueryTests
             await pipe.Writer.WriteAsync(bytes.AsMemory(offset, Math.Min(7, bytes.Length - offset)));
         await pipe.Writer.CompleteAsync();
 
-        var outcomes = await execution;
+        var outcomes = (await execution).Resolve();
         await pipe.Reader.CompleteAsync();
 
         await Assert
@@ -96,16 +96,10 @@ public sealed class StreamingOutcomeQueryTests
     }
 
     [Test]
-    public async Task ResolverDoesNotRunWhenStreamingLimitRejectsInput()
+    public async Task ApplicationResolutionDoesNotRunWhenStreamingLimitRejectsInput()
     {
         var resolved = false;
-        var parser = StreamQuery
-            .Observe(StreamQuery.For<ObservationState>("main"))
-            .Resolve(state =>
-            {
-                resolved = true;
-                return state.Resolve();
-            });
+        var parser = StreamQuery.Observe(StreamQuery.For<ObservationState>("main"));
         var limits = new HtmlStreamingLimits(
             maximumBufferedTokenBytes: 64,
             maximumNestingDepth: 64,
@@ -116,7 +110,9 @@ public sealed class StreamingOutcomeQueryTests
         var rejected = false;
         try
         {
-            parser.Execute("<main>too long</main>"u8, new ObservationState(), limits);
+            var state = parser.Execute("<main>too long</main>"u8, new ObservationState(), limits);
+            resolved = true;
+            state.Resolve();
         }
         catch (HtmlStreamingLimitExceededException)
         {
@@ -128,7 +124,7 @@ public sealed class StreamingOutcomeQueryTests
     }
 
     [Test]
-    public async Task EofClosesMalformedScopeBeforeResolverRuns()
+    public async Task EofClosesMalformedScopeBeforeApplicationResolution()
     {
         var shipment = StreamQuery
             .For<ObservationState>("article")
@@ -138,9 +134,9 @@ public sealed class StreamingOutcomeQueryTests
                     state.Begin(Encoding.UTF8.GetString(RequiredAttribute(element, "data-id")))
             )
             .OnEnd(static (ref state) => state.End());
-        var parser = StreamQuery.Observe(shipment).Resolve(static state => state.Resolve());
+        var parser = StreamQuery.Observe(shipment);
 
-        var outcomes = parser.Execute("<article data-id=UNCLOSED>partial"u8, new ObservationState());
+        var outcomes = parser.Execute("<article data-id=UNCLOSED>partial"u8, new ObservationState()).Resolve();
 
         await Assert.That(outcomes.Count).IsEqualTo(1);
         await Assert.That(outcomes[0].Id).IsEqualTo("UNCLOSED");
@@ -176,7 +172,7 @@ public sealed class StreamingOutcomeQueryTests
         await Assert.That(rejected).IsTrue();
     }
 
-    private static ResolvedQueryPlan<ObservationState, IReadOnlyList<ShipmentOutcome>> CreateParser()
+    private static QueryPlan<ObservationState> CreateParser()
     {
         var shipments = StreamQuery
             .For<ObservationState>("article")
@@ -211,7 +207,7 @@ public sealed class StreamingOutcomeQueryTests
                     state.ProviderDegraded = element.GetAttributeOrEmpty("data-code") == "DEGRADED"
             );
 
-        return StreamQuery.Observe(shipments, providerStatus).Resolve(static state => state.Resolve());
+        return StreamQuery.Observe(shipments, providerStatus);
     }
 
     private static void AddEvidenceQuery(QueryNode<ObservationState> article, string tag)

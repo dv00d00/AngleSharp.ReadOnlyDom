@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Streaming Markdown navigation</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <div class="eyebrow">Streaming Markdown navigator</div>
+      <h1>Every link runs the query engine again</h1>
+    </div>
+    <nav aria-label="Document controls">
+      <button id="back" type="button" disabled>← Back</button>
+      <button id="home" type="button">Home</button>
+    </nav>
+  </header>
+
+  <main>
+    <div class="location">
+      <span id="path">/pages/index.html</span>
+      <span id="status" role="status">Loading…</span>
+    </div>
+    <article id="document" aria-live="polite"></article>
+    <details>
+      <summary>Generated Markdown bytes</summary>
+      <textarea id="source" readonly spellcheck="false"></textarea>
+    </details>
+  </main>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

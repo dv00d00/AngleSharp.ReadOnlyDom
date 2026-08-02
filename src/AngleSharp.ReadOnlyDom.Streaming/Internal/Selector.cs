@@ -4,7 +4,7 @@ internal sealed class Selector
 {
     private readonly List<AttributePredicate> _attributes = [];
 
-    private Selector(string tagName) => TagName = NormalizeName(tagName, nameof(tagName));
+    private Selector(string tagName) => TagName = NormalizeTagName(tagName, nameof(tagName));
 
     internal string TagName { get; }
 
@@ -20,14 +20,16 @@ internal sealed class Selector
         if (token.Any(IsHtmlSpace))
             throw new ArgumentException("A class-token predicate must contain exactly one token.", nameof(token));
         _attributes.Add(
-            new AttributePredicate(NormalizeName("class", "name"), AttributePredicateKind.ContainsToken, token)
+            new AttributePredicate(NormalizeAttributeName("class", "name"), AttributePredicateKind.ContainsToken, token)
         );
         return this;
     }
 
     internal Selector WithAttribute(string name)
     {
-        _attributes.Add(new AttributePredicate(NormalizeName(name, nameof(name)), AttributePredicateKind.Exists, null));
+        _attributes.Add(
+            new AttributePredicate(NormalizeAttributeName(name, nameof(name)), AttributePredicateKind.Exists, null)
+        );
         return this;
     }
 
@@ -35,12 +37,18 @@ internal sealed class Selector
     {
         ArgumentNullException.ThrowIfNull(value);
         _attributes.Add(
-            new AttributePredicate(NormalizeName(name, nameof(name)), AttributePredicateKind.Equals, value)
+            new AttributePredicate(NormalizeAttributeName(name, nameof(name)), AttributePredicateKind.Equals, value)
         );
         return this;
     }
 
-    internal static string NormalizeName(string value, string parameterName)
+    internal static string NormalizeTagName(string value, string parameterName) =>
+        NormalizeName(value, parameterName, rejectEquals: false);
+
+    internal static string NormalizeAttributeName(string value, string parameterName) =>
+        NormalizeName(value, parameterName, rejectEquals: true);
+
+    private static string NormalizeName(string value, string parameterName, bool rejectEquals)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
         foreach (var character in value)
@@ -48,6 +56,11 @@ internal sealed class Selector
             if (character > 0x7F)
                 throw new NotSupportedException(
                     "The streaming query prototype accepts ASCII tag and attribute names only."
+                );
+            if (character <= 0x20 || character is '/' or '>' or (char)0x7F || (rejectEquals && character == '='))
+                throw new ArgumentException(
+                    "The name contains a control character or HTML tokenizer delimiter.",
+                    parameterName
                 );
         }
         return value.ToLowerInvariant();
