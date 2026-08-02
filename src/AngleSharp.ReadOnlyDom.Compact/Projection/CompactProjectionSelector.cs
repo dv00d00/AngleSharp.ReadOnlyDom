@@ -73,6 +73,43 @@ public sealed class CompactProjectionSelector
         return value is '\t' or '\n' or '\f' or '\r' or ' ';
     }
 
+    internal bool HasSameStepsAs(CompactProjectionSelector other)
+    {
+        if (_steps.Length != other._steps.Length)
+            return false;
+
+        for (var index = 0; index < _steps.Length; index++)
+        {
+            var left = _steps[index];
+            var right = other._steps[index];
+            if (
+                left.Axis != right.Axis
+                || !string.Equals(left.TagName, right.TagName, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(left.Id, right.Id, StringComparison.Ordinal)
+                || !string.Equals(left.ClassToken, right.ClassToken, StringComparison.Ordinal)
+                || left.Attributes.Length != right.Attributes.Length
+            )
+                return false;
+
+            for (var attribute = 0; attribute < left.Attributes.Length; attribute++)
+                if (
+                    !string.Equals(
+                        left.Attributes[attribute].Name,
+                        right.Attributes[attribute].Name,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                    || !string.Equals(
+                        left.Attributes[attribute].Value,
+                        right.Attributes[attribute].Value,
+                        StringComparison.Ordinal
+                    )
+                )
+                    return false;
+        }
+
+        return true;
+    }
+
     public CompactProjectionSelector WithAttribute(string name, string? value = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);

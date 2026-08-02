@@ -48,7 +48,6 @@ static void RunCompactDom()
     using var document = parser.ParseCompactDocument(Html);
     var article = document.Elements("article").WithAttribute("id", "content").First();
 
-    Console.WriteLine($"layout           : {document.Layout}");
     Console.WriteLine($"nodes/attributes : {document.NodeCount}/{document.AttributeCount}");
     Console.WriteLine($"parent retained  : {article.Parent.Exists}");
     Console.WriteLine($"article text     : {Normalize(article.Text())}");

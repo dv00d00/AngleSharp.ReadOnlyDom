@@ -32,8 +32,18 @@ applications. The projection library consumes HTML and has no URL, HTTP, Markdow
 - Replaced recursive scope, descendant-target, and normalized-text walks with an iterative preorder traversal.
 - Stopped attribute-only plans from retaining or decoding text payloads.
 - Made unknown projected field names throw instead of silently looking identical to a known field whose value is absent.
+- Made diagnostic collection opt-in through a friend-only execution path. Normal `Execute` no longer installs tokenizer
+  middleware, counts tokens/nodes, or computes consumed UTF-8 bytes; its diagnostic result is the default value.
+- Compiled required fields ahead of optional fields and compiled equivalent field selectors to shared target slots, while
+  preserving caller field order in emitted rows.
 - Removed dead Compact references to Pipelines, Streaming, and its transitive object-pool dependency.
 - Moved the orphan pool documentation and corrected EOF/lifetime wording in code and samples.
+- Reduced the reusable Compact DOM surface to document lifetime/count/metadata, node navigation and string/span
+  attr/class/text access, string/span element queries, and string/character-memory/byte-memory/async-stream parser inputs.
+- Internalized raw storage structs and accessors, numeric name IDs and handles, layout/capacity hints, generic sinks,
+  tokenizer middleware, attribute filters, and low-level `TextSource`/array paths.
+- Removed the opinionated `CompactParserProfiles.Extraction` preset; explicit `HtmlParserOptions` remain available.
+- Moved source-location lookup onto `Node`, so the public API no longer required an inaccessible raw handle.
 
 ## Regression coverage
 
@@ -44,23 +54,24 @@ The focused suite covers:
 - deterministic descendant memoization work bounds;
 - 12,000-level trees without recursive projection walkers;
 - zero retained text values for attribute-only plans;
+- no diagnostic collection on normal execution;
+- required-field preflight before optional normalized-text materialization;
+- one subtree target scan for equivalent field selectors;
 - missing versus empty values and unknown field names;
 - malformed-markup topology parity with AngleSharp.
 
 Verification on 2026-08-02:
 
-- Compact, sample, and benchmark `net10.0` builds: zero warnings and zero errors;
-- focused `EofProjection*`: 33 passed, zero failed;
-- full `net10.0`: 179,304 passed, zero failed;
+- full solution build including net472, net8.0, and net10.0: zero errors (three existing TUnit analyzer warnings);
+- Compact, sample, and benchmark builds: zero warnings and zero errors;
+- focused `EofProjection*`: 36 passed, zero failed;
+- focused `CompactParserTests`: 83 passed, zero failed;
+- full `net10.0`: 179,306 passed, zero failed;
 - `git diff --check`: clean.
 
-## Remaining Compact work
+## Follow-up disposition
 
-- Make diagnostic collection opt-in internally; hiding counters removed API surface, but normal execution still records
-  them.
-- Preflight required fields before materializing expensive optional normalized text, and reuse identical target searches
-  within a row if measurement justifies the added machinery.
-- Audit the separate reusable Compact document/query/parser surface. This refactor intentionally narrows only the EOF
-  projection lane and does not decide which low-level DOM configuration options deserve a public pre-alpha contract.
-- Benchmark the renamed projection lane before changing its matching algorithm again. The memoized matcher is retained
-  only for selector shapes that can revisit state.
+All concrete follow-ups from the initial review are implemented. The descendant matcher itself was not changed again:
+memoization remains restricted to selector shapes that can revisit state, and any future replacement remains explicitly
+measurement-gated rather than an outstanding cleanup task. Larger roadmap work is tracked separately in the open-issues
+audit.

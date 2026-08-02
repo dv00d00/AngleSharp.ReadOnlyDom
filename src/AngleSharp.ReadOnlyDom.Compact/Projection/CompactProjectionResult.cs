@@ -48,6 +48,7 @@ internal readonly record struct CompactProjectionCounters(
     int ValuesDecoded,
     int RowsProduced,
     int RowsRejected,
+    int NormalizedTextValuesProjected,
     int InputBytesConsumed
 );
 

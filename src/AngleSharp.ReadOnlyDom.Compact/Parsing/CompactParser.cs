@@ -26,10 +26,63 @@ public static class CompactParser
 {
     public static HtmlParser CreateParser(
         CompactMetadataOptions options = CompactMetadataOptions.None,
+        HtmlParserOptions? parserOptions = null
+    )
+    {
+        return CreateParserCore(
+            options,
+            new CompactParserHints(),
+            null,
+            parserOptions,
+            CompactDocumentLayout.FrozenColumns
+        );
+    }
+
+    internal static HtmlParser CreateParserForTesting(
+        CompactMetadataOptions options = CompactMetadataOptions.None,
         CompactParserHints? hints = null,
         CompactAttributeFilter? attributeFilter = null,
         HtmlParserOptions? parserOptions = null,
         CompactDocumentLayout layout = CompactDocumentLayout.FrozenColumns
+    )
+    {
+        return CreateParserCore(options, hints ?? new CompactParserHints(), attributeFilter, parserOptions, layout);
+    }
+
+    internal static HtmlParser CreateParser(CompactDocumentLayout layout)
+    {
+        return CreateParserForTesting(layout: layout);
+    }
+
+    internal static HtmlParser CreateParser(CompactMetadataOptions options, CompactDocumentLayout layout)
+    {
+        return CreateParserForTesting(options, layout: layout);
+    }
+
+    internal static HtmlParser CreateParser(CompactParserHints hints)
+    {
+        return CreateParserForTesting(hints: hints);
+    }
+
+    internal static HtmlParser CreateParser(CompactAttributeFilter attributeFilter)
+    {
+        return CreateParserForTesting(attributeFilter: attributeFilter);
+    }
+
+    internal static HtmlParser CreateParser(
+        HtmlParserOptions parserOptions,
+        CompactAttributeFilter attributeFilter
+    )
+    {
+        return CreateParserForTesting(attributeFilter: attributeFilter, parserOptions: parserOptions);
+    }
+
+    private static HtmlParser CreateParserCore(
+        CompactMetadataOptions options,
+        CompactParserHints hints,
+        CompactAttributeFilter? attributeFilter,
+        HtmlParserOptions? parserOptions,
+        CompactDocumentLayout layout
     )
     {
         var effectiveParserOptions = parserOptions ?? CreateParserOptions(options);
@@ -37,7 +90,7 @@ public static class CompactParser
             effectiveParserOptions.IsKeepingSourceReferences = true;
         ApplyAttributeFilter(ref effectiveParserOptions, attributeFilter);
         var factory = new ArenaConstructionFactory(
-            hints ?? new CompactParserHints(),
+            hints,
             options.HasFlag(CompactMetadataOptions.SourceLocations),
             options,
             layout
@@ -46,7 +99,7 @@ public static class CompactParser
         return new ArenaHtmlParser(effectiveParserOptions, context, factory);
     }
 
-    public static CompactDocument ParseCompactDocument(
+    internal static CompactDocument ParseCompactDocument(
         this IHtmlParser parser,
         TextSource source,
         TokenizerMiddleware? middleware = null
@@ -57,8 +110,16 @@ public static class CompactParser
 
     public static CompactDocument ParseCompactDocument(
         this IHtmlParser parser,
+        string source
+    )
+    {
+        return Parse(parser, new TextSource(new StringTextSource(source)), null);
+    }
+
+    internal static CompactDocument ParseCompactDocument(
+        this IHtmlParser parser,
         string source,
-        TokenizerMiddleware? middleware = null
+        TokenizerMiddleware? middleware
     )
     {
         return Parse(parser, new TextSource(new StringTextSource(source)), middleware);
@@ -66,14 +127,22 @@ public static class CompactParser
 
     public static CompactDocument ParseCompactDocument(
         this IHtmlParser parser,
+        ReadOnlyMemory<char> source
+    )
+    {
+        return Parse(parser, new TextSource(new ReadOnlyMemoryTextSource(source)), null);
+    }
+
+    internal static CompactDocument ParseCompactDocument(
+        this IHtmlParser parser,
         ReadOnlyMemory<char> source,
-        TokenizerMiddleware? middleware = null
+        TokenizerMiddleware? middleware
     )
     {
         return Parse(parser, new TextSource(new ReadOnlyMemoryTextSource(source)), middleware);
     }
 
-    public static CompactDocument ParseCompactDocument(
+    internal static CompactDocument ParseCompactDocument(
         this IHtmlParser parser,
         char[] source,
         int length,
@@ -86,8 +155,17 @@ public static class CompactParser
     public static CompactDocument ParseCompactDocument(
         this IHtmlParser parser,
         ReadOnlyMemory<byte> source,
-        Encoding? encoding = null,
-        TokenizerMiddleware? middleware = null
+        Encoding? encoding = null
+    )
+    {
+        return ParseCompactDocument(parser, source, encoding, null);
+    }
+
+    internal static CompactDocument ParseCompactDocument(
+        this IHtmlParser parser,
+        ReadOnlyMemory<byte> source,
+        Encoding? encoding,
+        TokenizerMiddleware? middleware
     )
     {
         return Parse(
@@ -99,13 +177,24 @@ public static class CompactParser
         );
     }
 
-    public static async Task<CompactDocument> ParseCompactDocumentAsync(
+    public static Task<CompactDocument> ParseCompactDocumentAsync(
         this HtmlParser parser,
         Stream source,
         HtmlStreamSourceMode sourceMode = HtmlStreamSourceMode.Streaming,
         Encoding? encoding = null,
-        TokenizerMiddleware? middleware = null,
         CancellationToken cancel = default
+    )
+    {
+        return ParseCompactDocumentAsync(parser, source, sourceMode, encoding, null, cancel);
+    }
+
+    internal static async Task<CompactDocument> ParseCompactDocumentAsync(
+        this HtmlParser parser,
+        Stream source,
+        HtmlStreamSourceMode sourceMode,
+        Encoding? encoding,
+        TokenizerMiddleware? middleware,
+        CancellationToken cancel
     )
     {
         var document = await RequireArenaParser(parser)

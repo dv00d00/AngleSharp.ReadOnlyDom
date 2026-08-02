@@ -12,7 +12,7 @@ that arena, not a second materialized tree:
 2. The arena verifies that document order still matches construction order and no detached nodes remain.
 3. Node and attribute names are interned during construction, and logical text length is maintained incrementally.
 4. Construction-only columns are released; the document takes ownership of the query columns and input source.
-5. `CompactDocument` accessors synthesize the same public node, payload, and attribute views directly from the columns.
+5. Internal storage accessors synthesize node, payload, and attribute views directly from the columns.
 6. `CompactDocument.Dispose()` returns the arena columns and name-ID buffers and disposes the source.
 
 The frozen representation releases construction-only columns and wrapper buffers, then keeps the query-facing arena
@@ -20,8 +20,8 @@ columns until disposal. This avoids a second traversal and copy. Parent and sibl
 after ownership transfer.
 
 If HTML tree construction detached, reparented, or reordered nodes, the parser automatically falls back to packed
-finalization so unreachable nodes cannot leak into the visible traversal. Callers can also request
-`CompactDocumentLayout.Packed` explicitly. Packed finalization performs reachable preorder traversal, remaps handles, and
+finalization so unreachable nodes cannot leak into the visible traversal. Packed finalization performs reachable preorder
+traversal, remaps handles, and
 copies only final columns into these buffers:
 
 - a 16-byte `CompactNode` core containing first-child and exclusive subtree-end traversal fields, payload index, name ID,
@@ -37,11 +37,10 @@ the final representation must be independent of the construction arena and sourc
 The removed owned/list-backed variants represented a different lifetime model and added branches throughout construction.
 If a permanently owned representation is required later, it should be an explicit deep copy.
 
-`CompactParser` mirrors the read-only DOM integration: it exposes cached construction contexts and creates reusable
-`HtmlParser` instances whose `ParseCompactDocument` extensions accept `TokenizerMiddleware` and string, memory,
-char-buffer, or `TextSource` input. Parser creation accepts caller `HtmlParserOptions` and a token-aware attribute
-predicate. Middleware and attribute filtering are predicate pushdown: discarded subtrees and attributes never enter the
-arena.
+`CompactParser` mirrors the read-only DOM integration: it creates reusable `HtmlParser` instances whose public
+`ParseCompactDocument` extensions accept string, character memory, byte memory, or stream input. Parser creation accepts
+caller `HtmlParserOptions`. Internal middleware and attribute-filter paths still support predicate pushdown for projections
+and benchmarks; discarded subtrees and attributes never enter the arena.
 
 Namespace and prefix values are derived, source-reference storage is conditional, template storage is lazy, and the
 attribute arena is allocated only after the first accepted attribute.
@@ -101,11 +100,6 @@ per-document lookup cache contains only names encountered by that document; stan
 and only unknown names enter the document-owned custom-name list. The text length is maintained during construction rather
 than rescanned at publication. Follow-up frozen-only ShortRun results were 161.24 us / 22.37 KB for selected-subtree parsing
 and 83.90 us / 10.50 KB for text extraction, effectively preserving time while shaving roughly 0.2 KB per operation.
-
-`CompactParserProfiles.Extraction` consolidates the safe default skips for comments, processing instructions, script text,
-raw/style text, frames, source references, position tracking, and preserved attribute casing. Attribute predicate pushdown
-remains caller-specific. SVG/Math subtree suppression is deliberately not included: it needs a tree-builder policy rather
-than unsafe token dropping.
 
 ## Next optimization boundary
 

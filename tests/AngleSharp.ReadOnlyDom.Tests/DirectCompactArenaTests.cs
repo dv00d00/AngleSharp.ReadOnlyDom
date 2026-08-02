@@ -17,7 +17,7 @@ using Node = AngleSharp.ReadOnlyDom.Compact.Query.Node;
 
 namespace AngleSharp.Readonly.Tests;
 
-public sealed class CompactParserTests
+internal sealed class CompactParserTests
 {
     [Test]
     [Arguments(CompactDocumentLayout.FrozenColumns)]
@@ -256,7 +256,7 @@ public sealed class CompactParserTests
             .Field("text", CompactFieldProjection.SelfNormalizedText(), required: true)
             .Compile();
 
-        var result = plan.Execute(html);
+        var result = plan.ExecuteWithDiagnostics(html);
 
         await Assert.That(result.Rows.Count).IsEqualTo(1);
         await Assert.That(result.Rows[0]["href"].ToString()).IsEqualTo("/item");
@@ -264,6 +264,19 @@ public sealed class CompactParserTests
         await Assert.That(result.Counters.RowsProduced).IsEqualTo(1);
         await Assert.That(result.Counters.AttributesInspected).IsGreaterThan(0);
         await Assert.That(plan.Requirements.InspectedAttributes).Contains("data-ready");
+    }
+
+    [Test]
+    public async Task EofProjectionNormalExecutionDoesNotCollectDiagnostics()
+    {
+        var result = CompactProjection
+            .First(CompactProjectionSelector.Tag("main"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
+            .Compile()
+            .Execute("<main>value</main>");
+
+        await Assert.That(result.Rows[0]["text"].ToString()).IsEqualTo("value");
+        await Assert.That(result.Counters).IsEqualTo(default(CompactProjectionCounters));
     }
 
     [Test]
@@ -297,7 +310,7 @@ public sealed class CompactParserTests
             .ForEach(CompactProjectionSelector.Tag("p"))
             .Field("value", CompactFieldProjection.SelfAttribute("data-v"), required: true)
             .Compile()
-            .Execute(html);
+            .ExecuteWithDiagnostics(html);
         var optional = CompactProjection
             .ForEach(CompactProjectionSelector.Tag("p"))
             .Field("value", CompactFieldProjection.SelfAttribute("data-v"))
@@ -313,6 +326,55 @@ public sealed class CompactParserTests
         await Assert
             .That(() => optional.Rows[0]["unknown"])
             .Throws<KeyNotFoundException>();
+    }
+
+    [Test]
+    public async Task EofProjectionPreflightsRequiredFieldsBeforeOptionalText()
+    {
+        var result = CompactProjection
+            .First(CompactProjectionSelector.Tag("article"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
+            .Field("required", CompactFieldProjection.SelfAttribute("data-required"), required: true)
+            .Compile()
+            .ExecuteWithDiagnostics("<article>expensive <b>optional</b> text</article>");
+
+        await Assert.That(result.Rows.Count).IsEqualTo(0);
+        await Assert.That(result.Counters.RowsRejected).IsEqualTo(1);
+        await Assert.That(result.Counters.NormalizedTextValuesProjected).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task EofProjectionReusesEquivalentFieldSelectorTargets()
+    {
+        const int NoiseElements = 20;
+        var html = new StringBuilder("<article>");
+        for (var index = 0; index < NoiseElements; index++)
+            html.Append("<div></div>");
+        html.Append("<a class=target href=/item title=Item>text</a></article>");
+
+        var result = CompactProjection
+            .First(CompactProjectionSelector.Tag("article"))
+            .Field(
+                "href",
+                CompactFieldProjection.FirstAttribute(
+                    CompactProjectionSelector.Tag("a").WithClass("target"),
+                    "href"
+                ),
+                required: true
+            )
+            .Field(
+                "title",
+                CompactFieldProjection.FirstAttribute(
+                    CompactProjectionSelector.Tag("A").WithClass("target"),
+                    "title"
+                )
+            )
+            .Compile()
+            .ExecuteWithDiagnostics(html.ToString());
+
+        await Assert.That(result.Rows[0]["href"].ToString()).IsEqualTo("/item");
+        await Assert.That(result.Rows[0]["title"].ToString()).IsEqualTo("Item");
+        await Assert.That(result.Counters.CandidateNodes).IsLessThanOrEqualTo(NoiseElements + 10);
     }
 
     [Test]
@@ -410,7 +472,7 @@ public sealed class CompactParserTests
             .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
 
-        var actual = plan.Execute(html);
+        var actual = plan.ExecuteWithDiagnostics(html);
 
         await Assert.That(actual.Rows.Count).IsEqualTo(expected is null ? 0 : 1);
         if (expected is not null)
@@ -433,7 +495,7 @@ public sealed class CompactParserTests
             .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
 
-        var result = plan.Execute(Html);
+        var result = plan.ExecuteWithDiagnostics(Html);
 
         await Assert.That(result.Rows[0]["text"].ToString()).IsEqualTo("one & two");
         await Assert.That(result.Counters.AttributesRetained).IsEqualTo(1);
@@ -457,7 +519,7 @@ public sealed class CompactParserTests
             .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
 
-        var result = plan.Execute(Html);
+        var result = plan.ExecuteWithDiagnostics(Html);
 
         await Assert.That(result.Rows.Count).IsEqualTo(1);
         await Assert.That(result.Rows[0]["title"].ToString()).IsEqualTo("Parsing real HTML");
@@ -491,7 +553,7 @@ public sealed class CompactParserTests
             )
             .Compile();
 
-        var result = plan.Execute(Html);
+        var result = plan.ExecuteWithDiagnostics(Html);
 
         await Assert.That(result.Rows.Count).IsEqualTo(2);
         await Assert.That(result.Rows[0]["title"].ToString()).IsEqualTo("Arena parsing");
@@ -514,7 +576,7 @@ public sealed class CompactParserTests
             )
             .Compile();
 
-        var result = plan.Execute(Html);
+        var result = plan.ExecuteWithDiagnostics(Html);
 
         await Assert.That(result.Rows.Count).IsEqualTo(1);
         await Assert.That(result.Rows[0]["url"].Exists).IsTrue();
@@ -535,7 +597,7 @@ public sealed class CompactParserTests
                 required: true
             )
             .Compile()
-            .Execute(Html);
+            .ExecuteWithDiagnostics(Html);
 
         await Assert.That(result.Rows[0]["url"].ToString()).IsEqualTo("/item");
         await Assert.That(result.Counters.TextValuesRetained).IsEqualTo(0);
@@ -654,7 +716,7 @@ public sealed class CompactParserTests
             html.Append("</div>");
         html.Append("</section>");
 
-        var result = plan.Execute(html.ToString());
+        var result = plan.ExecuteWithDiagnostics(html.ToString());
 
         await Assert.That(result.Rows.Count).IsEqualTo(0);
         await Assert.That(result.Counters.AttributesInspected).IsLessThanOrEqualTo(Depth * RepeatedSteps);
@@ -851,6 +913,9 @@ public sealed class CompactParserTests
         await Assert.That(navigable.HasParentLinks).IsTrue();
         await Assert.That(navigable.HasSourceLocations).IsTrue();
         await Assert.That(navigable.GetParent(1)).IsEqualTo(0);
+        await Assert.That(minimal.Elements("main").First().TryGetSourceLocation(out _)).IsFalse();
+        await Assert.That(navigable.Elements("main").First().TryGetSourceLocation(out var source)).IsTrue();
+        await Assert.That(source.Index).IsGreaterThanOrEqualTo(0);
     }
 
     [Test]
@@ -913,22 +978,6 @@ public sealed class CompactParserTests
         await Assert.That(document.GetName(customElement)).IsEqualTo("x-widget");
         await Assert.That(document.GetName(customAttribute)).IsEqualTo("data-custom");
         await Assert.That(document.FindNameId("aside")).IsEqualTo(ushort.MaxValue);
-    }
-
-    [Test]
-    public async Task ExtractionProfileDisablesNonExtractionFeatures()
-    {
-        var options = CompactParserProfiles.Extraction;
-
-        await Assert.That(options.IsScripting).IsFalse();
-        await Assert.That(options.IsNotSupportingFrames).IsTrue();
-        await Assert.That(options.IsKeepingSourceReferences).IsFalse();
-        await Assert.That(options.IsPreservingAttributeNames).IsFalse();
-        await Assert.That(options.DisableElementPositionTracking).IsTrue();
-        await Assert.That(options.SkipComments).IsTrue();
-        await Assert.That(options.SkipProcessingInstructions).IsTrue();
-        await Assert.That(options.SkipScriptText).IsTrue();
-        await Assert.That(options.SkipRawText).IsTrue();
     }
 
     [Test]

@@ -49,7 +49,7 @@ public class LongSyntheticConstructionBenchmark
         AssertEqual("native UTF-8 raw fold", readOnly, rawUtf8);
         AssertEqual("native UTF-8 completed-element fold", readOnly, completedUtf8);
 
-        var counters = _projectionPlan.Execute(_html).Counters;
+        var counters = _projectionPlan.ExecuteWithDiagnostics(_html).Counters;
         Console.WriteLine(
             $"Synthetic fixture: {Encoding.UTF8.GetByteCount(_html):N0} UTF-8 bytes, "
                 + $"{NoiseBlocks:N0} noise blocks, target near EOF, {counters.TokensProcessed:N0} tokens, "
