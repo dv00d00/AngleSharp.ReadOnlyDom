@@ -7,7 +7,7 @@ namespace AngleSharp.ReadOnlyDom.Html.Model;
 
 internal class ReadOnlyDocument
     : ReadOnlyHtmlElement,
-        IConstructableDocument,
+        IConstructableDocumentNode,
         IReadOnlyDocument,
         IReadOnlyDiagnostics,
         IReadOnlySourceMetadata
@@ -72,8 +72,6 @@ internal class ReadOnlyDocument
     IReadOnlyNode? IReadOnlyNode.Parent => _parent as IReadOnlyNode;
     IReadOnlyNodeList IReadOnlyNode.ChildNodes => (IReadOnlyNodeList)_ChildNodes;
 
-    public bool IsLoading => false;
-
     public void TrackError(Exception error) => _errors?.Add(error);
 
     public bool TryGetDiagnostics(out IReadOnlyDiagnostics diagnostics)
@@ -111,18 +109,7 @@ internal class ReadOnlyDocument
             _sourceReferences[element] = value;
     }
 
-    public Task WaitForReadyAsync(CancellationToken cancelToken) => Task.CompletedTask;
-
-    public Task FinishLoadingAsync() => Task.CompletedTask;
-
-    // A read-only parse has no browsing lifecycle, event loop, scripting, or manifest processing.
-    public void ApplyManifest() { }
-
     public void Clear() => ChildNodes.Clear();
-
-    public void PerformMicrotaskCheckpoint() { }
-
-    public void ProvideStableState() { }
 
     public void Dispose()
     {

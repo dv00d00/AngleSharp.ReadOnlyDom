@@ -1,10 +1,15 @@
-﻿using AngleSharp.Dom;
+using AngleSharp.Dom;
 using AngleSharp.Html.Construction;
+using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.Compact.Arena;
 
-internal sealed class ArenaDocument : ArenaElement, IConstructableDocument, IDisposable
+/// <summary>
+/// The construction-time document handed to AngleSharp's tree builder. Topology is reached through
+/// <see cref="ArenaHandle"/> and the factory's node accessors, so this carries document state only.
+/// </summary>
+internal sealed class ArenaDocument : IConstructableDocumentState, IDisposable
 {
     private bool _ownershipTransferred;
     private readonly CompactMetadataOptions _options;
@@ -17,34 +22,24 @@ internal sealed class ArenaDocument : ArenaElement, IConstructableDocument, IDis
         CompactMetadataOptions options,
         CompactDocumentLayout layout
     )
-        : base(arena, handle)
     {
+        Arena = arena;
+        NodeHandle = handle;
         Source = source;
         _options = options;
         _layout = layout;
     }
 
+    internal Arena Arena { get; }
+    internal int NodeHandle { get; }
+
     public TextSource Source { get; }
     public IDisposable? Builder { get; set; }
     public QuirksMode QuirksMode { get; set; }
-    public bool IsLoading => false;
-    public IConstructableElement DocumentElement => ChildNodes.OfType<IConstructableElement>().First();
-    public IConstructableElement? Head =>
-        DocumentElement
-            .ChildNodes.OfType<IConstructableElement>()
-            .FirstOrDefault(element => element.LocalName.Equals(TagNames.Head));
 
-    public void PerformMicrotaskCheckpoint() { }
-
-    public void ProvideStableState() { }
+    public void AddComment(ref StructHtmlToken token) => Arena.AddComment(NodeHandle, ref token);
 
     public void TrackError(Exception exception) { }
-
-    public Task WaitForReadyAsync(CancellationToken cancelToken) => Task.CompletedTask;
-
-    public Task FinishLoadingAsync() => Task.CompletedTask;
-
-    public void ApplyManifest() { }
 
     public CompactDocument CreateCompactDocument()
     {
@@ -55,9 +50,6 @@ internal sealed class ArenaDocument : ArenaElement, IConstructableDocument, IDis
         _ownershipTransferred = true;
         return result;
     }
-
-    public CompactStreamingExtractionResult CreateStreamingExtractionResult(int inputBytesConsumed) =>
-        Arena.CreateStreamingExtractionResult(NodeHandle, inputBytesConsumed);
 
     public CompactAggregateResult CreateAggregateResult(int inputBytesConsumed) =>
         Arena.CreateAggregateResult(NodeHandle, inputBytesConsumed);

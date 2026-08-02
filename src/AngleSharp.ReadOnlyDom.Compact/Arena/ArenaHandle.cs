@@ -97,7 +97,7 @@ internal readonly struct ArenaHandle : IHtmlTreeConstructionNode<ArenaHandle>
 
     public void HandleMeta() { }
 
-    public bool PrepareScript(IConstructableDocument document) => false;
+    public bool PrepareScript(IConstructableDocumentState document) => false;
 
     public Task RunScriptAsync(CancellationToken cancel) => Task.CompletedTask;
 

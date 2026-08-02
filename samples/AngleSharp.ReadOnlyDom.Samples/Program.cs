@@ -68,14 +68,6 @@ static void RunConstructionTimeViews()
 {
     Heading("COMPACT STREAMING — construction-time results, no escaping DOM");
 
-    var specialized = CompactStreamingExtractor.ExtractFirstNormalizedText(Html, tag: "article", id: "content");
-    Console.WriteLine($"specialized text : {specialized.Value}");
-    Console.WriteLine(
-        $"specialized work : {specialized.Counters.TokensProcessed} tokens, "
-            + $"{specialized.Counters.NodesMaterialized} topology nodes, "
-            + $"{specialized.Counters.AttributesRetained} retained attributes"
-    );
-
     var aggregatePlan = CompactAggregate
         .First(CompactAggregateSelector.Tag("article").WithId("content"))
         .Field(

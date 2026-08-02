@@ -105,8 +105,12 @@ public class MalformedHtmlPropertyTests
     }
 
     [Test]
-    public void GeneratedMalformedHtmlMatchesAngleSharpForStreamingExtraction()
+    public void GeneratedMalformedHtmlMatchesAngleSharpForEofAggregateIdText()
     {
+        var plan = CompactAggregate
+            .First(CompactAggregateSelector.Tag("div").WithId("content"))
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Compile();
         var property = Prop.ForAll(
             MalformedHtml().ToArbitrary(),
             fragment =>
@@ -114,12 +118,13 @@ public class MalformedHtmlPropertyTests
                 var source = $"<main><div id=content>{fragment}</div><aside>tail</aside></main>";
                 using var mutable = new HtmlParser().ParseDocument(source);
                 var expected = mutable.QuerySelector("div#content");
-                var actual = CompactStreamingExtractor.ExtractFirstNormalizedText(source);
+                var actual = plan.Execute(source);
                 var expectedText = NormalizeWhitespace(expected?.TextContent ?? string.Empty);
-                if (actual.Found != (expected is not null) || actual.Value.ToString() != expectedText)
+                var actualText = actual.Rows.Count == 0 ? string.Empty : actual.Rows[0]["text"].ToString();
+                if (actual.Rows.Count != (expected is not null ? 1 : 0) || actualText != expectedText)
                 {
                     throw new InvalidOperationException(
-                        $"Streaming extraction mismatch for generated HTML:\n{Escape(source)}\n\nMutable:\n{Escape(expectedText)}\n\nStreaming:\n{Escape(actual.Value.ToString())}"
+                        $"EOF aggregate mismatch for generated HTML:\n{Escape(source)}\n\nMutable:\n{Escape(expectedText)}\n\nAggregate:\n{Escape(actualText)}"
                     );
                 }
             }

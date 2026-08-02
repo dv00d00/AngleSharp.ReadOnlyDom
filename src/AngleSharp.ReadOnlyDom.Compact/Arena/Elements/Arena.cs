@@ -8,14 +8,12 @@ namespace AngleSharp.ReadOnlyDom.Compact.Arena;
 internal sealed partial class Arena : IDisposable
 {
     private static ReadOnlySpan<char> WhiteSpace => " \t\r\n";
-    private readonly PooledReferenceBuffer<ArenaNode>? _nodes;
     private readonly MutableNodeColumns _columns;
     private readonly NameTable _names = new();
     private readonly CompactParserHints _hints;
     private readonly ICompactConstructionViewState? _constructionView;
     private PooledValueBuffer<MutableNodePayload>? _payloads;
     private PooledValueBuffer<MutableAttribute>? _attributes;
-    private PooledReferenceBuffer<ArenaAttribute>? _attributeWrappers;
     private int _unattachedNodeCount;
     private int _textLength;
     private bool _requiresRemap;
@@ -24,16 +22,11 @@ internal sealed partial class Arena : IDisposable
     public Arena(
         CompactParserHints hints,
         bool trackSourceReferences,
-        ICompactConstructionViewState? constructionView = null,
-        bool materializeNodeWrappers = true
+        ICompactConstructionViewState? constructionView = null
     )
     {
         _hints = hints;
         _constructionView = constructionView;
-        if (materializeNodeWrappers)
-            _nodes = new PooledReferenceBuffer<ArenaNode>(
-                ValidateCapacity(hints.InitialNodeCapacity, nameof(CompactParserHints.InitialNodeCapacity))
-            );
         _columns = new MutableNodeColumns(hints.InitialNodeCapacity, trackSourceReferences);
         _textNameId = _names.GetId("#text");
     }
@@ -48,47 +41,13 @@ internal sealed partial class Arena : IDisposable
             layout
         );
         _unattachedNodeCount--;
-        _nodes?.Add(document);
         return document;
-    }
-
-    public ArenaElement CreateElement(
-        StringOrMemory name,
-        StringOrMemory prefix,
-        NodeFlags flags,
-        ElementMarker marker = ElementMarker.None
-    )
-    {
-        var handle = CreateElementHandle(name, prefix, flags);
-        ArenaElement node = marker switch
-        {
-            ElementMarker.Template => new ArenaTemplateElement(this, handle),
-            ElementMarker.Script => new ArenaScriptElement(this, handle),
-            ElementMarker.Meta => new ArenaMetaElement(this, handle),
-            ElementMarker.Form => new ArenaFormElement(this, handle),
-            ElementMarker.Frame => new ArenaFrameElement(this, handle),
-            ElementMarker.Math => new ArenaMathElement(this, handle),
-            ElementMarker.Svg => new ArenaSvgElement(this, handle),
-            _ => new ArenaElement(this, handle),
-        };
-        _nodes![handle] = node;
-        return node;
     }
 
     internal int CreateElementHandle(StringOrMemory name, StringOrMemory prefix, NodeFlags flags)
     {
         var qualifiedName = prefix.IsNullOrEmpty ? name : $"{prefix}:{name}";
-        var handle = AddState(qualifiedName, flags, CompactNodeKind.Element);
-        _nodes?.AddEmpty();
-        return handle;
-    }
-
-    public ArenaNode CreateLeaf(StringOrMemory name, StringOrMemory value, CompactNodeKind kind)
-    {
-        var handle = CreateLeafHandle(name, value, kind);
-        var node = new ArenaNode(this, handle);
-        _nodes![handle] = node;
-        return node;
+        return AddState(qualifiedName, flags, CompactNodeKind.Element);
     }
 
     internal int CreateLeafHandle(StringOrMemory name, StringOrMemory value, CompactNodeKind kind) =>
@@ -98,7 +57,6 @@ internal sealed partial class Arena : IDisposable
     {
         var handle = AddState(name, NodeFlags.None, kind);
         SetValue(handle, value);
-        _nodes?.AddEmpty();
         return handle;
     }
 
@@ -108,19 +66,7 @@ internal sealed partial class Arena : IDisposable
         _constructionView?.NodeMaterialized();
         var handle = _columns.Add(_textNameId, NodeFlags.None, CompactNodeKind.Text);
         SetValue(handle, value);
-        _nodes?.AddEmpty();
         return handle;
-    }
-
-    public ArenaNode Node(int handle)
-    {
-        var node = _nodes![handle];
-        if (node is null)
-        {
-            node = new ArenaNode(this, handle);
-            _nodes[handle] = node;
-        }
-        return node;
     }
 
     public StringOrMemory Name(int handle) => _names.GetName(_columns.NameIds[handle]);
@@ -284,16 +230,10 @@ internal sealed partial class Arena : IDisposable
 
     public void Dispose()
     {
-        _nodes?.Dispose();
-        _attributeWrappers?.Dispose();
         _attributes?.Dispose();
         _payloads?.Dispose();
         _columns.Dispose();
     }
-
-    public CompactStreamingExtractionResult CreateStreamingExtractionResult(int root, int inputBytesConsumed) =>
-        (_constructionView as CompactStreamingExtractionState)?.CreateResult(this, root, inputBytesConsumed)
-        ?? throw new InvalidOperationException("The arena was not configured for streaming extraction.");
 
     public CompactAggregateResult CreateAggregateResult(int root, int inputBytesConsumed) =>
         (_constructionView as CompactAggregateExecutionState)?.CreateResult(this, root, inputBytesConsumed)
