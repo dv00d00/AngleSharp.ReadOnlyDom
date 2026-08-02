@@ -7,9 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="AngleSharp" />
     <PackageReference Include="System.IO.Pipelines" />
-    <Using Include="AngleSharp.Html.Parser.Utf8" />
+    <Using Include="AngleSharp.Streaming.Utf8" />
   </ItemGroup>
 
   <ItemGroup>
