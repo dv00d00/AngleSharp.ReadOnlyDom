@@ -24,8 +24,11 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 [MemoryDiagnoser]
 public class QqArticleScraperBenchmark
 {
-    private static readonly QueryPlan<ArticleStateMachine> ArticleQuery = CreateArticleQuery();
-    private static readonly QueryPlan<ArticleStateMachine> CompletedArticleQuery = CreateCompletedArticleQuery();
+    private const int NetworkSegmentSize = 4 * 1024;
+    private const string ArticleCardSelector = ".news-list li[dt-eid='em_item_article']";
+
+    private static readonly QueryPlan<ArticleStateMachine> CallbackArticleQuery = CreateArticleQuery();
+    private static readonly QueryPlan<ArticleStateMachine> CompletedElementArticleQuery = CreateCompletedArticleQuery();
     private readonly HtmlParser _angleSharp = new();
     private readonly HtmlParser _angleSharpScraper = new(CreateOptions(trackSources: false));
     private readonly HtmlParser _readOnlyNatural = new(
@@ -69,15 +72,15 @@ public class QqArticleScraperBenchmark
         AssertEqual(nameof(ReadOnlyUtf8BodyFiltered), ReadOnlyUtf8BodyFiltered());
         AssertEqual(nameof(ReadOnlyUtf8QqSubtrees), ReadOnlyUtf8QqSubtrees());
         AssertEqual(nameof(CompactNaturalQuery), CompactNaturalQuery());
-        AssertEqual(nameof(CompactFrozenResolvedIds), CompactFrozenResolvedIds());
-        AssertEqual(nameof(CompactUtf8FrozenResolvedIds), CompactUtf8FrozenResolvedIds());
-        AssertEqual(nameof(CompactUtf8QqSubtrees), CompactUtf8QqSubtrees());
-        AssertEqual(nameof(QueryCompiledUtf8Fold), QueryCompiledUtf8Fold());
+        AssertEqual(nameof(CompactBodyFilteredResolvedIds), CompactBodyFilteredResolvedIds());
+        AssertEqual(nameof(CompactUtf8BodyFilteredResolvedIds), CompactUtf8BodyFilteredResolvedIds());
+        AssertEqual(nameof(CompactUtf8QqSubtreesResolvedIds), CompactUtf8QqSubtreesResolvedIds());
+        AssertEqual(nameof(StreamingQueryCallbacks), StreamingQueryCallbacks());
         AssertEqual(
-            nameof(QuerySegmented4KiBUtf8Fold),
-            QuerySegmented4KiBUtf8Fold().AsTask().GetAwaiter().GetResult()
+            nameof(StreamingQuerySegmented4KiB),
+            StreamingQuerySegmented4KiB().AsTask().GetAwaiter().GetResult()
         );
-        AssertEqual(nameof(QueryCompletedElementFold), QueryCompletedElementFold());
+        AssertEqual(nameof(StreamingQueryCompletedElements), StreamingQueryCompletedElements());
 
         Console.WriteLine(
             $"QQ scraper fixture {File}: {_utf8.Length:N0} UTF-8 bytes, "
@@ -103,8 +106,8 @@ public class QqArticleScraperBenchmark
 
     private static List<Article> ScrapeAngleSharpCss(AngleSharpDocument document)
     {
-        var output = new List<Article>(128);
-        foreach (var card in document.QuerySelectorAll(".news-list li[dt-eid='em_item_article']"))
+        var output = new List<Article>();
+        foreach (var card in document.QuerySelectorAll(ArticleCardSelector))
         {
             var metadata = card.GetAttribute("dt-params") ?? string.Empty;
             foreach (var link in card.QuerySelectorAll("a[href]"))
@@ -215,37 +218,63 @@ public class QqArticleScraperBenchmark
     public List<Article> CompactNaturalQuery()
     {
         using var document = _compactNatural.ParseCompactDocument(_html);
-        return ScrapeCompact(document);
+        return ScrapeCompactNatural(document);
     }
 
     [Benchmark]
     [BenchmarkCategory("Optimized")]
-    public List<Article> CompactFrozenResolvedIds()
+    public List<Article> CompactBodyFilteredResolvedIds()
     {
         var filter = new FirstTagAndAllChildren("body");
         using var document = _compact.ParseCompactDocument(_html, filter.Loop);
-        return ScrapeCompact(document);
+        return ScrapeCompactResolvedIds(document);
     }
 
     [Benchmark]
     [BenchmarkCategory("Optimized")]
-    public List<Article> CompactUtf8FrozenResolvedIds()
+    public List<Article> CompactUtf8BodyFilteredResolvedIds()
     {
         var filter = new FirstTagAndAllChildren("body");
         using var document = _compact.ParseCompactDocument(_utf8, Encoding.UTF8, filter.Loop);
-        return ScrapeCompact(document);
+        return ScrapeCompactResolvedIds(document);
     }
 
     [Benchmark]
     [BenchmarkCategory("QqSpecificUpperBound")]
-    public List<Article> CompactUtf8QqSubtrees()
+    public List<Article> CompactUtf8QqSubtreesResolvedIds()
     {
         var filter = new QqNewsListTokenFilter();
         using var document = _compact.ParseCompactDocument(_utf8, Encoding.UTF8, filter.Loop);
-        return ScrapeCompact(document);
+        return ScrapeCompactResolvedIds(document);
     }
 
-    private static List<Article> ScrapeCompact(CompactDocument document)
+    private static List<Article> ScrapeCompactNatural(CompactDocument document)
+    {
+        var output = new List<Article>();
+
+        foreach (var list in document.Elements("ul").WithClass("news-list"))
+        {
+            foreach (var card in list.Elements("li").WithAttribute("dt-eid", "em_item_article"))
+            {
+                var metadata = card.Attr("dt-params").ToString();
+                foreach (var link in card.Elements("a").WithAttribute("href"))
+                {
+                    var linkImage = link.Elements("img").First();
+                    AddArticle(
+                        output,
+                        link.Text(),
+                        link.Attr("href").ToString(),
+                        linkImage.Exists ? linkImage.Attr("src").ToString() : null,
+                        linkImage.Exists ? linkImage.Attr("alt").ToString() : null,
+                        metadata
+                    );
+                }
+            }
+        }
+        return output;
+    }
+
+    private static List<Article> ScrapeCompactResolvedIds(CompactDocument document)
     {
         var ul = document.Name("ul");
         var li = document.Name("li");
@@ -257,7 +286,8 @@ public class QqArticleScraperBenchmark
         var href = document.Name("href");
         var source = document.Name("src");
         var alternateText = document.Name("alt");
-        var output = new List<Article>(128);
+
+        var output = new List<Article>();
         var text = new StringBuilder();
 
         foreach (var list in document.Elements(ul).WithClass(className, "news-list"))
@@ -286,28 +316,28 @@ public class QqArticleScraperBenchmark
 
     [Benchmark]
     [BenchmarkCategory("Optimized")]
-    public List<Article> QueryCompiledUtf8Fold()
+    public List<Article> StreamingQueryCallbacks()
     {
-        var state = ArticleQuery.Execute(_utf8, new ArticleStateMachine(), Utf8InputContract.WellFormedUtf8);
+        var state = CallbackArticleQuery.Execute(_utf8, new ArticleStateMachine(), Utf8InputContract.WellFormedUtf8);
         return state.DetachResults();
     }
 
     [Benchmark]
     [BenchmarkCategory("Optimized")]
-    public async ValueTask<List<Article>> QuerySegmented4KiBUtf8Fold()
+    public async ValueTask<List<Article>> StreamingQuerySegmented4KiB()
     {
         var pipe = new Pipe(
             new PipeOptions(
                 pauseWriterThreshold: 16 * 1024,
                 resumeWriterThreshold: 8 * 1024,
-                minimumSegmentSize: 4 * 1024,
+                minimumSegmentSize: NetworkSegmentSize,
                 useSynchronizationContext: false
             )
         );
-        var producer = WriteSegmentsAsync(pipe.Writer, _utf8, 4 * 1024);
+        var producer = WriteSegmentsAsync(pipe.Writer, _utf8, NetworkSegmentSize);
         try
         {
-            var state = await ArticleQuery.ExecuteAsync(pipe.Reader, new ArticleStateMachine());
+            var state = await CallbackArticleQuery.ExecuteAsync(pipe.Reader, new ArticleStateMachine());
             await producer;
             return state.DetachResults();
         }
@@ -319,9 +349,13 @@ public class QqArticleScraperBenchmark
 
     [Benchmark]
     [BenchmarkCategory("Natural")]
-    public List<Article> QueryCompletedElementFold()
+    public List<Article> StreamingQueryCompletedElements()
     {
-        var state = CompletedArticleQuery.Execute(_utf8, new ArticleStateMachine(), Utf8InputContract.WellFormedUtf8);
+        var state = CompletedElementArticleQuery.Execute(
+            _utf8,
+            new ArticleStateMachine(),
+            Utf8InputContract.WellFormedUtf8
+        );
         return state.DetachResults();
     }
 
@@ -336,28 +370,13 @@ public class QqArticleScraperBenchmark
         var link = card.Descendant("a")
             .Attribute("href")
             .OnNormalizedText(
-                static (ref state, in element) =>
-                {
-                    AddArticle(
-                        state._results,
-                        element.GetText(),
-                        element.GetAttributeOrEmpty("href"),
-                        state._imageUrl,
-                        state._imageAlt,
-                        state._cardMetadata
-                    );
-                    state._imageUrl = null;
-                    state._imageAlt = null;
-                }
+                static (ref state, in element) => state.CompletedLink(element),
+                "href"
             );
 
         link.Descendant("img")
             .OnClose(
-                static (ref state, in element) =>
-                {
-                    state._imageUrl ??= element.GetAttribute("src");
-                    state._imageAlt ??= element.GetAttribute("alt");
-                },
+                static (ref state, in element) => state.CompletedImage(element),
                 "src",
                 "alt"
             );
@@ -384,7 +403,7 @@ public class QqArticleScraperBenchmark
 
     private static List<Article> ScrapeReadOnly(IReadOnlyNode document)
     {
-        var output = new List<Article>(128);
+        var output = new List<Article>();
         foreach (
             var card in document.QueryAll(
                 static node => node.TagClass("ul", "news-list"),
@@ -619,12 +638,12 @@ public class QqArticleScraperBenchmark
 
     private sealed class ArticleStateMachine
     {
-        internal readonly StringBuilder _title = new();
-        internal List<Article> _results = new(128);
-        internal string _cardMetadata = string.Empty;
-        internal string? _href;
-        internal string? _imageUrl;
-        internal string? _imageAlt;
+        private readonly StringBuilder _title = new();
+        private List<Article> _results = [];
+        private string _cardMetadata = string.Empty;
+        private string? _href;
+        private string? _imageUrl;
+        private string? _imageAlt;
 
         public void StartCard(in Element element) => _cardMetadata = Attr(element, "dt-params") ?? string.Empty;
 
@@ -654,6 +673,26 @@ public class QqArticleScraperBenchmark
         {
             _imageUrl ??= Attr(element, "src");
             _imageAlt ??= Attr(element, "alt");
+        }
+
+        public void CompletedImage(in CompletedElement element)
+        {
+            _imageUrl ??= element.GetAttribute("src");
+            _imageAlt ??= element.GetAttribute("alt");
+        }
+
+        public void CompletedLink(in CompletedElement element)
+        {
+            AddArticle(
+                _results,
+                element.GetText(),
+                element.GetAttributeOrEmpty("href"),
+                _imageUrl,
+                _imageAlt,
+                _cardMetadata
+            );
+            _imageUrl = null;
+            _imageAlt = null;
         }
 
         public void EndLink()
