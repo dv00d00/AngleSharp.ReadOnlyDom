@@ -1,4 +1,4 @@
-using System.Runtime;
+﻿using System.Runtime;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Diagnosers;
