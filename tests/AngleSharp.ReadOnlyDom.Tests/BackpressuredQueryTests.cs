@@ -217,7 +217,9 @@ public sealed class BackpressuredQueryTests
         public void AdvancePublished(int bytes)
         {
             if (bytes != _buffer.WrittenCount)
-                throw new InvalidOperationException("The test output expects the complete publishable prefix to flush.");
+                throw new InvalidOperationException(
+                    "The test output expects the complete publishable prefix to flush."
+                );
             _buffer.Clear();
         }
     }
@@ -248,7 +250,9 @@ public sealed class BackpressuredQueryTests
         public void AdvancePublished(int bytes)
         {
             if (bytes != _buffer.WrittenCount)
-                throw new InvalidOperationException("The test output expects the complete publishable prefix to flush.");
+                throw new InvalidOperationException(
+                    "The test output expects the complete publishable prefix to flush."
+                );
             _buffer.Clear();
         }
     }

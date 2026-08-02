@@ -26,8 +26,7 @@ public sealed class Utf8HtmlTokenizerInput
         _normalizer = new Utf8InputNormalizer(limits.MaximumInputBytes, inputContract);
     }
 
-    public Utf8HtmlTokenizerCounters Counters =>
-        _tokenizer.GetCounters(_normalizer.BytesConsumed);
+    public Utf8HtmlTokenizerCounters Counters => _tokenizer.GetCounters(_normalizer.BytesConsumed);
 
     public void Write(ReadOnlyMemory<Byte> input)
     {

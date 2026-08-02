@@ -228,7 +228,6 @@ public sealed class HtmlTextExtractor
             if (_ignoredDepth == 0)
                 _writer.ParagraphBreak();
         }
-
     }
 
     private sealed class ExtractorSettings

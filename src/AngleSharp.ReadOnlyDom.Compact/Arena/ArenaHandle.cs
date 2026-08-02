@@ -46,7 +46,10 @@ internal readonly struct ArenaHandle : IHtmlTreeConstructionNode<ArenaHandle>
     public void RemoveNode(int index, ArenaHandle child)
     {
         if (Arena.ChildAt(_handle, index) != child._handle)
-            throw new ArgumentException("The supplied node does not match the child at the requested index.", nameof(child));
+            throw new ArgumentException(
+                "The supplied node does not match the child at the requested index.",
+                nameof(child)
+            );
         Arena.RemoveChild(_handle, child._handle);
     }
 
@@ -91,7 +94,8 @@ internal readonly struct ArenaHandle : IHtmlTreeConstructionNode<ArenaHandle>
         return new ArenaHandle(Arena, copy);
     }
 
-    public void SetSourceReference(ISourceReference sourceReference) => Arena.SetSourceReference(_handle, sourceReference);
+    public void SetSourceReference(ISourceReference sourceReference) =>
+        Arena.SetSourceReference(_handle, sourceReference);
 
     public void PopulateFragment() => Arena.PopulateTemplate(_handle);
 
@@ -105,7 +109,8 @@ internal readonly struct ArenaHandle : IHtmlTreeConstructionNode<ArenaHandle>
 
     public override bool Equals(object? obj) => obj is ArenaHandle other && Equals(other);
 
-    public override int GetHashCode() => HashCode.Combine(_arena is null ? 0 : RuntimeHelpers.GetHashCode(_arena), _handle);
+    public override int GetHashCode() =>
+        HashCode.Combine(_arena is null ? 0 : RuntimeHelpers.GetHashCode(_arena), _handle);
 
     private bool IsHtml(ushort nameId) =>
         (Arena.Flags(_handle) & NodeFlags.HtmlMember) != 0 && Arena.NameId(_handle) == nameId;

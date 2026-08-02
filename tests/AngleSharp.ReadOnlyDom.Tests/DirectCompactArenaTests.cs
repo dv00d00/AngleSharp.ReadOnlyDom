@@ -121,7 +121,12 @@ public sealed class CompactParserTests
     {
         var source = new StringBuilder("<body>");
         for (var i = 0; i < 64; i++)
-            source.Append("<div data-idx='item ").Append(i).Append(" &amp; more'>value ").Append(i).Append(" &lt;ok&gt;</div>");
+            source
+                .Append("<div data-idx='item ")
+                .Append(i)
+                .Append(" &amp; more'>value ")
+                .Append(i)
+                .Append(" &lt;ok&gt;</div>");
         source.Append("</body>");
         var html = source.ToString();
 

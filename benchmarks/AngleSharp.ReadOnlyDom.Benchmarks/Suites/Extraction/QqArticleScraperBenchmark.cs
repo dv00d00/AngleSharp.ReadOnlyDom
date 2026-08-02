@@ -369,17 +369,9 @@ public class QqArticleScraperBenchmark
 
         var link = card.Descendant("a")
             .Attribute("href")
-            .OnNormalizedText(
-                static (ref state, in element) => state.CompletedLink(element),
-                "href"
-            );
+            .OnNormalizedText(static (ref state, in element) => state.CompletedLink(element), "href");
 
-        link.Descendant("img")
-            .OnClose(
-                static (ref state, in element) => state.CompletedImage(element),
-                "src",
-                "alt"
-            );
+        link.Descendant("img").OnClose(static (ref state, in element) => state.CompletedImage(element), "src", "alt");
         return list.Compile();
     }
 
@@ -387,7 +379,8 @@ public class QqArticleScraperBenchmark
     {
         var list = StreamQuery.For<ArticleStateMachine>("ul").Class("news-list");
 
-        var card = list.Descendant("li").Attribute("dt-eid", "em_item_article")
+        var card = list.Descendant("li")
+            .Attribute("dt-eid", "em_item_article")
             .OnStart(static (ref state, in element) => state.StartCard(element), "dt-params")
             .OnEnd(static (ref state) => state.EndCard());
 
@@ -512,7 +505,8 @@ public class QqArticleScraperBenchmark
             SkipPlaintext = true,
             SkipCDATA = true,
             DisableElementPositionTracking = !trackSources,
-            ShouldEmitAttribute = static (ref _, name) => name.Span is "class" or "dt-eid" or "dt-params" or "href" or "src" or "alt",
+            ShouldEmitAttribute = static (ref _, name) =>
+                name.Span is "class" or "dt-eid" or "dt-params" or "href" or "src" or "alt",
         };
 
     /// <summary>
@@ -549,10 +543,7 @@ public class QqArticleScraperBenchmark
 
         private static bool IsNewsList(ref StructHtmlToken token)
         {
-            if (
-                token.Type != HtmlTokenType.StartTag
-                || !token.Name.Memory.Span.SequenceEqual("ul".AsSpan())
-            )
+            if (token.Type != HtmlTokenType.StartTag || !token.Name.Memory.Span.SequenceEqual("ul".AsSpan()))
                 return false;
 
             for (var index = 0; index < token.Attributes.Count; index++)
@@ -576,20 +567,20 @@ public class QqArticleScraperBenchmark
             var name = token.Name.Memory.Span;
             return !(
                 name
-                    is "area"
-                        or "base"
-                        or "br"
-                        or "col"
-                        or "embed"
-                        or "hr"
-                        or "img"
-                        or "input"
-                        or "link"
-                        or "meta"
-                        or "param"
-                        or "source"
-                        or "track"
-                        or "wbr"
+                is "area"
+                    or "base"
+                    or "br"
+                    or "col"
+                    or "embed"
+                    or "hr"
+                    or "img"
+                    or "input"
+                    or "link"
+                    or "meta"
+                    or "param"
+                    or "source"
+                    or "track"
+                    or "wbr"
             );
         }
 

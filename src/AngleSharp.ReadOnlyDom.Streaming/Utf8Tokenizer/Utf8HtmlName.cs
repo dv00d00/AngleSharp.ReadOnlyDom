@@ -118,11 +118,7 @@ public readonly ref struct Utf8HtmlName
         return EqualsAsciiIgnoreCaseScalar(left, right, index);
     }
 
-    private static Boolean EqualsAsciiIgnoreCaseScalar(
-        ReadOnlySpan<Byte> left,
-        ReadOnlySpan<Byte> right,
-        Int32 index
-    )
+    private static Boolean EqualsAsciiIgnoreCaseScalar(ReadOnlySpan<Byte> left, ReadOnlySpan<Byte> right, Int32 index)
     {
         if (left.Length != right.Length)
         {
@@ -139,10 +135,7 @@ public readonly ref struct Utf8HtmlName
             }
 
             var leftFolded = (Byte)(leftValue | 0x20);
-            if (
-                (UInt32)(leftFolded - (Byte)'a') > (Byte)'z' - (Byte)'a'
-                || leftFolded != (Byte)(rightValue | 0x20)
-            )
+            if ((UInt32)(leftFolded - (Byte)'a') > (Byte)'z' - (Byte)'a' || leftFolded != (Byte)(rightValue | 0x20))
             {
                 return false;
             }
@@ -175,10 +168,7 @@ public readonly ref struct Utf8HtmlName
             var foldedLeft = Sse2.Or(leftVector, asciiCaseDifference).AsSByte();
             var atLeastA = Sse2.CompareGreaterThan(foldedLeft, belowA);
             var atMostZ = Sse2.CompareGreaterThan(aboveZ, foldedLeft);
-            var validCaseDifference = Sse2.And(
-                differsOnlyByCase,
-                Sse2.And(atLeastA, atMostZ).AsByte()
-            );
+            var validCaseDifference = Sse2.And(differsOnlyByCase, Sse2.And(atLeastA, atMostZ).AsByte());
             if (Sse2.MoveMask(Sse2.Or(exact, validCaseDifference)) != 0xFFFF)
                 return -1;
 
@@ -188,8 +178,7 @@ public readonly ref struct Utf8HtmlName
         return index;
     }
 
-    private static Boolean IsAsciiAlpha(Byte value) =>
-        (UInt32)((value | 0x20) - (Byte)'a') <= (Byte)'z' - (Byte)'a';
+    private static Boolean IsAsciiAlpha(Byte value) => (UInt32)((value | 0x20) - (Byte)'a') <= (Byte)'z' - (Byte)'a';
 }
 
 internal struct Utf8HtmlNameIdentityCache
@@ -216,9 +205,7 @@ internal struct Utf8HtmlNameIdentityCache
     {
         if (_compactKey == 0)
         {
-            _compactKey = Utf8HtmlName.TryGetCompactKey(verbatim, out key)
-                ? key
-                : UnavailableCompactKey;
+            _compactKey = Utf8HtmlName.TryGetCompactKey(verbatim, out key) ? key : UnavailableCompactKey;
         }
 
         key = _compactKey;

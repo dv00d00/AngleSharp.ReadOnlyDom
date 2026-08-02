@@ -9,11 +9,7 @@ internal static class Utf8AttributeNameIndex
 {
     private const Int32 MinimumSlotCount = 31;
 
-    public static void Initialize(
-        ref Entry[]? entries,
-        ReadOnlySpan<Byte> seenNames,
-        Int32 count
-    )
+    public static void Initialize(ref Entry[]? entries, ReadOnlySpan<Byte> seenNames, Int32 count)
     {
         Reset(ref entries);
         entries = RentCleared(CapacityForCount(count + 1));
@@ -33,11 +29,7 @@ internal static class Utf8AttributeNameIndex
         }
     }
 
-    public static Boolean Contains(
-        Entry[] entries,
-        Utf8HtmlName name,
-        ReadOnlySpan<Byte> seenNames
-    )
+    public static Boolean Contains(Entry[] entries, Utf8HtmlName name, ReadOnlySpan<Byte> seenNames)
     {
         var hash = name.SemanticHash;
         var slotCount = entries.Length - 1;
@@ -66,9 +58,7 @@ internal static class Utf8AttributeNameIndex
 
     public static void Add(ref Entry[]? entries, UInt64 hash, Int32 offset)
     {
-        var current = entries ?? throw new InvalidOperationException(
-            "Attribute-name index is not initialized."
-        );
+        var current = entries ?? throw new InvalidOperationException("Attribute-name index is not initialized.");
         var count = current[0].OffsetPlusOne;
         var slotCount = current.Length - 1;
         if ((Int64)(count + 1) * 4 > (Int64)slotCount * 3)
@@ -129,18 +119,13 @@ internal static class Utf8AttributeNameIndex
 
     private static Int32 CapacityForCount(Int32 count)
     {
-        var requiredSlots = Math.Max(
-            MinimumSlotCount,
-            (Int32)(((Int64)count * 4 + 2) / 3)
-        );
+        var requiredSlots = Math.Max(MinimumSlotCount, (Int32)(((Int64)count * 4 + 2) / 3));
         return checked(requiredSlots + 1);
     }
 
-    private static Int32 Slot(UInt64 hash, Int32 slotCount) =>
-        1 + (Int32)((hash ^ (hash >> 32)) % (UInt64)slotCount);
+    private static Int32 Slot(UInt64 hash, Int32 slotCount) => 1 + (Int32)((hash ^ (hash >> 32)) % (UInt64)slotCount);
 
-    private static Int32 NextSlot(Int32 slot, Int32 slotCount) =>
-        slot == slotCount ? 1 : slot + 1;
+    private static Int32 NextSlot(Int32 slot, Int32 slotCount) => slot == slotCount ? 1 : slot + 1;
 
     internal struct Entry(UInt64 hash, Int32 offsetPlusOne)
     {

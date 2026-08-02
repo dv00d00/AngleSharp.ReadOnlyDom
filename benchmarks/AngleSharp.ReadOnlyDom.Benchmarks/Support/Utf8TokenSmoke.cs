@@ -90,8 +90,11 @@ internal static class Utf8TokenSmoke
                     tokenizer.State = name switch
                     {
                         "title" or "textarea" => AngleSharp.Html.Parser.HtmlParseMode.RCData,
-                        "style" or "xmp" or "iframe" or "noembed" or "noframes" =>
-                            AngleSharp.Html.Parser.HtmlParseMode.Rawtext,
+                        "style" or "xmp" or "iframe" or "noembed" or "noframes" => AngleSharp
+                            .Html
+                            .Parser
+                            .HtmlParseMode
+                            .Rawtext,
                         "script" => AngleSharp.Html.Parser.HtmlParseMode.Script,
                         "plaintext" => AngleSharp.Html.Parser.HtmlParseMode.Plaintext,
                         _ => tokenizer.State,

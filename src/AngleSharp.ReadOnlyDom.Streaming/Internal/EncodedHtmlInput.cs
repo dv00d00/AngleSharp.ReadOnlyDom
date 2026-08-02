@@ -42,12 +42,7 @@ internal static class EncodedHtmlInput
         }
 
         var sourceEncoding = inputEncoding.Encoding!;
-        var tokenizer = new Utf8HtmlTokenizer(
-            sink,
-            stateMetrics: null,
-            limits,
-            countInputBytes: false
-        );
+        var tokenizer = new Utf8HtmlTokenizer(sink, stateMetrics: null, limits, countInputBytes: false);
         if (sourceEncoding.CodePage == Encoding.UTF8.CodePage)
         {
             var input = new Utf8HtmlTokenizerInput(tokenizer, limits: limits);
@@ -95,20 +90,10 @@ internal static class EncodedHtmlInput
         var prefix = ArrayPool<byte>.Shared.Rent(HtmlEncodingSniffer.PrefixSize);
         try
         {
-            var count = await ReadPrefixAsync(
-                    reader,
-                    prefix,
-                    cancellationToken,
-                    limits.MaximumInputBytes
-                )
+            var count = await ReadPrefixAsync(reader, prefix, cancellationToken, limits.MaximumInputBytes)
                 .ConfigureAwait(false);
             var detection = HtmlEncodingSniffer.Detect(prefix.AsSpan(0, count), fallback);
-            var tokenizer = new Utf8HtmlTokenizer(
-                sink,
-                stateMetrics: null,
-                limits,
-                countInputBytes: false
-            );
+            var tokenizer = new Utf8HtmlTokenizer(sink, stateMetrics: null, limits, countInputBytes: false);
 
             if (detection.Encoding.CodePage == Encoding.UTF8.CodePage)
             {

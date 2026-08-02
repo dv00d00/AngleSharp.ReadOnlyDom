@@ -39,11 +39,7 @@ internal struct Utf8InputNormalizer
 
     internal readonly Int64 BytesConsumed => _bytesConsumed;
 
-    internal Int32 Write(
-        Utf8HtmlTokenizer tokenizer,
-        ReadOnlySpan<Byte> utf8,
-        Boolean yieldOnRequest
-    )
+    internal Int32 Write(Utf8HtmlTokenizer tokenizer, ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
     {
         var previousBytesConsumed = _bytesConsumed;
         var observedInputBytes = SaturatingAdd(_bytesConsumed, utf8.Length);
@@ -89,10 +85,7 @@ internal struct Utf8InputNormalizer
             if (_validatedPrefixLength != 0)
             {
                 var available = Math.Min(_validatedPrefixLength, utf8.Length - index);
-                var consumed = tokenizer.WriteTrustedUtf8(
-                    utf8.Slice(index, available),
-                    yieldOnRequest
-                );
+                var consumed = tokenizer.WriteTrustedUtf8(utf8.Slice(index, available), yieldOnRequest);
                 _validatedPrefixLength -= consumed;
                 index += consumed;
                 if (consumed != available)
@@ -122,10 +115,7 @@ internal struct Utf8InputNormalizer
 
             var remainingUtf8 = utf8[index..];
             var completeLength = CompleteUtf8PrefixLength(remainingUtf8);
-            if (
-                completeLength != 0
-                && System.Text.Unicode.Utf8.IsValid(remainingUtf8[..completeLength])
-            )
+            if (completeLength != 0 && System.Text.Unicode.Utf8.IsValid(remainingUtf8[..completeLength]))
             {
                 _validatedPrefixLength = completeLength;
                 continue;
@@ -133,16 +123,9 @@ internal struct Utf8InputNormalizer
 
             if (completeLength != 0)
             {
-                var malformedConsumed = WriteMalformedUtf8(
-                    tokenizer,
-                    remainingUtf8[..completeLength],
-                    yieldOnRequest
-                );
+                var malformedConsumed = WriteMalformedUtf8(tokenizer, remainingUtf8[..completeLength], yieldOnRequest);
                 index += malformedConsumed;
-                if (
-                    malformedConsumed != completeLength
-                    || (yieldOnRequest && tokenizer.IsYieldRequested)
-                )
+                if (malformedConsumed != completeLength || (yieldOnRequest && tokenizer.IsYieldRequested))
                 {
                     _bytesConsumed = SaturatingAdd(previousBytesConsumed, index);
                     return index;
@@ -163,11 +146,7 @@ internal struct Utf8InputNormalizer
         return index;
     }
 
-    private Int32 DrainWellFormedCarry(
-        Utf8HtmlTokenizer tokenizer,
-        ReadOnlySpan<Byte> utf8,
-        Boolean yieldOnRequest
-    )
+    private Int32 DrainWellFormedCarry(Utf8HtmlTokenizer tokenizer, ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
     {
         var expectedLength = Utf8SequenceLength((Byte)_carry);
         var index = 0;
@@ -187,11 +166,7 @@ internal struct Utf8InputNormalizer
         return index;
     }
 
-    private Int32 DrainCarry(
-        Utf8HtmlTokenizer tokenizer,
-        ReadOnlySpan<Byte> utf8,
-        Boolean yieldOnRequest
-    )
+    private Int32 DrainCarry(Utf8HtmlTokenizer tokenizer, ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
     {
         Span<Byte> candidate = stackalloc Byte[4];
         var index = 0;

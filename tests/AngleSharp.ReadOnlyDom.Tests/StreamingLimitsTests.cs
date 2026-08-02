@@ -211,8 +211,7 @@ public sealed class StreamingLimitsTests
 
         public void Text(ReadOnlySpan<byte> utf8) { }
 
-        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name) =>
-            Utf8HtmlStartTagCapture.Attributes;
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name) => Utf8HtmlStartTagCapture.Attributes;
 
         public bool WantsAttribute(Utf8HtmlName name) => true;
 

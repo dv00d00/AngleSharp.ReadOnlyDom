@@ -4,11 +4,7 @@ namespace AngleSharp.Streaming.Utf8;
 
 internal static class Utf8HtmlEntityDecoder
 {
-    public static int WriteLongestSymbolUtf8(
-        ReadOnlySpan<byte> source,
-        Span<byte> destination,
-        out int matchedLength
-    )
+    public static int WriteLongestSymbolUtf8(ReadOnlySpan<byte> source, Span<byte> destination, out int matchedLength)
     {
         for (var length = source.Length; length > 0; length--)
         {
@@ -63,6 +59,5 @@ internal static class Utf8HtmlEntityDecoder
             _ => -1,
         };
 
-    public static bool IsInvalidNumber(int code) =>
-        code is < 0 or > 0x10FFFF || code is >= 0xD800 and <= 0xDFFF;
+    public static bool IsInvalidNumber(int code) => code is < 0 or > 0x10FFFF || code is >= 0xD800 and <= 0xDFFF;
 }

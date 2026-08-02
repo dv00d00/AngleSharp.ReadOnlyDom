@@ -155,11 +155,7 @@ public static class CompactParser
     {
         private readonly ArenaConstructionFactory _factory;
 
-        public ArenaHtmlParser(
-            HtmlParserOptions options,
-            IBrowsingContext context,
-            ArenaConstructionFactory factory
-        )
+        public ArenaHtmlParser(HtmlParserOptions options, IBrowsingContext context, ArenaConstructionFactory factory)
             : base(options, context)
         {
             _factory = factory;
@@ -169,11 +165,7 @@ public static class CompactParser
             ((IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>)_factory).CreateDocument(source);
 
         public ArenaDocument ParseArenaDocument(TextSource source, TokenizerMiddleware? middleware) =>
-            ParseDocument(
-                source,
-                (IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>)_factory,
-                middleware
-            );
+            ParseDocument(source, (IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>)_factory, middleware);
 
         public Task<ArenaDocument> ParseArenaDocumentAsync(
             Stream source,
@@ -181,13 +173,14 @@ public static class CompactParser
             Encoding? encoding,
             TokenizerMiddleware? middleware,
             CancellationToken cancel
-        ) => ParseDocumentAsync(
-            source,
-            sourceMode,
-            (IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>)_factory,
-            encoding,
-            middleware,
-            cancel
-        );
+        ) =>
+            ParseDocumentAsync(
+                source,
+                sourceMode,
+                (IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>)_factory,
+                encoding,
+                middleware,
+                cancel
+            );
     }
 }

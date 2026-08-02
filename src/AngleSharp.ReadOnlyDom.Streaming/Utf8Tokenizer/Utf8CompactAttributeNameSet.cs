@@ -66,8 +66,7 @@ internal sealed class Utf8CompactAttributeNameSet
             return true;
         }
 
-        return _count > InlineCapacity
-            && _overflow.AsSpan(0, _count - InlineCapacity).Contains(key);
+        return _count > InlineCapacity && _overflow.AsSpan(0, _count - InlineCapacity).Contains(key);
     }
 
     private void SetInline(Int32 index, UInt64 key)

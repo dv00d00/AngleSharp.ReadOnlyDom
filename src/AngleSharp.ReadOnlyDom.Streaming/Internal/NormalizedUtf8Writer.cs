@@ -1,4 +1,5 @@
 using System.Buffers;
+
 namespace AngleSharp.ReadOnlyDom.Streaming;
 
 /// <summary>
