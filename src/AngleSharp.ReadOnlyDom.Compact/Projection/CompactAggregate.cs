@@ -8,6 +8,7 @@ using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.ReadOnlyDom.Compact.Arena;
 using AngleSharp.Text;
+using Microsoft.Extensions.ObjectPool;
 using ConstructionArena = AngleSharp.ReadOnlyDom.Compact.Arena.Arena;
 
 namespace AngleSharp.ReadOnlyDom.Compact;
@@ -22,7 +23,46 @@ public enum CompactAggregateProjectionKind
 {
     Attribute,
     NormalizedText,
-    Markdown,
+}
+
+/// <summary>
+/// How a selector step relates to the step before it.
+/// </summary>
+public enum CompactPathAxis
+{
+    /// <summary>Matches at any depth below the previous step.</summary>
+    Descendant,
+
+    /// <summary>Matches only as a direct child of the previous step.</summary>
+    Child,
+}
+
+/// <summary>
+/// A single extracted field value, or the absence of one. Extraction runs during tree construction
+/// and the arena is disposed before a result is returned, so every value carries its own storage and
+/// stays valid for as long as the caller holds it.
+/// </summary>
+public readonly struct CompactExtractionValue
+{
+    private readonly string? _value;
+
+    internal CompactExtractionValue(string value)
+    {
+        _value = value;
+        Exists = true;
+    }
+
+    /// <summary>
+    /// Distinguishes a field that produced no value from one that produced an empty value.
+    /// </summary>
+    public bool Exists { get; }
+
+    /// <summary>
+    /// The value without materializing a new string; empty when <see cref="Exists"/> is false.
+    /// </summary>
+    public ReadOnlySpan<char> Span => _value.AsSpan();
+
+    public override string ToString() => _value ?? string.Empty;
 }
 
 /// <summary>
@@ -110,68 +150,43 @@ internal readonly record struct CompactAggregateSelectorStep(
 
 public sealed class CompactAggregateProjection
 {
-    private readonly CompactAggregateSelector[] _exclusions;
-
     private CompactAggregateProjection(
         CompactAggregateProjectionKind kind,
         CompactAggregateSelector? selector,
-        string? attribute,
-        CompactAggregateSelector[] exclusions
+        string? attribute
     )
     {
         Kind = kind;
         Selector = selector;
         Attribute = attribute;
-        _exclusions = exclusions;
     }
 
     public CompactAggregateProjectionKind Kind { get; }
     public CompactAggregateSelector? Selector { get; }
     public string? Attribute { get; }
-    internal ReadOnlySpan<CompactAggregateSelector> Exclusions => _exclusions;
 
     public static CompactAggregateProjection SelfNormalizedText() =>
-        new(CompactAggregateProjectionKind.NormalizedText, null, null, []);
+        new(CompactAggregateProjectionKind.NormalizedText, null, null);
 
     public static CompactAggregateProjection FirstNormalizedText(CompactAggregateSelector selector) =>
-        new(CompactAggregateProjectionKind.NormalizedText, selector, null, []);
+        new(CompactAggregateProjectionKind.NormalizedText, selector, null);
 
     public static CompactAggregateProjection SelfAttribute(string attribute) => AttributeProjection(null, attribute);
 
     public static CompactAggregateProjection FirstAttribute(CompactAggregateSelector selector, string attribute) =>
         AttributeProjection(selector, attribute);
 
-    public static CompactAggregateProjection SelfMarkdown(params CompactAggregateSelector[] exclusions) =>
-        MarkdownProjection(null, exclusions);
-
-    public static CompactAggregateProjection FirstMarkdown(
-        CompactAggregateSelector selector,
-        params CompactAggregateSelector[] exclusions
-    ) => MarkdownProjection(selector, exclusions);
-
     private static CompactAggregateProjection AttributeProjection(CompactAggregateSelector? selector, string attribute)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(attribute);
-        return new CompactAggregateProjection(CompactAggregateProjectionKind.Attribute, selector, attribute, []);
-    }
-
-    private static CompactAggregateProjection MarkdownProjection(
-        CompactAggregateSelector? selector,
-        CompactAggregateSelector[] exclusions
-    )
-    {
-        ArgumentNullException.ThrowIfNull(exclusions);
-        if (exclusions.Any(static exclusion => exclusion is null))
-            throw new ArgumentException("Markdown exclusions cannot contain null.", nameof(exclusions));
-        return new CompactAggregateProjection(CompactAggregateProjectionKind.Markdown, selector, null, [.. exclusions]);
+        return new CompactAggregateProjection(CompactAggregateProjectionKind.Attribute, selector, attribute);
     }
 }
 
 public readonly record struct CompactAggregateRequirements(
     IReadOnlyList<string> InspectedAttributes,
     IReadOnlyList<string> RetainedAttributes,
-    bool RetainsText,
-    bool ProducesMarkdown
+    bool RetainsText
 );
 
 public readonly record struct CompactAggregateCounters(
@@ -380,7 +395,7 @@ public sealed class CompactAggregatePlan
         $"mode=eof-construction-aggregate; cardinality={Cardinality.ToString().ToLowerInvariant()}; "
         + $"fields={_fields.Length}; inspect=[{string.Join(',', Requirements.InspectedAttributes)}]; "
         + $"retain=[{string.Join(',', Requirements.RetainedAttributes)}]; text={Requirements.RetainsText}; "
-        + $"markdown={Requirements.ProducesMarkdown}; termination=end-of-document; output=owned";
+        + "termination=end-of-document; output=owned";
 
     internal CompactAggregateResult Evaluate(
         ConstructionArena arena,
@@ -449,9 +464,6 @@ public sealed class CompactAggregatePlan
                     CompactAggregateProjectionKind.NormalizedText => new CompactExtractionValue(
                         NormalizeText(arena, target)
                     ),
-                    CompactAggregateProjectionKind.Markdown => new CompactExtractionValue(
-                        ProjectMarkdown(arena, target, projection.Exclusions, state)
-                    ),
                     _ => throw new InvalidOperationException("Unknown aggregate projection."),
                 };
             }
@@ -490,19 +502,12 @@ public sealed class CompactAggregatePlan
                 AddSelector(projection.Selector);
             if (projection.Attribute is not null)
                 retained.Add(projection.Attribute);
-            if (projection.Kind == CompactAggregateProjectionKind.Markdown)
-            {
-                retained.Add("href");
-                foreach (var exclusion in projection.Exclusions)
-                    AddSelector(exclusion);
-            }
         }
         retained.UnionWith(inspected);
         return new CompactAggregateRequirements(
             inspected.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
             retained.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
-            fields.Any(static field => field.Projection.Kind != CompactAggregateProjectionKind.Attribute),
-            fields.Any(static field => field.Projection.Kind == CompactAggregateProjectionKind.Markdown)
+            fields.Any(static field => field.Projection.Kind != CompactAggregateProjectionKind.Attribute)
         );
 
         void AddSelector(CompactAggregateSelector selector)
@@ -664,43 +669,55 @@ public sealed class CompactAggregatePlan
         return false;
     }
 
+    /// <summary>
+    /// Projected values are field-sized: attribute values, headings, normalized subtree text.
+    /// A builder is rented per projected value rather than allocated, because a many-rows plan projects
+    /// one value per field per row. 256 chars covers typical fields without growing; 8K chars stays
+    /// retained so article-sized text keeps reusing a builder, while pathological values are dropped
+    /// instead of hoarded.
+    /// </summary>
+    private static readonly ObjectPool<StringBuilder> TextBuilderPool = ObjectPool.Create(
+        new StringBuilderPooledObjectPolicy { InitialCapacity = 256, MaximumRetainedCapacity = 8 * 1024 }
+    );
+
     private static string NormalizeText(ConstructionArena arena, int target)
     {
-        var output = new StringBuilder();
-        var pendingSpace = false;
-        Append(target);
-        return output.ToString();
-
-        void Append(int handle)
+        var output = TextBuilderPool.Get();
+        try
         {
-            if (arena.Kind(handle) == CompactNodeKind.Text)
+            var pendingSpace = false;
+            Append(target);
+            return output.ToString();
+
+            void Append(int handle)
             {
-                foreach (var character in arena.Value(handle).Memory.Span)
+                if (arena.Kind(handle) == CompactNodeKind.Text)
                 {
-                    if (char.IsWhiteSpace(character))
+                    foreach (var character in arena.Value(handle).Memory.Span)
                     {
-                        pendingSpace = output.Length != 0;
-                        continue;
+                        if (char.IsWhiteSpace(character))
+                        {
+                            pendingSpace = output.Length != 0;
+                            continue;
+                        }
+                        if (pendingSpace)
+                        {
+                            output.Append(' ');
+                            pendingSpace = false;
+                        }
+                        output.Append(character);
                     }
-                    if (pendingSpace)
-                    {
-                        output.Append(' ');
-                        pendingSpace = false;
-                    }
-                    output.Append(character);
                 }
+                for (var child = arena.FirstChild(handle); child >= 0; child = arena.NextSibling(child))
+                    Append(child);
             }
-            for (var child = arena.FirstChild(handle); child >= 0; child = arena.NextSibling(child))
-                Append(child);
+        }
+        finally
+        {
+            TextBuilderPool.Return(output);
         }
     }
 
-    private static string ProjectMarkdown(
-        ConstructionArena arena,
-        int target,
-        ReadOnlySpan<CompactAggregateSelector> exclusions,
-        CompactAggregateExecutionState state
-    ) => new CompactMarkdownWriter(arena, exclusions.ToArray(), state).Write(target);
 }
 
 internal readonly record struct CompactAggregateAttributePredicate(string Name, string? Value);
@@ -795,282 +812,5 @@ internal sealed class CompactAggregateExecutionState : ICompactConstructionViewS
             || !ReferenceEquals(backing, _source)
         )
             _valuesDecoded++;
-    }
-}
-
-internal sealed class CompactMarkdownWriter
-{
-    private readonly ConstructionArena _arena;
-    private readonly CompactAggregateSelector[] _exclusions;
-    private readonly CompactAggregateExecutionState _state;
-    private readonly StringBuilder _output = new();
-    private bool _pendingSpace;
-
-    public CompactMarkdownWriter(
-        ConstructionArena arena,
-        CompactAggregateSelector[] exclusions,
-        CompactAggregateExecutionState state
-    )
-    {
-        _arena = arena;
-        _exclusions = exclusions;
-        _state = state;
-    }
-
-    public string Write(int target)
-    {
-        VisitChildren(target, inPre: false);
-        return _output.ToString().Trim();
-    }
-
-    private void Visit(int handle, bool inPre)
-    {
-        if (_arena.Kind(handle) == CompactNodeKind.Text)
-        {
-            if (inPre)
-                _output.Append(_arena.Value(handle).Memory.Span);
-            else
-                AppendNormalized(_arena.Value(handle).Memory.Span);
-            return;
-        }
-        if (_arena.Kind(handle) != CompactNodeKind.Element || IsExcluded(handle))
-            return;
-
-        var tag = _arena.LocalName(handle).Memory.Span;
-        if (
-            tag.Equals("script", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("style", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("template", StringComparison.OrdinalIgnoreCase)
-        )
-            return;
-
-        if (TryHeadingLevel(tag, out var level))
-        {
-            EnsureNewlines(2);
-            AppendLiteral(new string('#', level));
-            AppendLiteral(" ");
-            VisitChildren(handle, false);
-            EnsureNewlines(2);
-        }
-        else if (tag.Equals("p", StringComparison.OrdinalIgnoreCase))
-        {
-            EnsureNewlines(2);
-            VisitChildren(handle, false);
-            EnsureNewlines(2);
-        }
-        else if (tag.Equals("br", StringComparison.OrdinalIgnoreCase))
-        {
-            EnsureNewlines(1);
-        }
-        else if (
-            tag.Equals("ul", StringComparison.OrdinalIgnoreCase) || tag.Equals("ol", StringComparison.OrdinalIgnoreCase)
-        )
-        {
-            EnsureNewlines(2);
-            VisitChildren(handle, false);
-            EnsureNewlines(2);
-        }
-        else if (tag.Equals("li", StringComparison.OrdinalIgnoreCase))
-        {
-            EnsureNewlines(1);
-            AppendLiteral("- ");
-            VisitChildren(handle, false);
-            EnsureNewlines(1);
-        }
-        else if (
-            tag.Equals("strong", StringComparison.OrdinalIgnoreCase)
-            || tag.Equals("b", StringComparison.OrdinalIgnoreCase)
-        )
-        {
-            FlushPendingSpace();
-            AppendLiteral("**");
-            VisitChildren(handle, false);
-            AppendLiteral("**");
-        }
-        else if (
-            tag.Equals("em", StringComparison.OrdinalIgnoreCase) || tag.Equals("i", StringComparison.OrdinalIgnoreCase)
-        )
-        {
-            FlushPendingSpace();
-            AppendLiteral("*");
-            VisitChildren(handle, false);
-            AppendLiteral("*");
-        }
-        else if (tag.Equals("a", StringComparison.OrdinalIgnoreCase))
-        {
-            FlushPendingSpace();
-            AppendLiteral("[");
-            VisitChildren(handle, false);
-            AppendLiteral("]");
-            if (TryFindAttribute(handle, "href", out var href))
-            {
-                AppendLiteral("(");
-                AppendLiteral(href.ToString());
-                AppendLiteral(")");
-            }
-        }
-        else if (tag.Equals("pre", StringComparison.OrdinalIgnoreCase))
-        {
-            EnsureNewlines(2);
-            AppendLiteral("```text\n");
-            VisitChildren(handle, true);
-            EnsureNewlines(1);
-            AppendLiteral("```");
-            EnsureNewlines(2);
-        }
-        else if (tag.Equals("code", StringComparison.OrdinalIgnoreCase) && !inPre)
-        {
-            FlushPendingSpace();
-            AppendLiteral("`");
-            VisitChildren(handle, true);
-            AppendLiteral("`");
-        }
-        else
-        {
-            VisitChildren(handle, inPre);
-        }
-    }
-
-    private void VisitChildren(int handle, bool inPre)
-    {
-        for (var child = _arena.FirstChild(handle); child >= 0; child = _arena.NextSibling(child))
-            Visit(child, inPre);
-    }
-
-    private bool IsExcluded(int handle)
-    {
-        foreach (var exclusion in _exclusions)
-            if (MatchesExclusion(handle, exclusion))
-                return true;
-        return false;
-    }
-
-    private bool MatchesExclusion(int handle, CompactAggregateSelector selector) =>
-        MatchesExclusionChain(handle, selector.Steps, selector.Steps.Length - 1);
-
-    private bool MatchesExclusionChain(int handle, ReadOnlySpan<CompactAggregateSelectorStep> steps, int index)
-    {
-        if (!MatchesExclusionStep(handle, steps[index]))
-            return false;
-        if (index == 0)
-            return true;
-
-        var parent = _arena.Parent(handle);
-        if (steps[index].Axis == CompactPathAxis.Child)
-            return parent >= 0 && MatchesExclusionChain(parent, steps, index - 1);
-
-        for (var ancestor = parent; ancestor >= 0; ancestor = _arena.Parent(ancestor))
-            if (MatchesExclusionChain(ancestor, steps, index - 1))
-                return true;
-        return false;
-    }
-
-    private bool MatchesExclusionStep(int handle, in CompactAggregateSelectorStep step)
-    {
-        if (_arena.Kind(handle) != CompactNodeKind.Element)
-            return false;
-        if (!_arena.LocalName(handle).Memory.Span.Equals(step.TagName, StringComparison.OrdinalIgnoreCase))
-            return false;
-        if (step.Id is not null && !MatchAttribute("id", step.Id, false))
-            return false;
-        if (step.ClassToken is not null && !MatchAttribute("class", step.ClassToken, true))
-            return false;
-        foreach (var predicate in step.Attributes)
-            if (!MatchAttribute(predicate.Name, predicate.Value, false))
-                return false;
-        return true;
-
-        bool MatchAttribute(string name, string? value, bool token)
-        {
-            if (!TryFindAttribute(handle, name, out var actual))
-                return false;
-            return value is null || (token ? ContainsToken(actual, value) : actual.SequenceEqual(value));
-        }
-    }
-
-    private bool TryFindAttribute(int handle, string name, out ReadOnlySpan<char> value)
-    {
-        for (
-            var attribute = _arena.FirstAttributeHandle(handle);
-            attribute >= 0;
-            attribute = _arena.NextAttribute(attribute)
-        )
-        {
-            _state.AttributeInspected();
-            if (_arena.AttributeName(attribute).Memory.Span.Equals(name, StringComparison.OrdinalIgnoreCase))
-            {
-                value = _arena.AttributeValue(attribute).Memory.Span;
-                return true;
-            }
-        }
-        value = default;
-        return false;
-    }
-
-    private void AppendNormalized(ReadOnlySpan<char> text)
-    {
-        foreach (var character in text)
-        {
-            if (char.IsWhiteSpace(character))
-            {
-                _pendingSpace = _output.Length != 0;
-                continue;
-            }
-            if (_pendingSpace && _output.Length != 0 && !char.IsWhiteSpace(_output[^1]))
-                _output.Append(' ');
-            _pendingSpace = false;
-            _output.Append(character);
-        }
-    }
-
-    private void AppendLiteral(string text)
-    {
-        _pendingSpace = false;
-        _output.Append(text);
-    }
-
-    private void FlushPendingSpace()
-    {
-        if (_pendingSpace && _output.Length != 0 && !char.IsWhiteSpace(_output[^1]))
-            _output.Append(' ');
-        _pendingSpace = false;
-    }
-
-    private void EnsureNewlines(int count)
-    {
-        _pendingSpace = false;
-        var present = 0;
-        for (var index = _output.Length - 1; index >= 0 && _output[index] == '\n'; index--)
-            present++;
-        while (present++ < count)
-            _output.Append('\n');
-    }
-
-    private static bool TryHeadingLevel(ReadOnlySpan<char> tag, out int level)
-    {
-        if (tag.Length == 2 && (tag[0] == 'h' || tag[0] == 'H') && tag[1] is >= '1' and <= '6')
-        {
-            level = tag[1] - '0';
-            return true;
-        }
-        level = 0;
-        return false;
-    }
-
-    private static bool ContainsToken(ReadOnlySpan<char> values, ReadOnlySpan<char> wanted)
-    {
-        while (!values.IsEmpty)
-        {
-            values = values.TrimStart();
-            var end = 0;
-            while (end < values.Length && !char.IsWhiteSpace(values[end]))
-                end++;
-            if (values[..end].SequenceEqual(wanted))
-                return true;
-            if (end == values.Length)
-                return false;
-            values = values[(end + 1)..];
-        }
-        return false;
     }
 }
