@@ -39,6 +39,7 @@ internal sealed partial class Arena
                     current.Array.AsSpan(current.Start, current.End - current.Start).CopyTo(text.AsSpan(position));
                     position += current.End - current.Start;
                 }
+
                 for (var payload = 0; payload < payloadCount; payload++)
                     RebaseValue(ref _payloads![payload].Value, regions, regionCount, text);
                 for (var attribute = 0; attribute < attributeCount; attribute++)
@@ -54,14 +55,6 @@ internal sealed partial class Arena
         for (var attribute = 0; attribute < attributeCount; attribute++)
             OwnTextValue(ref _attributes![attribute].Value, dense, ref densePosition);
         return dense;
-    }
-
-    private struct ValueRegion
-    {
-        public char[] Array;
-        public int Start;
-        public int End;
-        public int DestinationStart;
     }
 
     /// <summary>Extends the backing-array regions with one value; false forces the dense fallback.</summary>
@@ -80,13 +73,14 @@ internal sealed partial class Arena
             current.End = Math.Max(current.End, segment.Offset + segment.Count);
             return true;
         }
+
         if (regionCount == regions.Length)
             return false;
         regions[regionCount++] = new ValueRegion
         {
             Array = segment.Array!,
             Start = segment.Offset,
-            End = segment.Offset + segment.Count,
+            End = segment.Offset + segment.Count
         };
         return true;
     }
@@ -123,5 +117,13 @@ internal sealed partial class Arena
         var start = destination.Count;
         destination.AddRange(value.Memory.Span);
         return (start, value.Length);
+    }
+
+    private struct ValueRegion
+    {
+        public char[] Array;
+        public int Start;
+        public int End;
+        public int DestinationStart;
     }
 }

@@ -12,111 +12,178 @@ internal readonly struct ArenaHandle : IHtmlTreeConstructionNode<ArenaHandle>
     private static readonly ushort FormNameId = GetKnownNameId(TagNames.Form);
     private static readonly ushort ScriptNameId = GetKnownNameId(TagNames.Script);
     private readonly Arena? _arena;
-    private readonly int _handle;
 
     public ArenaHandle(Arena arena, int handle)
     {
         _arena = arena;
-        _handle = handle;
+        Value = handle;
     }
 
     internal Arena Arena => _arena!;
-    internal int Value => _handle;
+    internal int Value { get; }
+
     public bool IsNull => _arena is null;
     public bool IsTemplate => IsHtml(TemplateNameId);
     public bool IsForm => IsHtml(FormNameId);
     public bool IsScript => IsHtml(ScriptNameId);
-    public StringOrMemory NodeName => Arena.Name(_handle);
-    public StringOrMemory LocalName => Arena.LocalName(_handle);
-    public StringOrMemory Prefix => Arena.Prefix(_handle);
-    public StringOrMemory NamespaceUri => Arena.NamespaceUri(_handle);
-    public NodeFlags Flags => Arena.Flags(_handle);
-    public ArenaHandle Parent => Arena.Parent(_handle) is var parent && parent >= 0 ? new(Arena, parent) : default;
-    public int ChildCount => Arena.ChildCount(_handle);
+    public StringOrMemory NodeName => Arena.Name(Value);
+    public StringOrMemory LocalName => Arena.LocalName(Value);
+    public StringOrMemory Prefix => Arena.Prefix(Value);
+    public StringOrMemory NamespaceUri => Arena.NamespaceUri(Value);
+    public NodeFlags Flags => Arena.Flags(Value);
+
+    public ArenaHandle Parent =>
+        Arena.Parent(Value) is var parent && parent >= 0 ? new ArenaHandle(Arena, parent) : default;
+
+    public int ChildCount => Arena.ChildCount(Value);
     public IElement? AsDomElement => null;
 
-    public ArenaHandle ChildAt(int index) => new(Arena, Arena.ChildAt(_handle, index));
+    public ArenaHandle ChildAt(int index)
+    {
+        return new ArenaHandle(Arena, Arena.ChildAt(Value, index));
+    }
 
-    public void ClearChildren() => Arena.ClearChildren(_handle);
+    public void ClearChildren()
+    {
+        Arena.ClearChildren(Value);
+    }
 
-    public void RemoveFromParent() => Arena.RemoveFromParent(_handle);
+    public void RemoveFromParent()
+    {
+        Arena.RemoveFromParent(Value);
+    }
 
-    public void RemoveChild(ArenaHandle child) => Arena.RemoveChild(_handle, child._handle);
+    public void RemoveChild(ArenaHandle child)
+    {
+        Arena.RemoveChild(Value, child.Value);
+    }
 
     public void RemoveNode(int index, ArenaHandle child)
     {
-        if (Arena.ChildAt(_handle, index) != child._handle)
+        if (Arena.ChildAt(Value, index) != child.Value)
             throw new ArgumentException(
                 "The supplied node does not match the child at the requested index.",
                 nameof(child)
             );
-        Arena.RemoveChild(_handle, child._handle);
+        Arena.RemoveChild(Value, child.Value);
     }
 
-    public void InsertNode(int index, ArenaHandle child) => Arena.AddChild(_handle, child._handle, index);
+    public void InsertNode(int index, ArenaHandle child)
+    {
+        Arena.AddChild(Value, child.Value, index);
+    }
 
-    public void AddNode(ArenaHandle child) => Arena.AddChild(_handle, child._handle);
+    public void AddNode(ArenaHandle child)
+    {
+        Arena.AddChild(Value, child.Value);
+    }
 
-    public void AppendText(StringOrMemory text, bool emitWhiteSpaceOnly = false) =>
-        Arena.AddText(_handle, text, emitWhiteSpaceOnly);
+    public void AppendText(StringOrMemory text, bool emitWhiteSpaceOnly = false)
+    {
+        Arena.AddText(Value, text, emitWhiteSpaceOnly);
+    }
 
-    public void InsertText(int index, StringOrMemory text, bool emitWhiteSpaceOnly = false) =>
-        Arena.AddText(_handle, text, emitWhiteSpaceOnly, index);
+    public void InsertText(int index, StringOrMemory text, bool emitWhiteSpaceOnly = false)
+    {
+        Arena.AddText(Value, text, emitWhiteSpaceOnly, index);
+    }
 
-    public void AddComment(ref StructHtmlToken token) => Arena.AddComment(_handle, ref token);
+    public void AddComment(ref StructHtmlToken token)
+    {
+        Arena.AddComment(Value, ref token);
+    }
 
-    public StringOrMemory GetAttribute(StringOrMemory namespaceUri, StringOrMemory localName) =>
-        Arena.GetAttributeValue(_handle, localName);
+    public StringOrMemory GetAttribute(StringOrMemory namespaceUri, StringOrMemory localName)
+    {
+        return Arena.GetAttributeValue(Value, localName);
+    }
 
-    public bool HasAttribute(StringOrMemory name) => Arena.HasAttribute(_handle, name);
+    public bool HasAttribute(StringOrMemory name)
+    {
+        return Arena.HasAttribute(Value, name);
+    }
 
-    public void SetAttribute(string? namespaceUri, StringOrMemory name, StringOrMemory value) =>
-        Arena.SetOwnAttribute(_handle, name, value);
+    public void SetAttribute(string? namespaceUri, StringOrMemory name, StringOrMemory value)
+    {
+        Arena.SetOwnAttribute(Value, name, value);
+    }
 
-    public void SetOwnAttribute(StringOrMemory name, StringOrMemory value) =>
-        Arena.SetOwnAttribute(_handle, name, value);
+    public void SetOwnAttribute(StringOrMemory name, StringOrMemory value)
+    {
+        Arena.SetOwnAttribute(Value, name, value);
+    }
 
     public void SetAttributes(in StructAttributes attributes)
     {
         for (var i = 0; i < attributes.Count; i++)
-            Arena.SetOwnAttribute(_handle, attributes[i].Name, attributes[i].Value);
-        Arena.CompleteAttributes(_handle);
+            Arena.SetOwnAttribute(Value, attributes[i].Name, attributes[i].Value);
+        Arena.CompleteAttributes(Value);
     }
 
-    public bool AttributesSame(ArenaHandle other) => Arena.AttributesSame(_handle, other._handle);
+    public bool AttributesSame(ArenaHandle other)
+    {
+        return Arena.AttributesSame(Value, other.Value);
+    }
 
-    public void SetupElement() { }
+    public void SetupElement()
+    {
+    }
 
     public ArenaHandle ShallowCopy()
     {
         var copy = Arena.CreateElementHandle(LocalName, Prefix, Flags);
-        Arena.CopyAttributes(_handle, copy);
+        Arena.CopyAttributes(Value, copy);
         return new ArenaHandle(Arena, copy);
     }
 
-    public void SetSourceReference(ISourceReference sourceReference) =>
-        Arena.SetSourceReference(_handle, sourceReference);
+    public void SetSourceReference(ISourceReference sourceReference)
+    {
+        Arena.SetSourceReference(Value, sourceReference);
+    }
 
-    public void PopulateFragment() => Arena.PopulateTemplate(_handle);
+    public void PopulateFragment()
+    {
+        Arena.PopulateTemplate(Value);
+    }
 
-    public void HandleMeta() { }
+    public void HandleMeta()
+    {
+    }
 
-    public bool PrepareScript(IConstructableDocumentState document) => false;
+    public bool PrepareScript(IConstructableDocumentState document)
+    {
+        return false;
+    }
 
-    public Task RunScriptAsync(CancellationToken cancel) => Task.CompletedTask;
+    public Task RunScriptAsync(CancellationToken cancel)
+    {
+        return Task.CompletedTask;
+    }
 
-    public bool Equals(ArenaHandle other) => ReferenceEquals(_arena, other._arena) && _handle == other._handle;
+    public bool Equals(ArenaHandle other)
+    {
+        return ReferenceEquals(_arena, other._arena) && Value == other.Value;
+    }
 
-    public override bool Equals(object? obj) => obj is ArenaHandle other && Equals(other);
+    public override bool Equals(object? obj)
+    {
+        return obj is ArenaHandle other && Equals(other);
+    }
 
-    public override int GetHashCode() =>
-        HashCode.Combine(_arena is null ? 0 : RuntimeHelpers.GetHashCode(_arena), _handle);
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(_arena is null ? 0 : RuntimeHelpers.GetHashCode(_arena), Value);
+    }
 
-    private bool IsHtml(ushort nameId) =>
-        (Arena.Flags(_handle) & NodeFlags.HtmlMember) != 0 && Arena.NameId(_handle) == nameId;
+    private bool IsHtml(ushort nameId)
+    {
+        return (Arena.Flags(Value) & NodeFlags.HtmlMember) != 0 && Arena.NameId(Value) == nameId;
+    }
 
-    private static ushort GetKnownNameId(StringOrMemory name) =>
-        GeneratedTagMetadata.TryGetKnownNameId(name, out var id)
+    private static ushort GetKnownNameId(StringOrMemory name)
+    {
+        return GeneratedTagMetadata.TryGetKnownNameId(name, out var id)
             ? id
             : throw new InvalidOperationException($"Expected a generated name ID for '{name}'.");
+    }
 }

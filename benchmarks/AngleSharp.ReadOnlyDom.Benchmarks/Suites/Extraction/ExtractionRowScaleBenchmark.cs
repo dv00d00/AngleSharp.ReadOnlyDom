@@ -2,6 +2,9 @@
 using System.Text;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Compact;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
+using AngleSharp.ReadOnlyDom.Compact.Projection;
+using AngleSharp.ReadOnlyDom.Compact.Query;
 using AngleSharp.ReadOnlyDom.Html;
 using BenchmarkDotNet.Attributes;
 
@@ -19,15 +22,15 @@ public class ExtractionRowScaleBenchmark
 {
     private readonly HtmlParser _readOnlyParser = new(default, ReadOnlyParser.DefaultContext);
     private readonly HtmlParser _compactParser = CompactParser.CreateParser();
-    private readonly CompactAggregatePlan _aggregatePlan = CompactAggregate
-        .ForEach(CompactAggregateSelector.Tag("main").Descendant("section").WithClass("card"))
-        .Field("key", CompactAggregateProjection.SelfAttribute("data-key"), required: true)
+    private readonly CompactProjectionPlan _projectionPlan = CompactProjection
+        .ForEach(CompactProjectionSelector.Tag("main").Descendant("section").WithClass("card"))
+        .Field("key", CompactFieldProjection.SelfAttribute("data-key"), required: true)
         .Field(
             "heading",
-            CompactAggregateProjection.FirstNormalizedText(CompactAggregateSelector.Tag("h2")),
+            CompactFieldProjection.FirstNormalizedText(CompactProjectionSelector.Tag("h2")),
             required: true
         )
-        .Field("link", CompactAggregateProjection.FirstAttribute(CompactAggregateSelector.Tag("a"), "href"))
+        .Field("link", CompactFieldProjection.FirstAttribute(CompactProjectionSelector.Tag("a"), "href"))
         .Compile();
 
     private string _html = null!;
@@ -41,11 +44,10 @@ public class ExtractionRowScaleBenchmark
         _html = CreatePage(Sections);
         var readOnly = ReadOnlyDomRows();
         var compactScan = CompactScanRows();
-        var aggregate = EofAggregateRows();
+        var projection = EofProjectionRows();
 
-        AssertEqual("read-only DOM", readOnly, readOnly);
         AssertEqual("compact scan", readOnly, compactScan);
-        AssertEqual("EOF aggregate", readOnly, aggregate);
+        AssertEqual("EOF projection", readOnly, projection);
         Console.WriteLine(
             $"Row-scale fixture: {Encoding.UTF8.GetByteCount(_html):N0} UTF-8 bytes, "
                 + $"{Sections:N0} sections -> {readOnly.Count:N0} rows x 3 fields "
@@ -94,9 +96,9 @@ public class ExtractionRowScaleBenchmark
     }
 
     [Benchmark]
-    public List<SectionRow> EofAggregateRows()
+    public List<SectionRow> EofProjectionRows()
     {
-        var result = _aggregatePlan.Execute(_html);
+        var result = _projectionPlan.Execute(_html);
         var rows = new List<SectionRow>(result.Rows.Count);
         foreach (var row in result.Rows)
             rows.Add(new SectionRow(row["key"].ToString(), row["heading"].ToString(), row["link"].ToString()));

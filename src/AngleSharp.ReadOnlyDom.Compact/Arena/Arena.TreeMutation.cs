@@ -32,6 +32,7 @@ internal sealed partial class Arena
             _unattachedNodeCount++;
             child = next;
         }
+
         _columns.FirstChildren[parent] = -1;
         _columns.LastChildren[parent] = -1;
         _columns.ChildCounts[parent] = 0;

@@ -1,32 +1,33 @@
 using System.Buffers;
 using System.Text;
+using AngleSharp.ReadOnlyDom.Compact.Document;
 
-namespace AngleSharp.ReadOnlyDom.Compact;
+namespace AngleSharp.ReadOnlyDom.Compact.Query;
 
 /// <summary>
-/// A value-type cursor over one node in a <see cref="CompactDocument"/>.
+///     A value-type cursor over one node in a <see cref="CompactDocument" />.
 /// </summary>
 public readonly struct Node
 {
     private readonly CompactDocument? _document;
-    private readonly int _handle;
 
     internal Node(CompactDocument document, int handle)
     {
         _document = document;
-        _handle = handle;
+        Handle = handle;
     }
 
-    public bool Exists => _document is not null && _handle >= 0;
-    public int Handle => _handle;
+    public bool Exists => _document is not null && Handle >= 0;
+    public int Handle { get; }
+
     public CompactDocument Document => _document!;
 
-    private CompactNode Raw => _document!.GetNode(_handle);
+    private CompactNode Raw => _document!.GetNode(Handle);
 
-    public CompactNodeKind Kind => _document!.KindAt(_handle);
-    public bool IsElement => _document!.KindAt(_handle) == CompactNodeKind.Element;
-    public ushort NameId => _document!.NameIdAt(_handle);
-    public string Name => _document!.GetName(_document.NameIdAt(_handle));
+    public CompactNodeKind Kind => _document!.KindAt(Handle);
+    public bool IsElement => _document!.KindAt(Handle) == CompactNodeKind.Element;
+    public ushort NameId => _document!.NameIdAt(Handle);
+    public string Name => _document!.GetName(_document.NameIdAt(Handle));
 
     public ReadOnlySpan<char> LocalName
     {
@@ -38,42 +39,73 @@ public readonly struct Node
         }
     }
 
-    public bool Is(string tag) => Is(_document!.ResolveNameId(tag));
+    public bool Is(string tag)
+    {
+        return Is(_document!.ResolveNameId(tag));
+    }
 
-    public bool Is(ReadOnlySpan<char> tag) => Is(_document!.ResolveNameId(tag));
+    public bool Is(ReadOnlySpan<char> tag)
+    {
+        return Is(_document!.ResolveNameId(tag));
+    }
 
-    public bool Is(ushort tagId) =>
-        tagId != ushort.MaxValue
-        && _document!.KindAt(_handle) == CompactNodeKind.Element
-        && _document.NameIdAt(_handle) == tagId;
+    public bool Is(ushort tagId)
+    {
+        return tagId != ushort.MaxValue
+               && _document!.KindAt(Handle) == CompactNodeKind.Element
+               && _document.NameIdAt(Handle) == tagId;
+    }
 
     /// <summary>The parent node, or a non-existent cursor when parent links were not retained.</summary>
     public Node Parent =>
-        _document is not null && _document.HasParentLinks ? new Node(_document, _document.GetParent(_handle)) : default;
+        _document is not null && _document.HasParentLinks ? new Node(_document, _document.GetParent(Handle)) : default;
 
-    public bool IsDescendantOf(Node ancestor) =>
-        _document is not null
-        && ReferenceEquals(_document, ancestor._document)
-        && _document.IsInSameTreeScope(_handle, ancestor._handle)
-        && _handle > ancestor._handle
-        && _handle < ancestor.Raw.SubtreeEndExclusive;
+    public bool IsDescendantOf(Node ancestor)
+    {
+        return _document is not null
+               && ReferenceEquals(_document, ancestor._document)
+               && _document.IsInSameTreeScope(Handle, ancestor.Handle)
+               && Handle > ancestor.Handle
+               && Handle < ancestor.Raw.SubtreeEndExclusive;
+    }
 
-    /// <summary>The attribute value (empty span if absent — use <see cref="HasAttr(string)"/> to disambiguate).</summary>
-    public ReadOnlySpan<char> Attr(string name) => Attr(name.AsSpan());
+    /// <summary>The attribute value (empty span if absent — use <see cref="HasAttr(string)" /> to disambiguate).</summary>
+    public ReadOnlySpan<char> Attr(string name)
+    {
+        return Attr(name.AsSpan());
+    }
 
-    public ReadOnlySpan<char> Attr(ReadOnlySpan<char> name) => Attr(_document!.ResolveNameId(name));
+    public ReadOnlySpan<char> Attr(ReadOnlySpan<char> name)
+    {
+        return Attr(_document!.ResolveNameId(name));
+    }
 
-    /// <summary>Gets an attribute using a name ID previously resolved by <see cref="CompactDocument.Name(string)"/>.</summary>
-    public ReadOnlySpan<char> Attr(ushort nameId) => TryFindAttribute(nameId, out var value) ? value : default;
+    /// <summary>Gets an attribute using a name ID previously resolved by <see cref="CompactDocument.Name(string)" />.</summary>
+    public ReadOnlySpan<char> Attr(ushort nameId)
+    {
+        return TryFindAttribute(nameId, out var value) ? value : default;
+    }
 
-    public bool HasAttr(string name) => HasAttr(name.AsSpan());
+    public bool HasAttr(string name)
+    {
+        return HasAttr(name.AsSpan());
+    }
 
-    public bool HasAttr(ReadOnlySpan<char> name) => HasAttr(_document!.ResolveNameId(name));
+    public bool HasAttr(ReadOnlySpan<char> name)
+    {
+        return HasAttr(_document!.ResolveNameId(name));
+    }
 
     /// <summary>Checks an attribute using a previously resolved name ID.</summary>
-    public bool HasAttr(ushort nameId) => TryFindAttribute(nameId, out _);
+    public bool HasAttr(ushort nameId)
+    {
+        return TryFindAttribute(nameId, out _);
+    }
 
-    public bool HasClass(string token) => HasClass(token.AsSpan());
+    public bool HasClass(string token)
+    {
+        return HasClass(token.AsSpan());
+    }
 
     public bool HasClass(ReadOnlySpan<char> token)
     {
@@ -110,16 +142,16 @@ public readonly struct Node
     }
 
     /// <summary>
-    /// Streams this node's descendant text into <paramref name="sink"/> as span chunks — no intermediate
-    /// string. The sink is a by-ref struct so mutations (e.g. accumulated length) persist and there is no
-    /// allocation or boxing; the JIT specializes the walk per sink type.
+    ///     Streams this node's descendant text into <paramref name="sink" /> as span chunks — no intermediate
+    ///     string. The sink is a by-ref struct so mutations (e.g. accumulated length) persist and there is no
+    ///     allocation or boxing; the JIT specializes the walk per sink type.
     /// </summary>
     public void WriteText<TSink>(ref TSink sink)
         where TSink : ISpanSink
     {
         var document = _document!;
-        var endExclusive = document.SubtreeEndAt(_handle);
-        for (var handle = _handle; handle < endExclusive; handle++)
+        var endExclusive = document.SubtreeEndAt(Handle);
+        for (var handle = Handle; handle < endExclusive; handle++)
         {
             var kind = document.KindAt(handle);
             if (kind == CompactNodeKind.Element && document.IsTemplate(handle))
@@ -127,6 +159,7 @@ public readonly struct Node
                 handle = document.SubtreeEndAt(handle) - 1;
                 continue;
             }
+
             if (kind != CompactNodeKind.Text)
                 continue;
             var payloadIndex = document.PayloadIndexAt(handle);
@@ -155,8 +188,8 @@ public readonly struct Node
     }
 
     /// <summary>
-    /// Copies descendant text into <paramref name="destination"/> (e.g. a stackalloc buffer). Returns false
-    /// without a partial guarantee if it does not fit; size with <see cref="TextLength"/> first.
+    ///     Copies descendant text into <paramref name="destination" /> (e.g. a stackalloc buffer). Returns false
+    ///     without a partial guarantee if it does not fit; size with <see cref="TextLength" /> first.
     /// </summary>
     public bool TryWriteText(Span<char> destination, out int written)
     {
@@ -167,8 +200,8 @@ public readonly struct Node
     private bool WriteInto(Span<char> destination, ref int written)
     {
         var document = _document!;
-        var endExclusive = document.SubtreeEndAt(_handle);
-        for (var handle = _handle; handle < endExclusive; handle++)
+        var endExclusive = document.SubtreeEndAt(Handle);
+        for (var handle = Handle; handle < endExclusive; handle++)
         {
             var kind = document.KindAt(handle);
             if (kind == CompactNodeKind.Element && document.IsTemplate(handle))
@@ -176,6 +209,7 @@ public readonly struct Node
                 handle = document.SubtreeEndAt(handle) - 1;
                 continue;
             }
+
             if (kind != CompactNodeKind.Text)
                 continue;
             var payloadIndex = document.PayloadIndexAt(handle);
@@ -187,18 +221,24 @@ public readonly struct Node
             value.CopyTo(destination.Slice(written));
             written += value.Length;
         }
+
         return true;
     }
 
-    public ChildCursor Children() =>
-        new(_document!, _document!.IsTemplate(_handle) ? -1 : Raw.FirstChild, Raw.SubtreeEndExclusive);
+    public ChildCursor Children()
+    {
+        return new ChildCursor(_document!, _document!.IsTemplate(Handle) ? -1 : Raw.FirstChild,
+            Raw.SubtreeEndExclusive);
+    }
 
-    public ChildCursor TemplateContent() =>
-        new(
+    public ChildCursor TemplateContent()
+    {
+        return new ChildCursor(
             _document!,
-            _document!.TryGetTemplateContent(_handle, out var contentStart) ? contentStart : -1,
+            _document!.TryGetTemplateContent(Handle, out var contentStart) ? contentStart : -1,
             Raw.SubtreeEndExclusive
         );
+    }
 
     private bool TryFindAttribute(ushort nameId, out ReadOnlySpan<char> value)
     {
@@ -206,16 +246,15 @@ public readonly struct Node
         if (nameId == ushort.MaxValue)
             return false;
         var document = _document!;
-        if (!document.TryGetAttributeRange(_handle, out var first, out var count))
+        if (!document.TryGetAttributeRange(Handle, out var first, out var count))
             return false;
         for (var a = first; a < first + count; a++)
-        {
             if (document.AttributeNameIdAt(a) == nameId)
             {
                 value = document.AttributeValueSpanAt(a);
                 return true;
             }
-        }
+
         return false;
     }
 
@@ -232,6 +271,7 @@ public readonly struct Node
             if (i > start && tokens.Slice(start, i - start).SequenceEqual(wanted))
                 return true;
         }
+
         return false;
     }
 
@@ -239,7 +279,10 @@ public readonly struct Node
     {
         internal int Length;
 
-        public void Append(ReadOnlySpan<char> value) => Length += value.Length;
+        public void Append(ReadOnlySpan<char> value)
+        {
+            Length += value.Length;
+        }
     }
 
     public struct ChildCursor
@@ -272,9 +315,13 @@ public readonly struct Node
             {
                 _current = _document.GetNode(_current).SubtreeEndExclusive;
             }
+
             return _current >= 0 && _current < _endExclusive;
         }
 
-        public readonly ChildCursor GetEnumerator() => this;
+        public readonly ChildCursor GetEnumerator()
+        {
+            return this;
+        }
     }
 }

@@ -1,0 +1,56 @@
+<Project>
+    <!--
+      The object and compact DOM projects consume construction APIs that have not shipped in the
+      public AngleSharp package yet. Keep this override tracked so a normal clone, CI checkout, and
+      temporary git worktree all resolve the same source dependency.
+  
+      A sibling checkout named AngleSharp is detected automatically. Set AngleSharpSourceRoot for a
+      different layout. Projects without an AngleSharp PackageReference (notably Streaming) remain
+      standalone and do not require the source checkout.
+    -->
+    <PropertyGroup
+            Condition="'$(AngleSharpSourceRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\AngleSharp\src\AngleSharp\AngleSharp.Core.csproj')"
+    >
+        <AngleSharpSourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\AngleSharp'))</AngleSharpSourceRoot>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(AngleSharpSourceRoot)' != ''">
+        <!-- Keep the selected solution configuration for this out-of-solution project reference. -->
+        <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <_AngleSharpPackageReference Include="@(PackageReference->WithMetadataValue('Identity', 'AngleSharp'))"/>
+    </ItemGroup>
+
+    <Target
+            Name="RequireAngleSharpSourceRoot"
+            BeforeTargets="PrepareForBuild"
+            Condition="'@(_AngleSharpPackageReference)' != '' and '$(AngleSharpSourceRoot)' == ''"
+    >
+        <Error
+                Text="This project requires the matching AngleSharp source checkout. Clone AngleSharp beside AngleSharp.ReadOnlyDom or set AngleSharpSourceRoot."
+        />
+    </Target>
+
+    <Target
+            Name="ValidateAngleSharpSourceRoot"
+            BeforeTargets="PrepareForBuild"
+            Condition="'$(AngleSharpSourceRoot)' != '' and !Exists('$(AngleSharpSourceRoot)\src\AngleSharp\AngleSharp.Core.csproj')"
+    >
+        <Error
+                Text="AngleSharpSourceRoot points to '$(AngleSharpSourceRoot)', but src\AngleSharp\AngleSharp.Core.csproj was not found there."
+        />
+    </Target>
+
+    <ItemGroup
+            Condition="'$(AngleSharpSourceRoot)' != '' and Exists('$(AngleSharpSourceRoot)\src\AngleSharp\AngleSharp.Core.csproj')"
+    >
+        <PackageReference Remove="AngleSharp"/>
+        <ProjectReference
+                Include="$(AngleSharpSourceRoot)\src\AngleSharp\AngleSharp.Core.csproj"
+                Condition="'@(_AngleSharpPackageReference)' != ''"
+                SetConfiguration="Configuration=$(Configuration)"
+        />
+    </ItemGroup>
+</Project>

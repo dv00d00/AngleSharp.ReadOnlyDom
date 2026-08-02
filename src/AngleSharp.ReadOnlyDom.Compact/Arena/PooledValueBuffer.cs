@@ -15,6 +15,14 @@ internal sealed class PooledValueBuffer<T> : IDisposable
     public int Count { get; private set; }
     public ref T this[int index] => ref _items[index];
 
+    public void Dispose()
+    {
+        if (_items.Length != 0)
+            ArrayPool<T>.Shared.Return(_items, RuntimeHelpers.IsReferenceOrContainsReferences<T>());
+        _items = [];
+        Count = 0;
+    }
+
     public int Add(T item)
     {
         if (Count == _items.Length)
@@ -38,14 +46,6 @@ internal sealed class PooledValueBuffer<T> : IDisposable
         _items = [];
         Count = 0;
         return (items, count);
-    }
-
-    public void Dispose()
-    {
-        if (_items.Length != 0)
-            ArrayPool<T>.Shared.Return(_items, RuntimeHelpers.IsReferenceOrContainsReferences<T>());
-        _items = [];
-        Count = 0;
     }
 
     private void Grow()

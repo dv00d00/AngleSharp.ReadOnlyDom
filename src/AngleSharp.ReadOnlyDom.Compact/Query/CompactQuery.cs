@@ -1,63 +1,94 @@
-namespace AngleSharp.ReadOnlyDom.Compact;
+using AngleSharp.ReadOnlyDom.Compact.Document;
+
+namespace AngleSharp.ReadOnlyDom.Compact.Query;
 
 /// <summary>
-/// Allocation-free queries over the compact columnar store.
+///     Allocation-free queries over the compact columnar store.
 /// </summary>
 public static class CompactQuery
 {
-    public static Node Root(this CompactDocument document) => new(document, 0);
+    public static Node Root(this CompactDocument document)
+    {
+        return new Node(document, 0);
+    }
 
     /// <summary>Resolves a name once for ID-based predicates.</summary>
-    public static ushort Name(this CompactDocument document, string name) => document.ResolveNameId(name);
+    public static ushort Name(this CompactDocument document, string name)
+    {
+        return document.ResolveNameId(name);
+    }
 
-    public static ushort Name(this CompactDocument document, ReadOnlySpan<char> name) => document.ResolveNameId(name);
+    public static ushort Name(this CompactDocument document, ReadOnlySpan<char> name)
+    {
+        return document.ResolveNameId(name);
+    }
 
     /// <summary>
-    /// Scans every node below the document root in preorder.
+    ///     Scans every node below the document root in preorder.
     /// </summary>
-    public static DescendantScan Descendants(this CompactDocument document) => new(document);
+    public static DescendantScan Descendants(this CompactDocument document)
+    {
+        return new DescendantScan(document);
+    }
 
-    public static DescendantScan Descendants(this Node node) => new(node);
+    public static DescendantScan Descendants(this Node node)
+    {
+        return new DescendantScan(node);
+    }
 
     /// <summary>Scans elements using the name-ID column.</summary>
-    public static ElementQuery Elements(this CompactDocument document, string tag) =>
-        new(
+    public static ElementQuery Elements(this CompactDocument document, string tag)
+    {
+        return new ElementQuery(
             document,
             document.ResolveNameId(tag),
             0,
             document.NodeCount,
-            hasClass: false,
+            false,
             default,
             null,
-            hasAttr: false,
+            false,
             default,
             null
         );
+    }
 
-    public static ElementQuery Elements(this CompactDocument document, ReadOnlySpan<char> tag) =>
-        new(
+    public static ElementQuery Elements(this CompactDocument document, ReadOnlySpan<char> tag)
+    {
+        return new ElementQuery(
             document,
             document.ResolveNameId(tag),
             0,
             document.NodeCount,
-            hasClass: false,
+            false,
             default,
             null,
-            hasAttr: false,
+            false,
             default,
             null
         );
+    }
 
-    public static ElementQuery Elements(this CompactDocument document, ushort tagId) =>
-        new(document, tagId, 0, document.NodeCount, hasClass: false, default, null, hasAttr: false, default, null);
+    public static ElementQuery Elements(this CompactDocument document, ushort tagId)
+    {
+        return new ElementQuery(document, tagId, 0, document.NodeCount, false, default, null, false, default,
+            null);
+    }
 
-    public static ElementQuery Elements(this Node node, string tag) =>
-        CreateElements(node, node.Document.ResolveNameId(tag));
+    public static ElementQuery Elements(this Node node, string tag)
+    {
+        return CreateElements(node, node.Document.ResolveNameId(tag));
+    }
 
-    public static ElementQuery Elements(this Node node, ReadOnlySpan<char> tag) =>
-        CreateElements(node, node.Document.ResolveNameId(tag));
+    public static ElementQuery Elements(this Node node, ReadOnlySpan<char> tag)
+    {
+        return CreateElements(node, node.Document.ResolveNameId(tag));
+    }
 
-    public static ElementQuery Elements(this Node node, ushort tagId) => CreateElements(node, tagId);
+    public static ElementQuery Elements(this Node node, ushort tagId)
+    {
+        return CreateElements(node, tagId);
+    }
 
     private static ElementQuery CreateElements(Node node, ushort tagId)
     {
@@ -69,10 +100,10 @@ public static class CompactQuery
             tagId,
             start,
             end,
-            hasClass: false,
+            false,
             default,
             null,
-            hasAttr: false,
+            false,
             default,
             null
         );
@@ -111,7 +142,10 @@ public static class CompactQuery
             return _handle < _endExclusive;
         }
 
-        public readonly DescendantScan GetEnumerator() => this;
+        public readonly DescendantScan GetEnumerator()
+        {
+            return this;
+        }
     }
 
     public readonly struct ElementQuery
@@ -153,21 +187,36 @@ public static class CompactQuery
         }
 
         /// <summary>Filters by a whitespace-separated class token.</summary>
-        public ElementQuery WithClass(string token) => WithClass(_document.ResolveNameId("class"), token);
+        public ElementQuery WithClass(string token)
+        {
+            return WithClass(_document.ResolveNameId("class"), token);
+        }
 
         /// <summary>Filters by a class token using a previously resolved <c>class</c> attribute name ID.</summary>
-        public ElementQuery WithClass(ushort classNameId, string token) =>
-            new(_document, _tagId, _start, _endExclusive, true, classNameId, token, _hasAttr, _attrId, _attrValue);
+        public ElementQuery WithClass(ushort classNameId, string token)
+        {
+            return new ElementQuery(_document, _tagId, _start, _endExclusive, true, classNameId, token, _hasAttr,
+                _attrId,
+                _attrValue);
+        }
 
         /// <summary>Filters by attribute presence or value equality.</summary>
-        public ElementQuery WithAttribute(string name, string? value = null) =>
-            WithAttribute(_document.ResolveNameId(name), value);
+        public ElementQuery WithAttribute(string name, string? value = null)
+        {
+            return WithAttribute(_document.ResolveNameId(name), value);
+        }
 
         /// <summary>Filters by a previously resolved attribute name ID.</summary>
-        public ElementQuery WithAttribute(ushort nameId, string? value = null) =>
-            new(_document, _tagId, _start, _endExclusive, _hasClass, _classId, _classToken, true, nameId, value);
+        public ElementQuery WithAttribute(ushort nameId, string? value = null)
+        {
+            return new ElementQuery(_document, _tagId, _start, _endExclusive, _hasClass, _classId, _classToken, true,
+                nameId, value);
+        }
 
-        public Enumerator GetEnumerator() => new(this);
+        public Enumerator GetEnumerator()
+        {
+            return new Enumerator(this);
+        }
 
         public int Count()
         {
@@ -205,6 +254,7 @@ public static class CompactQuery
                 if (classOk && attrOk)
                     return true;
             }
+
             return classOk && attrOk;
         }
 
@@ -221,6 +271,7 @@ public static class CompactQuery
                 if (i > start && classes.Slice(start, i - start).SequenceEqual(wanted))
                     return true;
             }
+
             return false;
         }
 
@@ -251,13 +302,16 @@ public static class CompactQuery
                         handle = document.IndexOfName(_query._tagId, contentEnd, _query._endExclusive);
                         continue;
                     }
+
                     if (document.KindAt(handle) == CompactNodeKind.Element && _query.Matches(handle))
                     {
                         _current = handle;
                         return true;
                     }
+
                     handle = document.IndexOfName(_query._tagId, handle + 1, _query._endExclusive);
                 }
+
                 return false;
             }
         }

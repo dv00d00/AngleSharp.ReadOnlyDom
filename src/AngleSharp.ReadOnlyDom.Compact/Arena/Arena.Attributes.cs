@@ -1,4 +1,5 @@
 using AngleSharp.Common;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
 
 namespace AngleSharp.ReadOnlyDom.Compact.Arena;
 
@@ -33,13 +34,25 @@ internal sealed partial class Arena
         return false;
     }
 
-    public StringOrMemory AttributeName(int handle) => _names.GetName(_attributes![handle].NameId);
+    public StringOrMemory AttributeName(int handle)
+    {
+        return _names.GetName(_attributes![handle].NameId);
+    }
 
-    public StringOrMemory AttributeValue(int handle) => _attributes![handle].Value;
+    public StringOrMemory AttributeValue(int handle)
+    {
+        return _attributes![handle].Value;
+    }
 
-    internal int FirstAttributeHandle(int handle) => FirstAttribute(handle);
+    internal int FirstAttributeHandle(int handle)
+    {
+        return FirstAttribute(handle);
+    }
 
-    internal int NextAttribute(int attribute) => _attributes![attribute].Next;
+    internal int NextAttribute(int attribute)
+    {
+        return _attributes![attribute].Next;
+    }
 
     internal bool AttributesSame(int left, int right)
     {
@@ -58,12 +71,11 @@ internal sealed partial class Arena
                     || attributes[candidate].Value != attributes[attribute].Value
                 )
             )
-            {
                 candidate = attributes[candidate].Next;
-            }
             if (candidate < 0)
                 return false;
         }
+
         return true;
     }
 
@@ -74,19 +86,19 @@ internal sealed partial class Arena
         attribute.Value = value;
     }
 
-    public void SetOwnAttribute(int handle, StringOrMemory name, StringOrMemory value) =>
+    public void SetOwnAttribute(int handle, StringOrMemory name, StringOrMemory value)
+    {
         SetOwnAttribute(handle, _names.GetId(name), value);
+    }
 
     private void SetOwnAttribute(int handle, ushort nameId, StringOrMemory value)
     {
         for (var existing = FirstAttribute(handle); existing >= 0; existing = _attributes![existing].Next)
-        {
             if (_attributes![existing].NameId == nameId)
             {
                 SetAttributeValue(existing, value);
                 return;
             }
-        }
 
         _attributes ??= new PooledValueBuffer<MutableAttribute>(
             ValidateCapacity(_hints.InitialAttributeCapacity, nameof(CompactParserHints.InitialAttributeCapacity))
@@ -104,7 +116,10 @@ internal sealed partial class Arena
         _constructionView?.AttributeRetained(value);
     }
 
-    public void CompleteAttributes(int handle) => _constructionView?.CompleteAttributes(this, handle);
+    public void CompleteAttributes(int handle)
+    {
+        _constructionView?.CompleteAttributes(this, handle);
+    }
 
     public void CopyAttributes(int source, int destination)
     {

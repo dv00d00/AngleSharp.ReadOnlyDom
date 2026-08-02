@@ -2,6 +2,9 @@
 using System.Collections.Concurrent;
 using AngleSharp.Html.Dom;
 using AngleSharp.ReadOnlyDom.Compact;
+using AngleSharp.ReadOnlyDom.Compact.Document;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
+using AngleSharp.ReadOnlyDom.Compact.Query;
 
 namespace AngleSharp.Readonly.Tests;
 

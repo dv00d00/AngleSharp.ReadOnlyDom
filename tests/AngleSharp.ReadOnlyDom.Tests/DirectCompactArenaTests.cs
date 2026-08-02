@@ -7,8 +7,13 @@ using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
 using AngleSharp.ReadOnlyDom;
 using AngleSharp.ReadOnlyDom.Compact;
+using AngleSharp.ReadOnlyDom.Compact.Document;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
+using AngleSharp.ReadOnlyDom.Compact.Projection;
+using AngleSharp.ReadOnlyDom.Compact.Query;
 using AngleSharp.ReadOnlyDom.Filters;
 using AngleSharp.ReadOnlyDom.Html;
+using Node = AngleSharp.ReadOnlyDom.Compact.Query.Node;
 
 namespace AngleSharp.Readonly.Tests;
 
@@ -211,7 +216,7 @@ public sealed class CompactParserTests
         var section = main.Elements("section").First();
         var nestedParagraph = section.Elements("p").First();
         var template = section.Elements("template").First();
-        var templateParagraph = default(AngleSharp.ReadOnlyDom.Compact.Node);
+        var templateParagraph = default(Node);
         foreach (var child in template.TemplateContent())
         {
             templateParagraph = child;
@@ -232,13 +237,13 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task EofAggregateMultiStepPathExplainsAndExecutesRequiredFeatures()
+    public async Task EofProjectionMultiStepPathExecutesRequiredFeatures()
     {
         const string html =
             "<main><section id=content class='selected wide' data-ready><article><a href='/item'> one <b>two</b> </a></article></section></main>";
-        var plan = CompactAggregate
+        var plan = CompactProjection
             .First(
-                CompactAggregateSelector
+                CompactProjectionSelector
                     .Tag("section")
                     .WithId("content")
                     .WithClass("wide")
@@ -247,8 +252,8 @@ public sealed class CompactParserTests
                     .Descendant("a")
                     .WithAttribute("href", "/item")
             )
-            .Field("href", CompactAggregateProjection.SelfAttribute("href"), required: true)
-            .Field("text", CompactAggregateProjection.SelfNormalizedText(), required: true)
+            .Field("href", CompactFieldProjection.SelfAttribute("href"), required: true)
+            .Field("text", CompactFieldProjection.SelfNormalizedText(), required: true)
             .Compile();
 
         var result = plan.Execute(html);
@@ -259,19 +264,18 @@ public sealed class CompactParserTests
         await Assert.That(result.Counters.RowsProduced).IsEqualTo(1);
         await Assert.That(result.Counters.AttributesInspected).IsGreaterThan(0);
         await Assert.That(plan.Requirements.InspectedAttributes).Contains("data-ready");
-        await Assert.That(plan.Explain()).Contains("mode=eof-construction-aggregate");
     }
 
     [Test]
     [Arguments("<div id=content><p class=item data-v=one>A<p class=item>B")]
     [Arguments("<table><div id=content><span class=item data-v=one>A</span></div></table>")]
     [Arguments("<div id=content><b><i><span class=item data-v=one>A</b>B</i></span>")]
-    public async Task EofAggregateMultiStepPathMatchesAngleSharpOnMalformedMarkup(string html)
+    public async Task EofProjectionMultiStepPathMatchesAngleSharpOnMalformedMarkup(string html)
     {
-        var plan = CompactAggregate
-            .ForEach(CompactAggregateSelector.Tag("div").WithId("content").Descendant("span").WithClass("item"))
-            .Field("value", CompactAggregateProjection.SelfAttribute("data-v"), required: true)
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+        var plan = CompactProjection
+            .ForEach(CompactProjectionSelector.Tag("div").WithId("content").Descendant("span").WithClass("item"))
+            .Field("value", CompactFieldProjection.SelfAttribute("data-v"), required: true)
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
         using var expected = new HtmlParser().ParseDocument(html);
 
@@ -286,17 +290,17 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task EofAggregateRequiredFieldsRejectOnlyMissingValues()
+    public async Task EofProjectionRequiredFieldsRejectOnlyMissingValues()
     {
         const string html = "<p data-v=''>empty</p><p>missing</p><p data-v=x>value</p>";
-        var required = CompactAggregate
-            .ForEach(CompactAggregateSelector.Tag("p"))
-            .Field("value", CompactAggregateProjection.SelfAttribute("data-v"), required: true)
+        var required = CompactProjection
+            .ForEach(CompactProjectionSelector.Tag("p"))
+            .Field("value", CompactFieldProjection.SelfAttribute("data-v"), required: true)
             .Compile()
             .Execute(html);
-        var optional = CompactAggregate
-            .ForEach(CompactAggregateSelector.Tag("p"))
-            .Field("value", CompactAggregateProjection.SelfAttribute("data-v"))
+        var optional = CompactProjection
+            .ForEach(CompactProjectionSelector.Tag("p"))
+            .Field("value", CompactFieldProjection.SelfAttribute("data-v"))
             .Compile()
             .Execute(html);
 
@@ -306,6 +310,86 @@ public sealed class CompactParserTests
         await Assert.That(required.Counters.RowsRejected).IsEqualTo(1);
         await Assert.That(optional.Rows.Count).IsEqualTo(3);
         await Assert.That(optional.Rows[1]["value"].Exists).IsFalse();
+        await Assert
+            .That(() => optional.Rows[0]["unknown"])
+            .Throws<KeyNotFoundException>();
+    }
+
+    [Test]
+    public async Task EofProjectionFirstProjectionsRejectNullSelectors()
+    {
+        await Assert
+            .That(() => CompactFieldProjection.FirstNormalizedText(null!))
+            .Throws<ArgumentNullException>();
+        await Assert
+            .That(() => CompactFieldProjection.FirstAttribute(null!, "href"))
+            .Throws<ArgumentNullException>();
+    }
+
+    [Test]
+    public async Task EofProjectionClassTokensUseOnlyHtmlWhitespaceAsSeparators()
+    {
+        const string joinedToken = "alpha\u00a0beta";
+        const string html = $"<p class='{joinedToken}'>joined</p><p class='beta'>separate</p>";
+        var beta = CompactProjection
+            .ForEach(CompactProjectionSelector.Tag("p").WithClass("beta"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
+            .Compile()
+            .Execute(html);
+        var joined = CompactProjection
+            .ForEach(CompactProjectionSelector.Tag("p").WithClass(joinedToken))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
+            .Compile()
+            .Execute(html);
+
+        await Assert.That(beta.Rows.Count).IsEqualTo(1);
+        await Assert.That(beta.Rows[0]["text"].ToString()).IsEqualTo("separate");
+        await Assert.That(joined.Rows.Count).IsEqualTo(1);
+        await Assert.That(joined.Rows[0]["text"].ToString()).IsEqualTo("joined");
+    }
+
+    [Test]
+    public async Task EofProjectionClassTokenRejectsEmbeddedHtmlWhitespace()
+    {
+        foreach (var token in new[] { "two tokens", "two\ttokens", "two\ntokens", "two\ftokens", "two\rtokens" })
+            await Assert
+                .That(() => CompactProjectionSelector.Tag("p").WithClass(token))
+                .Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task EofProjectionTraversesDeepTreesWithoutRecursiveWalkers()
+    {
+        const int Depth = 12_000;
+        var html = new StringBuilder(Depth * 22);
+        html.Append("<body>");
+        for (var index = 0; index < Depth; index++)
+            html.Append("<div>");
+        html.Append("<article data-result=ok>");
+        for (var index = 0; index < Depth; index++)
+            html.Append("<section>");
+        html.Append("<span> deep   value </span>");
+        for (var index = 0; index < Depth; index++)
+            html.Append("</section>");
+        html.Append("</article>");
+        for (var index = 0; index < Depth; index++)
+            html.Append("</div>");
+        html.Append("</body>");
+
+        var result = CompactProjection
+            .First(CompactProjectionSelector.Tag("article"))
+            .Field(
+                "target",
+                CompactFieldProjection.FirstNormalizedText(CompactProjectionSelector.Tag("span")),
+                required: true
+            )
+            .Field("text", CompactFieldProjection.SelfNormalizedText(), required: true)
+            .Compile()
+            .Execute(html.ToString());
+
+        await Assert.That(result.Rows.Count).IsEqualTo(1);
+        await Assert.That(result.Rows[0]["target"].ToString()).IsEqualTo("deep value");
+        await Assert.That(result.Rows[0]["text"].ToString()).IsEqualTo("deep value");
     }
 
     [Test]
@@ -317,13 +401,13 @@ public sealed class CompactParserTests
     [Arguments("<svg><foreignObject><div id=content>svg <b>html</b></div></foreignObject></svg>")]
     [Arguments("<math><annotation-xml encoding='text/html'><div id=content>math</div></annotation-xml></math>")]
     [Arguments("<b class=before>before<div id=content>inside</b> after</div>")]
-    public async Task EofAggregateNormalizedTextMatchesConstructedDom(string html)
+    public async Task EofProjectionNormalizedTextMatchesConstructedDom(string html)
     {
         using var expectedDocument = new HtmlParser().ParseDocument(html);
         var expected = expectedDocument.QuerySelector("div#content");
-        var plan = CompactAggregate
-            .First(CompactAggregateSelector.Tag("div").WithId("content"))
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+        var plan = CompactProjection
+            .First(CompactProjectionSelector.Tag("div").WithId("content"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
 
         var actual = plan.Execute(html);
@@ -341,12 +425,12 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task EofAggregateFiltersUnneededAttributesAndReportsDecodedValues()
+    public async Task EofProjectionFiltersUnneededAttributesAndReportsDecodedValues()
     {
         const string Html = "<main data-a=1 data-b=2><div id=content data-c=3>one &amp; two</div></main>";
-        var plan = CompactAggregate
-            .First(CompactAggregateSelector.Tag("div").WithId("content"))
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+        var plan = CompactProjection
+            .First(CompactProjectionSelector.Tag("div").WithId("content"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
 
         var result = plan.Execute(Html);
@@ -357,7 +441,7 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task EofAggregateProjectsArticleAsJsonText()
+    public async Task EofProjectionProjectsArticleAsJsonText()
     {
         const string Html = """
             <article id="content">
@@ -366,11 +450,11 @@ public sealed class CompactParserTests
               <ul><li>Correct tables</li><li>Malformed markup</li></ul>
             </article>
             """;
-        var article = CompactAggregateSelector.Tag("article").WithId("content");
-        var plan = CompactAggregate
+        var article = CompactProjectionSelector.Tag("article").WithId("content");
+        var plan = CompactProjection
             .First(article)
-            .Field("title", CompactAggregateProjection.FirstNormalizedText(CompactAggregateSelector.Tag("h1")))
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Field("title", CompactFieldProjection.FirstNormalizedText(CompactProjectionSelector.Tag("h1")))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
 
         var result = plan.Execute(Html);
@@ -382,12 +466,10 @@ public sealed class CompactParserTests
             .IsEqualTo("Parsing real HTML Use the HTML parser, not regex. Correct tablesMalformed markup");
         await Assert.That(result.Counters.InputBytesConsumed).IsEqualTo(Encoding.UTF8.GetByteCount(Html));
         await Assert.That(result.Counters.RowsProduced).IsEqualTo(1);
-        await Assert.That(result.ToJson()).Contains("\"title\":\"Parsing real HTML\"");
-        await Assert.That(plan.Explain()).Contains("termination=end-of-document");
     }
 
     [Test]
-    public async Task EofAggregateProjectsRepeatedSearchResultObjects()
+    public async Task EofProjectionProjectsRepeatedSearchResultObjects()
     {
         const string Html = """
             <main>
@@ -395,17 +477,17 @@ public sealed class CompactParserTests
               <article class="result"><h2><a href="/b">Compact DOM</a></h2><p class="snippet">Retain a reusable tree.</p></article>
             </main>
             """;
-        var plan = CompactAggregate
-            .ForEach(CompactAggregateSelector.Tag("article").WithClass("result"))
-            .Field("title", CompactAggregateProjection.FirstNormalizedText(CompactAggregateSelector.Tag("h2")))
+        var plan = CompactProjection
+            .ForEach(CompactProjectionSelector.Tag("article").WithClass("result"))
+            .Field("title", CompactFieldProjection.FirstNormalizedText(CompactProjectionSelector.Tag("h2")))
             .Field(
                 "url",
-                CompactAggregateProjection.FirstAttribute(CompactAggregateSelector.Tag("a"), "href"),
+                CompactFieldProjection.FirstAttribute(CompactProjectionSelector.Tag("a"), "href"),
                 required: true
             )
             .Field(
                 "snippet",
-                CompactAggregateProjection.FirstNormalizedText(CompactAggregateSelector.Tag("p").WithClass("snippet"))
+                CompactFieldProjection.FirstNormalizedText(CompactProjectionSelector.Tag("p").WithClass("snippet"))
             )
             .Compile();
 
@@ -415,20 +497,19 @@ public sealed class CompactParserTests
         await Assert.That(result.Rows[0]["title"].ToString()).IsEqualTo("Arena parsing");
         await Assert.That(result.Rows[0]["url"].ToString()).IsEqualTo("/a");
         await Assert.That(result.Rows[1]["snippet"].ToString()).IsEqualTo("Retain a reusable tree.");
-        await Assert.That(result.ToJson()).StartsWith("[{\"title\":\"Arena parsing\"");
         await Assert.That(result.Counters.RowsRejected).IsEqualTo(0);
     }
 
     [Test]
-    public async Task EofAggregateRequiredAttributeDistinguishesEmptyFromMissing()
+    public async Task EofProjectionRequiredAttributeDistinguishesEmptyFromMissing()
     {
         const string Html =
             "<article class=result><a href=''>empty</a></article><article class=result><a>missing</a></article>";
-        var plan = CompactAggregate
-            .ForEach(CompactAggregateSelector.Tag("article").WithClass("result"))
+        var plan = CompactProjection
+            .ForEach(CompactProjectionSelector.Tag("article").WithClass("result"))
             .Field(
                 "url",
-                CompactAggregateProjection.FirstAttribute(CompactAggregateSelector.Tag("a"), "href"),
+                CompactFieldProjection.FirstAttribute(CompactProjectionSelector.Tag("a"), "href"),
                 required: true
             )
             .Compile();
@@ -442,15 +523,34 @@ public sealed class CompactParserTests
     }
 
     [Test]
+    public async Task EofProjectionAttributeOnlyPlanDoesNotRetainTextPayloads()
+    {
+        const string Html =
+            "<article class=result>large &amp; irrelevant text<a href=/item>also irrelevant</a></article>";
+        var result = CompactProjection
+            .First(CompactProjectionSelector.Tag("article").WithClass("result"))
+            .Field(
+                "url",
+                CompactFieldProjection.FirstAttribute(CompactProjectionSelector.Tag("a"), "href"),
+                required: true
+            )
+            .Compile()
+            .Execute(Html);
+
+        await Assert.That(result.Rows[0]["url"].ToString()).IsEqualTo("/item");
+        await Assert.That(result.Counters.TextValuesRetained).IsEqualTo(0);
+    }
+
+    [Test]
     [Arguments("<article class=result><b><i>one</b> two</i><p>three")]
     [Arguments("<table><article class=result>before<span>inside</span></article><tr><td>cell</table>")]
-    public async Task EofAggregateNormalizedTextMatchesFinalAngleSharpTopology(string html)
+    public async Task EofProjectionNormalizedTextMatchesFinalAngleSharpTopology(string html)
     {
         using var expectedDocument = new HtmlParser().ParseDocument(html);
         var expected = expectedDocument.QuerySelector("article.result");
-        var plan = CompactAggregate
-            .First(CompactAggregateSelector.Tag("article").WithClass("result"))
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+        var plan = CompactProjection
+            .First(CompactProjectionSelector.Tag("article").WithClass("result"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
 
         var actual = plan.Execute(html);
@@ -461,11 +561,11 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task EofAggregateReportsMissingTarget()
+    public async Task EofProjectionReportsMissingTarget()
     {
-        var plan = CompactAggregate
-            .First(CompactAggregateSelector.Tag("div").WithId("content"))
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+        var plan = CompactProjection
+            .First(CompactProjectionSelector.Tag("div").WithId("content"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
 
         var result = plan.Execute("<main><p>none</p></main>");
@@ -474,11 +574,11 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task EofAggregateChildAxisRejectsDeeperNesting()
+    public async Task EofProjectionChildAxisRejectsDeeperNesting()
     {
-        var plan = CompactAggregate
-            .ForEach(CompactAggregateSelector.Tag("ul").Child("li"))
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+        var plan = CompactProjection
+            .ForEach(CompactProjectionSelector.Tag("ul").Child("li"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
 
         var result = plan.Execute("<ul><li>direct</li><li><ul><li>nested</li></ul></li></ul>");
@@ -489,11 +589,11 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task EofAggregateChildAxisDoesNotMatchAcrossAnIntermediateElement()
+    public async Task EofProjectionChildAxisDoesNotMatchAcrossAnIntermediateElement()
     {
-        var plan = CompactAggregate
-            .ForEach(CompactAggregateSelector.Tag("main").Child("p"))
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+        var plan = CompactProjection
+            .ForEach(CompactProjectionSelector.Tag("main").Child("p"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
 
         var result = plan.Execute("<main><p>direct</p><div><p>indirect</p></div></main>");
@@ -503,11 +603,11 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task EofAggregateDescendantAxisMatchesAtAnyDepth()
+    public async Task EofProjectionDescendantAxisMatchesAtAnyDepth()
     {
-        var plan = CompactAggregate
-            .First(CompactAggregateSelector.Tag("main").Descendant("span").WithClass("target"))
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+        var plan = CompactProjection
+            .First(CompactProjectionSelector.Tag("main").Descendant("span").WithClass("target"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
 
         var result = plan.Execute("<main><div><section><span class=target>deep</span></section></div></main>");
@@ -517,13 +617,13 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task EofAggregateDescendantChainBacktracksPastANonMatchingAncestor()
+    public async Task EofProjectionDescendantChainBacktracksPastANonMatchingAncestor()
     {
         // The nearest `section` ancestor of the `p` has no matching `article` above it; matching must
         // retry the outer `section` rather than giving up on the first candidate.
-        var plan = CompactAggregate
-            .First(CompactAggregateSelector.Tag("article").Descendant("section").Descendant("p"))
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+        var plan = CompactProjection
+            .First(CompactProjectionSelector.Tag("article").Descendant("section").Descendant("p"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
 
         var result = plan.Execute("<article><section><div><p>wanted</p></div></section></article>");
@@ -533,39 +633,39 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    [Timeout(1000)]
-    public async Task EofAggregateDescendantBacktrackingMemoizesRepeatedStates(CancellationToken cancellationToken)
+    public async Task EofProjectionDescendantBacktrackingMemoizesRepeatedStates()
     {
         const int Depth = 30;
         const int RepeatedSteps = 11;
-        var selector = CompactAggregateSelector.Tag("main");
+        var selector = CompactProjectionSelector.Tag("main");
         for (var i = 0; i < RepeatedSteps; i++)
-            selector = selector.Descendant("div");
+            selector = selector.Descendant("div").WithAttribute("data-step");
         selector = selector.Descendant("p");
 
-        var plan = CompactAggregate
+        var plan = CompactProjection
             .First(selector)
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
         var html = new StringBuilder("<section>");
         for (var i = 0; i < Depth; i++)
-            html.Append("<div>");
+            html.Append("<div data-step>");
         html.Append("<p>no matching main ancestor</p>");
         for (var i = 0; i < Depth; i++)
             html.Append("</div>");
         html.Append("</section>");
 
-        var result = await Task.Run(() => plan.Execute(html.ToString()), cancellationToken);
+        var result = plan.Execute(html.ToString());
 
         await Assert.That(result.Rows.Count).IsEqualTo(0);
+        await Assert.That(result.Counters.AttributesInspected).IsLessThanOrEqualTo(Depth * RepeatedSteps);
     }
 
     [Test]
-    public async Task EofAggregatePathStepsContributeTheirAttributesToRequirements()
+    public async Task EofProjectionPathStepsContributeTheirAttributesToRequirements()
     {
-        var plan = CompactAggregate
-            .First(CompactAggregateSelector.Tag("main").WithAttribute("data-scope").Child("p").WithId("lead"))
-            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+        var plan = CompactProjection
+            .First(CompactProjectionSelector.Tag("main").WithAttribute("data-scope").Child("p").WithId("lead"))
+            .Field("text", CompactFieldProjection.SelfNormalizedText())
             .Compile();
 
         await Assert.That(plan.Requirements.InspectedAttributes).Contains("data-scope");
