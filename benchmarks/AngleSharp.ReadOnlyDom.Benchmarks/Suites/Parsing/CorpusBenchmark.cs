@@ -1,22 +1,13 @@
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Filters;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Jobs;
-using BenchmarkDotNet.Toolchains.InProcess.Emit;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
 
-[Config(typeof(Config))]
 [BenchmarkCategory("Parsing")]
 [MemoryDiagnoser]
 public class CorpusBenchmark
 {
-    private sealed class Config : ManualConfig
-    {
-        public Config() => AddJob(Job.ShortRun.WithToolchain(InProcessEmitToolchain.Instance));
-    }
-
     private IReadOnlyList<CorpusDocument> _documents = null!;
     private readonly HtmlParser _standardParser = new();
     private readonly HtmlParser _readOnlyParser = new(default, ReadOnlyParser.DefaultContext);
