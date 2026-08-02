@@ -3,7 +3,6 @@ using System.Text;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Compact;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.ReadOnlyDom.Compact.Experimental;
 using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
@@ -72,20 +71,20 @@ public class Utf8RodomBenchmark
 
     private static ulong Fingerprint(CompactDocument document, out int matches)
     {
-        var fingerprint = Utf8DivFingerprintFold.OffsetBasis;
+        var fingerprint = DivFingerprint.OffsetBasis;
         matches = 0;
         foreach (var element in document.Elements("div"))
         {
             var sink = new HashSink();
-            var id = Utf8DivFingerprintFold.HashChars(element.Attr("id"));
-            var classes = Utf8DivFingerprintFold.HashChars(element.Attr("class"));
+            var id = DivFingerprint.HashChars(element.Attr("id"));
+            var classes = DivFingerprint.HashChars(element.Attr("class"));
             element.WriteText(ref sink);
-            Utf8DivFingerprintFold.AppendUInt64(ref fingerprint, id);
-            Utf8DivFingerprintFold.AppendUInt64(ref fingerprint, classes);
-            Utf8DivFingerprintFold.AppendUInt64(ref fingerprint, sink.Value);
+            DivFingerprint.AppendUInt64(ref fingerprint, id);
+            DivFingerprint.AppendUInt64(ref fingerprint, classes);
+            DivFingerprint.AppendUInt64(ref fingerprint, sink.Value);
             matches++;
         }
-        Utf8DivFingerprintFold.AppendUInt64(ref fingerprint, (ulong)matches);
+        DivFingerprint.AppendUInt64(ref fingerprint, (ulong)matches);
         return fingerprint;
     }
 
@@ -103,7 +102,7 @@ public class Utf8RodomBenchmark
             foreach (var character in value)
             {
                 Value ^= character;
-                Value *= Utf8DivFingerprintFold.Prime;
+                Value *= DivFingerprint.Prime;
             }
         }
     }

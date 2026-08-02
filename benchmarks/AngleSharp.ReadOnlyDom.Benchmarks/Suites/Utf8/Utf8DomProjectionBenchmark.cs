@@ -3,7 +3,6 @@ using System.Text;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.ReadOnlyDom.Compact.Experimental;
 using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks;
@@ -12,6 +11,13 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks;
 [MemoryDiagnoser]
 public class Utf8DomProjectionBenchmark
 {
+    private static readonly QueryPlan<DivFingerprintProjectionState> NativeProjection = StreamQuery
+        .For<DivFingerprintProjectionState>("div")
+        .OnStart(static (ref state, in element) => state.Start(in element), "id", "class")
+        .OnText(static (ref state, utf8) => state.Text(utf8))
+        .OnEnd(static (ref state) => state.End())
+        .Compile();
+
     private readonly HtmlParser _parser = new();
     private byte[] _utf8 = null!;
     private ulong _expected;
@@ -36,33 +42,31 @@ public class Utf8DomProjectionBenchmark
     {
         var html = Encoding.UTF8.GetString(_utf8);
         using var document = _parser.ParseDocument(html);
-        var fingerprint = Utf8DivFingerprintFold.OffsetBasis;
+        var fingerprint = DivFingerprint.OffsetBasis;
         var matches = 0;
         foreach (var element in document.QuerySelectorAll("div"))
         {
-            Utf8DivFingerprintFold.AppendUInt64(
+            DivFingerprint.AppendUInt64(
                 ref fingerprint,
-                Utf8DivFingerprintFold.HashChars(element.GetAttribute("id") ?? string.Empty)
+                DivFingerprint.HashChars(element.GetAttribute("id") ?? string.Empty)
             );
-            Utf8DivFingerprintFold.AppendUInt64(
+            DivFingerprint.AppendUInt64(
                 ref fingerprint,
-                Utf8DivFingerprintFold.HashChars(element.GetAttribute("class") ?? string.Empty)
+                DivFingerprint.HashChars(element.GetAttribute("class") ?? string.Empty)
             );
-            Utf8DivFingerprintFold.AppendUInt64(ref fingerprint, Utf8DivFingerprintFold.HashChars(element.TextContent));
+            DivFingerprint.AppendUInt64(ref fingerprint, DivFingerprint.HashChars(element.TextContent));
             matches++;
         }
-        Utf8DivFingerprintFold.AppendUInt64(ref fingerprint, (ulong)matches);
+        DivFingerprint.AppendUInt64(ref fingerprint, (ulong)matches);
         return fingerprint;
     }
 
     [Benchmark]
     public ulong NativeUtf8Project()
     {
-        using var fold = new Utf8DivFingerprintFold();
-        var tokenizer = new Utf8HtmlTokenizer(fold);
-        tokenizer.Write(_utf8);
-        tokenizer.Complete();
-        return fold.Fingerprint;
+        using var state = new DivFingerprintProjectionState();
+        NativeProjection.Execute(_utf8, state, Utf8InputContract.WellFormedUtf8);
+        return state.Fingerprint;
     }
 }
 #endif
