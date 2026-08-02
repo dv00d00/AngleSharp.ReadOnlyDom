@@ -54,7 +54,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
             var job =
                 Environment.GetEnvironmentVariable("AS_BENCH_LONG") == "1"
                     ? Job.Default.WithId("Sustained").WithLaunchCount(1).WithWarmupCount(10).WithIterationCount(10)
-                    : Job.ShortRun;
+                    : Job.Default.WithLaunchCount(1);
             var config = ManualConfig
                 .Create(DefaultConfig.Instance)
                 .AddJob(job.WithGcServer(true))

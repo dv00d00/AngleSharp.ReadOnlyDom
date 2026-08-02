@@ -23,10 +23,10 @@ $metadata = @(
     "- Tier: ``$Tier``"
     "- Runtime: ``$(dotnet --version)``"
     "- GC: Server GC (enforced by the benchmark executable and BenchmarkDotNet job)"
-    "- Job: BenchmarkDotNet ShortRun, in-process emit"
+    "- Job: BenchmarkDotNet Default, LaunchCount=1, out-of-process (no in-process emit toolchain)"
     "- Corpus: checked-in snapshots under tests/AngleSharp.ReadOnlyDom.Tests/temp"
     "- Hardware counters: $hardwareCounterNote"
-    "- Note: ShortRun time results have wide confidence intervals; allocation results are the primary micro gate."
+    "- Note: a single launch cannot separate per-process variance from a real effect; allocation results remain the primary micro gate."
 )
 $metadata | Set-Content (Join-Path $output "run.md")
 git -C $root status --short | Set-Content (Join-Path $output "git-status.txt")
