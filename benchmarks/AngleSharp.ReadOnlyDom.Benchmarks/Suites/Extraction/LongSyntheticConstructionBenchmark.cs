@@ -22,6 +22,7 @@ public class LongSyntheticConstructionBenchmark
         .First(CompactAggregateSelector.Tag("article").WithId("content"))
         .Field("text", CompactAggregateProjection.SelfNormalizedText(), required: true)
         .Compile();
+
     private readonly QueryPlan<RawFoldState> _rawUtf8Plan = CreateRawUtf8Plan();
     private readonly QueryPlan<CompletedFoldState> _completedUtf8Plan = CreateCompletedUtf8Plan();
     private string _html = null!;
@@ -72,7 +73,7 @@ public class LongSyntheticConstructionBenchmark
     public string EofAggregateConstruction()
     {
         var result = _aggregatePlan.Execute(_html);
-        return result.Rows.Count == 0 ? string.Empty : result.Rows[0]["text"].Own();
+        return result.Rows.Count == 0 ? string.Empty : result.Rows[0]["text"].ToString();
     }
 
     [Benchmark]

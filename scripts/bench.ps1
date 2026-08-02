@@ -1,5 +1,5 @@
-param(
-    [ValidateSet("small", "full", "retained", "compact", "compact-stages", "query", "extraction", "scraping", "utf8", "utf8-baseline", "plan", "long-streaming", "utf8-tokenizer", "utf8-rodom", "utf8-dom", "all")]
+﻿param(
+    [ValidateSet("small", "full", "retained", "compact", "compact-stages", "query", "extraction", "scraping", "utf8", "utf8-baseline", "rows", "long-streaming", "utf8-tokenizer", "utf8-rodom", "utf8-dom", "all")]
     [string] $Tier = "all",
     [switch] $HardwareCounters
 )
@@ -58,8 +58,8 @@ if ($Tier -in @("compact", "all")) {
 if ($Tier -in @("compact-stages", "all")) {
     Invoke-Benchmark "*CompactBuildStageBenchmark*" "compact-stages"
 }
-if ($Tier -in @("plan", "extraction", "all")) {
-    Invoke-Benchmark "*CompactExtractionPlanBenchmark*" "plan"
+if ($Tier -in @("rows", "extraction", "all")) {
+    Invoke-Benchmark "*ExtractionRowScaleBenchmark*" "row-scale"
 }
 if ($Tier -in @("long-streaming", "extraction", "scraping", "all")) {
     Invoke-Benchmark "*LongSyntheticConstructionBenchmark*" "long-streaming"

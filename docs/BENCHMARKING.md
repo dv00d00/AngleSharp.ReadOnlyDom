@@ -11,6 +11,7 @@ Run a maintained tier from the repository root:
 ./scripts/bench.ps1 compact
 ./scripts/bench.ps1 compact-stages
 ./scripts/bench.ps1 extraction
+./scripts/bench.ps1 rows
 ./scripts/bench.ps1 scraping
 ./scripts/bench.ps1 query
 ./scripts/bench.ps1 utf8
@@ -32,7 +33,8 @@ manual measurements, and correctness runners live under `Support`.
 | `small`, `full` | `CorpusBenchmark` | Mature AngleSharp versus read-only and compact DOM over checked-in pages |
 | `compact` | `CompactBuildBenchmark` | Read-only DOM versus compact layouts and parser reuse |
 | `compact-stages` | `CompactBuildStageBenchmark` | Arena setup/rent, tree construction, and frozen publication costs |
-| `extraction` | `LongSyntheticConstructionBenchmark`, `QqArticleScraperBenchmark` | Equivalent owned results across materialized and construction-time extraction |
+| `extraction` | `ExtractionRowScaleBenchmark`, `LongSyntheticConstructionBenchmark`, `QqArticleScraperBenchmark` | Equivalent owned results across materialized and construction-time extraction |
+| `rows` | `ExtractionRowScaleBenchmark` | Many-rows extraction where cost scales with rows x fields rather than with locating one result |
 | `scraping` | `LongSyntheticConstructionBenchmark`, `QqArticleScraperBenchmark` | End-to-end target-near-EOF and real-page scraping |
 | `query` | `HttpClientStreamingQueryBenchmark`, `QueryWorkloadRunner` | Deterministic socket streaming plus repeated representative query workloads |
 | `utf8` | `Utf8TokenizerBenchmark`, `Utf8RodomBenchmark`, `Utf8DomProjectionBenchmark` | Wire-byte tokenizer, compact construction, and mutable-DOM projection paths |
