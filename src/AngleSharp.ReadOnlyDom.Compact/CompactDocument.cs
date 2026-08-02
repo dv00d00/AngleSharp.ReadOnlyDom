@@ -218,6 +218,19 @@ public sealed class CompactDocument : IDisposable
     /// Returns the next node at or after <paramref name="start"/> with the given name ID, or -1.
     /// Frozen columns use a vectorized scan; packed documents use a scalar scan.
     /// </summary>
+    public int IndexOfName(string name, int start = 0, int endExclusive = int.MaxValue) =>
+        IndexOfName(name.AsSpan(), start, endExclusive);
+
+    /// <summary>
+    /// Resolves <paramref name="name"/> once, then returns the next matching node at or after
+    /// <paramref name="start"/>, or -1.
+    /// </summary>
+    public int IndexOfName(ReadOnlySpan<char> name, int start = 0, int endExclusive = int.MaxValue) =>
+        IndexOfName(ResolveNameId(name), start, endExclusive);
+
+    /// <summary>
+    /// Returns the next node at or after <paramref name="start"/> with the given pre-resolved name ID, or -1.
+    /// </summary>
     public int IndexOfName(ushort nameId, int start = 0, int endExclusive = int.MaxValue)
     {
         if (start < 0)
@@ -281,6 +294,12 @@ public sealed class CompactDocument : IDisposable
         return false;
     }
 
+    public int CountElements(string name) => CountElements(name.AsSpan());
+
+    /// <summary>Resolves <paramref name="name"/> once, then counts matching elements.</summary>
+    public int CountElements(ReadOnlySpan<char> name) => CountElements(ResolveNameId(name));
+
+    /// <summary>Counts elements using a previously resolved name ID.</summary>
     public int CountElements(ushort nameId)
     {
         var count = 0;
