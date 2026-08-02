@@ -528,6 +528,34 @@ public sealed class CompactParserTests
     }
 
     [Test]
+    [Timeout(1000)]
+    public async Task EofAggregateDescendantBacktrackingMemoizesRepeatedStates(CancellationToken cancellationToken)
+    {
+        const int Depth = 30;
+        const int RepeatedSteps = 11;
+        var selector = CompactAggregateSelector.Tag("main");
+        for (var i = 0; i < RepeatedSteps; i++)
+            selector = selector.Descendant("div");
+        selector = selector.Descendant("p");
+
+        var plan = CompactAggregate
+            .First(selector)
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Compile();
+        var html = new StringBuilder("<section>");
+        for (var i = 0; i < Depth; i++)
+            html.Append("<div>");
+        html.Append("<p>no matching main ancestor</p>");
+        for (var i = 0; i < Depth; i++)
+            html.Append("</div>");
+        html.Append("</section>");
+
+        var result = await Task.Run(() => plan.Execute(html.ToString()), cancellationToken);
+
+        await Assert.That(result.Rows.Count).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task EofAggregatePathStepsContributeTheirAttributesToRequirements()
     {
         var plan = CompactAggregate

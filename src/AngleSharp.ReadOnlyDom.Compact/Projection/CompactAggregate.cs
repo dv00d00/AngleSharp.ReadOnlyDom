@@ -551,7 +551,7 @@ public sealed class CompactAggregatePlan
         int handle,
         CompactAggregateSelector selector,
         CompactAggregateExecutionState state
-    ) => MatchesChain(arena, handle, selector.Steps, selector.Steps.Length - 1, state);
+    ) => MatchesChain(arena, handle, selector.Steps, selector.Steps.Length - 1, state, null);
 
     /// <summary>
     /// Matches the step chain right to left: the candidate must satisfy the last step, then each
@@ -564,22 +564,39 @@ public sealed class CompactAggregatePlan
         int handle,
         ReadOnlySpan<CompactAggregateSelectorStep> steps,
         int index,
-        CompactAggregateExecutionState state
+        CompactAggregateExecutionState state,
+        Dictionary<(int Handle, int Step), bool>? memo
     )
     {
+        var key = (handle, index);
+        if (memo is not null && memo.TryGetValue(key, out var cached))
+            return cached;
+
         if (!MatchesStep(arena, handle, steps[index], state))
-            return false;
+            return Store(false);
+
         if (index == 0)
-            return true;
+            return Store(true);
 
         var parent = arena.Parent(handle);
         if (steps[index].Axis == CompactPathAxis.Child)
-            return parent >= 0 && MatchesChain(arena, parent, steps, index - 1, state);
+            return Store(parent >= 0 && MatchesChain(arena, parent, steps, index - 1, state, memo));
 
+        // Descendant chains can reach the same (ancestor, step) pair through many different
+        // backtracking paths. Allocate the cache only after a candidate has matched the rightmost
+        // step and actually branches; single-step and child-only selectors remain allocation-free.
+        memo ??= new Dictionary<(int Handle, int Step), bool>();
         for (var ancestor = parent; ancestor >= 0; ancestor = arena.Parent(ancestor))
-            if (MatchesChain(arena, ancestor, steps, index - 1, state))
-                return true;
-        return false;
+            if (MatchesChain(arena, ancestor, steps, index - 1, state, memo))
+                return Store(true);
+        return Store(false);
+
+        bool Store(bool result)
+        {
+            if (memo is not null)
+                memo[key] = result;
+            return result;
+        }
     }
 
     private static bool MatchesStep(
