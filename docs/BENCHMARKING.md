@@ -1,4 +1,4 @@
-# Benchmarking
+﻿# Benchmarking
 
 .NET 10 with Server GC is the canonical performance environment. The benchmark executable rejects workstation GC,
 and the curated script records the commit, working-tree state, runtime, tier, and corpus beside every result.
@@ -32,7 +32,7 @@ manual measurements, and correctness runners live under `Support`.
 | `small`, `full` | `CorpusBenchmark` | Mature AngleSharp versus read-only and compact DOM over checked-in pages |
 | `compact` | `CompactBuildBenchmark` | Read-only DOM versus compact layouts and parser reuse |
 | `compact-stages` | `CompactBuildStageBenchmark` | Arena setup/rent, tree construction, and frozen publication costs |
-| `extraction` | `CompactExtractionPlanBenchmark`, `LongSyntheticConstructionBenchmark`, `QqArticleScraperBenchmark` | Equivalent owned results across materialized and construction-time extraction |
+| `extraction` | `LongSyntheticConstructionBenchmark`, `QqArticleScraperBenchmark` | Equivalent owned results across materialized and construction-time extraction |
 | `scraping` | `LongSyntheticConstructionBenchmark`, `QqArticleScraperBenchmark` | End-to-end target-near-EOF and real-page scraping |
 | `query` | `HttpClientStreamingQueryBenchmark`, `QueryWorkloadRunner` | Deterministic socket streaming plus repeated representative query workloads |
 | `utf8` | `Utf8TokenizerBenchmark`, `Utf8RodomBenchmark`, `Utf8DomProjectionBenchmark` | Wire-byte tokenizer, compact construction, and mutable-DOM projection paths |

@@ -25,55 +25,87 @@ public enum CompactAggregateProjectionKind
     Markdown,
 }
 
+/// <summary>
+/// A path of one or more steps. The last step describes the matched element itself; earlier steps
+/// constrain its ancestors, each related to the following step by a <see cref="CompactPathAxis"/>.
+/// Predicate builders (<see cref="WithId"/>, <see cref="WithClass"/>, <see cref="WithAttribute"/>)
+/// always refine the last step.
+/// </summary>
 public sealed class CompactAggregateSelector
 {
-    private readonly CompactAggregateAttributePredicate[] _attributes;
+    private readonly CompactAggregateSelectorStep[] _steps;
 
-    private CompactAggregateSelector(
-        string tag,
-        string? id,
-        string? classToken,
-        CompactAggregateAttributePredicate[] attributes
-    )
-    {
-        TagName = tag;
-        Id = id;
-        ClassToken = classToken;
-        _attributes = attributes;
-    }
+    private CompactAggregateSelector(CompactAggregateSelectorStep[] steps) => _steps = steps;
 
-    public string TagName { get; }
-    public string? Id { get; }
-    public string? ClassToken { get; }
+    internal ReadOnlySpan<CompactAggregateSelectorStep> Steps => _steps;
 
-    internal ReadOnlySpan<CompactAggregateAttributePredicate> Attributes => _attributes;
+    private CompactAggregateSelectorStep Last => _steps[^1];
+
+    public string TagName => Last.TagName;
+    public string? Id => Last.Id;
+    public string? ClassToken => Last.ClassToken;
+
+    internal ReadOnlySpan<CompactAggregateAttributePredicate> Attributes => Last.Attributes;
 
     public static CompactAggregateSelector Tag(string tag)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tag);
-        return new CompactAggregateSelector(tag, null, null, []);
+        return new CompactAggregateSelector([new CompactAggregateSelectorStep(CompactPathAxis.Descendant, tag)]);
     }
+
+    /// <summary>Adds a step matching at any depth below the current one.</summary>
+    public CompactAggregateSelector Descendant(string tag) => Append(CompactPathAxis.Descendant, tag);
+
+    /// <summary>Adds a step matching only as a direct child of the current one.</summary>
+    public CompactAggregateSelector Child(string tag) => Append(CompactPathAxis.Child, tag);
 
     public CompactAggregateSelector WithId(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        return new CompactAggregateSelector(TagName, id, ClassToken, _attributes);
+        return ReplaceLast(Last with { Id = id });
     }
 
     public CompactAggregateSelector WithClass(string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
-        return new CompactAggregateSelector(TagName, Id, token, _attributes);
+        return ReplaceLast(Last with { ClassToken = token });
     }
 
     public CompactAggregateSelector WithAttribute(string name, string? value = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        var attributes = new CompactAggregateAttributePredicate[_attributes.Length + 1];
-        _attributes.CopyTo(attributes, 0);
+        var attributes = new CompactAggregateAttributePredicate[Last.Attributes.Length + 1];
+        Last.Attributes.CopyTo(attributes, 0);
         attributes[^1] = new CompactAggregateAttributePredicate(name, value);
-        return new CompactAggregateSelector(TagName, Id, ClassToken, attributes);
+        return ReplaceLast(Last with { Attributes = attributes });
     }
+
+    private CompactAggregateSelector Append(CompactPathAxis axis, string tag)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tag);
+        var steps = new CompactAggregateSelectorStep[_steps.Length + 1];
+        _steps.CopyTo(steps, 0);
+        steps[^1] = new CompactAggregateSelectorStep(axis, tag);
+        return new CompactAggregateSelector(steps);
+    }
+
+    private CompactAggregateSelector ReplaceLast(CompactAggregateSelectorStep step)
+    {
+        var steps = (CompactAggregateSelectorStep[])_steps.Clone();
+        steps[^1] = step;
+        return new CompactAggregateSelector(steps);
+    }
+}
+
+internal readonly record struct CompactAggregateSelectorStep(
+    CompactPathAxis Axis,
+    string TagName,
+    string? Id = null,
+    string? ClassToken = null,
+    CompactAggregateAttributePredicate[]? AttributePredicates = null
+)
+{
+    public CompactAggregateAttributePredicate[] Attributes { get; init; } = AttributePredicates ?? [];
 }
 
 public sealed class CompactAggregateProjection
@@ -195,7 +227,6 @@ public sealed class CompactAggregateResult
 
     public IReadOnlyList<CompactAggregateRow> Rows { get; }
     public CompactAggregateCounters Counters { get; }
-    public string ExecutionMode => "eof-construction-aggregate";
 
     public void WriteJson(Utf8JsonWriter writer)
     {
@@ -476,12 +507,15 @@ public sealed class CompactAggregatePlan
 
         void AddSelector(CompactAggregateSelector selector)
         {
-            if (selector.Id is not null)
-                inspected.Add("id");
-            if (selector.ClassToken is not null)
-                inspected.Add("class");
-            foreach (var predicate in selector.Attributes)
-                inspected.Add(predicate.Name);
+            foreach (var step in selector.Steps)
+            {
+                if (step.Id is not null)
+                    inspected.Add("id");
+                if (step.ClassToken is not null)
+                    inspected.Add("class");
+                foreach (var predicate in step.Attributes)
+                    inspected.Add(predicate.Name);
+            }
         }
     }
 
@@ -512,20 +546,53 @@ public sealed class CompactAggregatePlan
         int handle,
         CompactAggregateSelector selector,
         CompactAggregateExecutionState state
+    ) => MatchesChain(arena, handle, selector.Steps, selector.Steps.Length - 1, state);
+
+    /// <summary>
+    /// Matches the step chain right to left: the candidate must satisfy the last step, then each
+    /// earlier step must be satisfied by an ancestor. Descendant steps try every ancestor rather than
+    /// the nearest match, so a chain like <c>div &gt;&gt; section &gt;&gt; p</c> still matches when an
+    /// intermediate ancestor also carries the tag of an earlier step.
+    /// </summary>
+    private static bool MatchesChain(
+        ConstructionArena arena,
+        int handle,
+        ReadOnlySpan<CompactAggregateSelectorStep> steps,
+        int index,
+        CompactAggregateExecutionState state
     )
     {
-        if (!arena.LocalName(handle).Memory.Span.Equals(selector.TagName, StringComparison.OrdinalIgnoreCase))
+        if (!MatchesStep(arena, handle, steps[index], state))
             return false;
-        if (selector.Id is not null && !MatchAttribute(arena, handle, "id", selector.Id, false, state))
+        if (index == 0)
+            return true;
+
+        var parent = arena.Parent(handle);
+        if (steps[index].Axis == CompactPathAxis.Child)
+            return parent >= 0 && MatchesChain(arena, parent, steps, index - 1, state);
+
+        for (var ancestor = parent; ancestor >= 0; ancestor = arena.Parent(ancestor))
+            if (MatchesChain(arena, ancestor, steps, index - 1, state))
+                return true;
+        return false;
+    }
+
+    private static bool MatchesStep(
+        ConstructionArena arena,
+        int handle,
+        in CompactAggregateSelectorStep step,
+        CompactAggregateExecutionState state
+    )
+    {
+        if (arena.Kind(handle) != CompactNodeKind.Element)
             return false;
-        if (
-            selector.ClassToken is not null
-            && !MatchAttribute(arena, handle, "class", selector.ClassToken, true, state)
-        )
-        {
+        if (!arena.LocalName(handle).Memory.Span.Equals(step.TagName, StringComparison.OrdinalIgnoreCase))
             return false;
-        }
-        foreach (var predicate in selector.Attributes)
+        if (step.Id is not null && !MatchAttribute(arena, handle, "id", step.Id, false, state))
+            return false;
+        if (step.ClassToken is not null && !MatchAttribute(arena, handle, "class", step.ClassToken, true, state))
+            return false;
+        foreach (var predicate in step.Attributes)
             if (!MatchAttribute(arena, handle, predicate.Name, predicate.Value, false, state))
                 return false;
         return true;
@@ -878,15 +945,37 @@ internal sealed class CompactMarkdownWriter
         return false;
     }
 
-    private bool MatchesExclusion(int handle, CompactAggregateSelector selector)
+    private bool MatchesExclusion(int handle, CompactAggregateSelector selector) =>
+        MatchesExclusionChain(handle, selector.Steps, selector.Steps.Length - 1);
+
+    private bool MatchesExclusionChain(int handle, ReadOnlySpan<CompactAggregateSelectorStep> steps, int index)
     {
-        if (!_arena.LocalName(handle).Memory.Span.Equals(selector.TagName, StringComparison.OrdinalIgnoreCase))
+        if (!MatchesExclusionStep(handle, steps[index]))
             return false;
-        if (selector.Id is not null && !MatchAttribute("id", selector.Id, false))
+        if (index == 0)
+            return true;
+
+        var parent = _arena.Parent(handle);
+        if (steps[index].Axis == CompactPathAxis.Child)
+            return parent >= 0 && MatchesExclusionChain(parent, steps, index - 1);
+
+        for (var ancestor = parent; ancestor >= 0; ancestor = _arena.Parent(ancestor))
+            if (MatchesExclusionChain(ancestor, steps, index - 1))
+                return true;
+        return false;
+    }
+
+    private bool MatchesExclusionStep(int handle, in CompactAggregateSelectorStep step)
+    {
+        if (_arena.Kind(handle) != CompactNodeKind.Element)
             return false;
-        if (selector.ClassToken is not null && !MatchAttribute("class", selector.ClassToken, true))
+        if (!_arena.LocalName(handle).Memory.Span.Equals(step.TagName, StringComparison.OrdinalIgnoreCase))
             return false;
-        foreach (var predicate in selector.Attributes)
+        if (step.Id is not null && !MatchAttribute("id", step.Id, false))
+            return false;
+        if (step.ClassToken is not null && !MatchAttribute("class", step.ClassToken, true))
+            return false;
+        foreach (var predicate in step.Attributes)
             if (!MatchAttribute(predicate.Name, predicate.Value, false))
                 return false;
         return true;
