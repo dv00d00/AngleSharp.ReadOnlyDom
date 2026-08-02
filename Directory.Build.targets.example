@@ -23,9 +23,11 @@
   <ItemGroup
     Condition="'$(AngleSharpSourceRoot)' != '' and Exists('$(AngleSharpSourceRoot)\src\AngleSharp\AngleSharp.Core.csproj')"
   >
+    <_AngleSharpPackageReference Include="@(PackageReference->WithMetadataValue('Identity', 'AngleSharp'))" />
     <PackageReference Remove="AngleSharp" />
     <ProjectReference
       Include="$(AngleSharpSourceRoot)\src\AngleSharp\AngleSharp.Core.csproj"
+      Condition="'@(_AngleSharpPackageReference)' != ''"
       SetConfiguration="Configuration=$(Configuration)"
     />
   </ItemGroup>

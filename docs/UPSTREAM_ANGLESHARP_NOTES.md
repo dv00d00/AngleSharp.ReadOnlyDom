@@ -21,5 +21,6 @@ object tree. Differential and smoke coverage retains the malformed-table case ab
 
 ## UTF-8 token-source adapter
 
-The UTF-8 tokenizer and its mutable-DOM token-source adapter now live in AngleSharp core. RODOM consumes the tokenizer
-sink contract directly and no longer carries a second `IHtmlTokenSource` implementation.
+The streaming product now owns its native UTF-8 tokenizer, WHATWG entity table, encoding-label table, limits, and sink
+contract, and therefore has no runtime dependency on AngleSharp. The mutable-DOM token-source adapter remains core
+specific; object and compact construction continue to consume the fork until their required construction APIs ship.

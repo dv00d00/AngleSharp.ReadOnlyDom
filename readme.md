@@ -16,14 +16,16 @@ only requested attributes and text are captured, and caller-owned state determin
 contiguous UTF-8 and `PipeReader` input, bounded resource limits, and backpressured output without first building a DOM.
 
 > [!NOTE]
-> The current development tree consumes unreleased AngleSharp work through a local source override. Package publishing
-> is intentionally parked until that dependency has a clean upstream version. See
+> The streaming-query assembly and Markdown proxy are self-contained and do not reference AngleSharp at runtime. The
+> object and compact DOM projects still consume unreleased AngleSharp construction work through a local source override.
+> Publishing those DOM packages is parked until that dependency has a clean upstream version. See
 > [the upstream notes](docs/UPSTREAM_ANGLESHARP_NOTES.md).
 
-## Build against the AngleSharp fork
+## Build the DOM projects against the AngleSharp fork
 
-The UTF-8 tokenizer and streaming-query projects currently require the matching AngleSharp fork branch. On a fresh
-Windows machine, install the .NET 10 SDK and clone both repositories into the same parent directory:
+`AngleSharp.ReadOnlyDom.Streaming` and its Markdown proxy build directly with the .NET SDK. The object and compact DOM
+projects currently require the matching AngleSharp fork branch. On a fresh Windows machine, install the .NET 10 SDK and
+clone both repositories into the same parent directory:
 
 ```powershell
 $workspace = 'C:\src\anglesharp-work'
@@ -36,9 +38,9 @@ Set-Location "$workspace\AngleSharp.ReadOnlyDom"
 Copy-Item Directory.Build.targets.example Directory.Build.targets
 ```
 
-The targets file replaces the AngleSharp package reference with the fork's `AngleSharp.Core.csproj`. Sibling clones
-named `AngleSharp` and `AngleSharp.ReadOnlyDom` are detected automatically. For any other layout, set the source root
-before restoring:
+The targets file replaces explicit AngleSharp package references with the fork's `AngleSharp.Core.csproj`; it does not
+inject the fork into the standalone streaming or Markdown projects. Sibling clones named `AngleSharp` and
+`AngleSharp.ReadOnlyDom` are detected automatically. For any other layout, set the source root before restoring:
 
 ```powershell
 $env:AngleSharpSourceRoot = (Resolve-Path 'D:\src\AngleSharp').Path

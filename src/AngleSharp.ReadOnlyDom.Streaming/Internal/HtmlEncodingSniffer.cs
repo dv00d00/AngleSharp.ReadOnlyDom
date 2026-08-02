@@ -1,5 +1,4 @@
 using System.Text;
-using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.Streaming;
 
@@ -122,9 +121,13 @@ internal static class HtmlEncodingSniffer
                 return;
             }
 
-            if (_httpEquiv?.Equals("content-type", StringComparison.OrdinalIgnoreCase) == true && _content is not null)
+            if (
+                _httpEquiv?.Equals("content-type", StringComparison.OrdinalIgnoreCase) == true
+                && _content is not null
+                && HtmlEncodingLabels.TryParseContentType(_content, out var contentEncoding)
+            )
             {
-                DetectedEncoding = NormalizeMetaEncoding(TextEncoding.Parse(_content));
+                DetectedEncoding = NormalizeMetaEncoding(contentEncoding);
             }
         }
 
@@ -132,11 +135,8 @@ internal static class HtmlEncodingSniffer
 
         private static bool TryResolve(string? label, out Encoding encoding)
         {
-            if (label is not null && TextEncoding.IsSupported(label))
-            {
-                encoding = TextEncoding.Resolve(label);
+            if (HtmlEncodingLabels.TryResolve(label, out encoding))
                 return true;
-            }
 
             encoding = Encoding.UTF8;
             return false;

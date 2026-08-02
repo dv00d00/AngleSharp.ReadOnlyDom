@@ -356,10 +356,11 @@ public sealed class Utf8HtmlTokenizerTests
                     sink.StartTagEnd(token.IsSelfClosing);
                     tokenizer.State = name switch
                     {
-                        "title" or "textarea" => HtmlParseMode.RCData,
-                        "style" or "xmp" or "iframe" or "noembed" or "noframes" => HtmlParseMode.Rawtext,
-                        "script" => HtmlParseMode.Script,
-                        "plaintext" => HtmlParseMode.Plaintext,
+                        "title" or "textarea" => AngleSharp.Html.Parser.HtmlParseMode.RCData,
+                        "style" or "xmp" or "iframe" or "noembed" or "noframes" =>
+                            AngleSharp.Html.Parser.HtmlParseMode.Rawtext,
+                        "script" => AngleSharp.Html.Parser.HtmlParseMode.Script,
+                        "plaintext" => AngleSharp.Html.Parser.HtmlParseMode.Plaintext,
                         _ => tokenizer.State,
                     };
                     break;
