@@ -24,8 +24,6 @@ public class LongSyntheticConstructionBenchmark
         .TakeFirst()
         .SelectNormalizedText("text", required: true)
         .Compile();
-    private readonly CompactStreamingExtractionPlan _streamingPlan =
-        CompactStreamingExtractor.CompileFirstNormalizedText("article", "content");
     private readonly CompactAggregatePlan _aggregatePlan = CompactAggregate
         .First(CompactAggregateSelector.Tag("article").WithId("content"))
         .Field("text", CompactAggregateProjection.SelfNormalizedText(), required: true)
@@ -45,22 +43,19 @@ public class LongSyntheticConstructionBenchmark
         _utf8 = Encoding.UTF8.GetBytes(_html);
         var readOnly = ReadOnlyParseAndTraverse();
         var compact = CompactParseAndPlan();
-        var queryDirected = QueryDirectedConstruction();
         var aggregate = EofAggregateConstruction();
         var rawUtf8 = NativeUtf8RawFold();
         var completedUtf8 = NativeUtf8CompletedElementFold();
         AssertEqual("compact", readOnly, compact);
-        AssertEqual("query-directed", readOnly, queryDirected);
         AssertEqual("EOF aggregate", readOnly, aggregate);
         AssertEqual("native UTF-8 raw fold", readOnly, rawUtf8);
         AssertEqual("native UTF-8 completed-element fold", readOnly, completedUtf8);
 
-        var counters = _streamingPlan.Execute(_html).Counters;
+        var counters = _aggregatePlan.Execute(_html).Counters;
         Console.WriteLine(
             $"Synthetic fixture: {Encoding.UTF8.GetByteCount(_html):N0} UTF-8 bytes, "
                 + $"{NoiseBlocks:N0} noise blocks, target near EOF, {counters.TokensProcessed:N0} tokens, "
-                + $"{counters.NodesMaterialized:N0} topology nodes, {counters.AttributesRetained:N0} retained attributes, "
-                + $"early terminated={counters.EarlyTerminated}."
+                + $"{counters.NodesMaterialized:N0} topology nodes, {counters.AttributesRetained:N0} retained attributes."
         );
     }
 
@@ -78,9 +73,6 @@ public class LongSyntheticConstructionBenchmark
         var result = _compactPlan.Execute(document);
         return result.Rows.Count == 0 ? string.Empty : result.Rows[0]["text"].Own();
     }
-
-    [Benchmark]
-    public string QueryDirectedConstruction() => _streamingPlan.Execute(_html).Value.Own();
 
     [Benchmark]
     public string EofAggregateConstruction()

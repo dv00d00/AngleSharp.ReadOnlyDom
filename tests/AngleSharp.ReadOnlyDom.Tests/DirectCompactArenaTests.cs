@@ -328,36 +328,42 @@ public sealed class CompactParserTests
     [Arguments("<svg><foreignObject><div id=content>svg <b>html</b></div></foreignObject></svg>")]
     [Arguments("<math><annotation-xml encoding='text/html'><div id=content>math</div></annotation-xml></math>")]
     [Arguments("<b class=before>before<div id=content>inside</b> after</div>")]
-    public async Task StreamingExtractionMatchesConstructedDom(string html)
+    public async Task EofAggregateNormalizedTextMatchesConstructedDom(string html)
     {
         using var expectedDocument = new HtmlParser().ParseDocument(html);
         var expected = expectedDocument.QuerySelector("div#content");
+        var plan = CompactAggregate
+            .First(CompactAggregateSelector.Tag("div").WithId("content"))
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Compile();
 
-        var actual = CompactStreamingExtractor.ExtractFirstNormalizedText(html);
+        var actual = plan.Execute(html);
 
-        await Assert.That(actual.Found).IsEqualTo(expected is not null);
-        await Assert
-            .That(actual.Value.ToString())
-            .IsEqualTo(NormalizeWhitespace(expected?.TextContent ?? string.Empty));
-        if (actual.Found)
-            await Assert.That(actual.Value.Ownership).IsEqualTo(CompactValueOwnership.Owned);
+        await Assert.That(actual.Rows.Count).IsEqualTo(expected is null ? 0 : 1);
+        if (expected is not null)
+        {
+            var value = actual.Rows[0]["text"];
+            await Assert.That(value.ToString()).IsEqualTo(NormalizeWhitespace(expected.TextContent));
+            await Assert.That(value.Ownership).IsEqualTo(CompactValueOwnership.Owned);
+        }
         await Assert.That(actual.Counters.TokensProcessed).IsGreaterThan(0);
         await Assert.That(actual.Counters.NodesMaterialized).IsGreaterThan(0);
         await Assert.That(actual.Counters.AttributesInspected).IsGreaterThan(0);
-        await Assert.That(actual.Counters.AttributesRetained).IsGreaterThan(0);
-        await Assert.That(actual.Counters.TextValuesRetained).IsGreaterThan(0);
         await Assert.That(actual.Counters.InputBytesConsumed).IsEqualTo(Encoding.UTF8.GetByteCount(html));
-        await Assert.That(actual.Counters.EarlyTerminated).IsFalse();
     }
 
     [Test]
-    public async Task StreamingExtractionFiltersUnneededAttributesAndReportsDecodedValues()
+    public async Task EofAggregateFiltersUnneededAttributesAndReportsDecodedValues()
     {
         const string Html = "<main data-a=1 data-b=2><div id=content data-c=3>one &amp; two</div></main>";
+        var plan = CompactAggregate
+            .First(CompactAggregateSelector.Tag("div").WithId("content"))
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Compile();
 
-        var result = CompactStreamingExtractor.ExtractFirstNormalizedText(Html);
+        var result = plan.Execute(Html);
 
-        await Assert.That(result.Value.ToString()).IsEqualTo("one & two");
+        await Assert.That(result.Rows[0]["text"].ToString()).IsEqualTo("one & two");
         await Assert.That(result.Counters.AttributesRetained).IsEqualTo(1);
         await Assert.That(result.Counters.ValuesDecoded).IsGreaterThan(0);
     }
@@ -508,13 +514,16 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task StreamingExtractionReportsMissingTarget()
+    public async Task EofAggregateReportsMissingTarget()
     {
-        var result = CompactStreamingExtractor.ExtractFirstNormalizedText("<main><p>none</p></main>");
+        var plan = CompactAggregate
+            .First(CompactAggregateSelector.Tag("div").WithId("content"))
+            .Field("text", CompactAggregateProjection.SelfNormalizedText())
+            .Compile();
 
-        await Assert.That(result.Found).IsFalse();
-        await Assert.That(result.Value.Exists).IsFalse();
-        await Assert.That(result.Value.Ownership).IsEqualTo(CompactValueOwnership.None);
+        var result = plan.Execute("<main><p>none</p></main>");
+
+        await Assert.That(result.Rows.Count).IsEqualTo(0);
     }
 
     [Test]
@@ -526,12 +535,13 @@ public sealed class CompactParserTests
     }
 
     [Test]
-    public async Task DefaultContextSupportsTheSameExtensionPatternAsReadOnlyDom()
+    public async Task ParsersNotBuiltByCreateParserAreRejected()
     {
-        var parser = new HtmlParser(default, CompactParser.DefaultContext);
-        using var document = parser.ParseCompactDocument("<main><p>x</p></main>");
+        var parser = new HtmlParser();
 
-        await Assert.That(document.Elements("main").Count()).IsEqualTo(1);
+        await Assert
+            .That(() => parser.ParseCompactDocument("<main><p>x</p></main>"))
+            .Throws<InvalidOperationException>();
     }
 
     [Test]

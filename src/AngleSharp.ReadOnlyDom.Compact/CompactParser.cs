@@ -24,91 +24,6 @@ internal interface IArenaHtmlParser
 
 public static class CompactParser
 {
-    private static readonly Func<IBrowsingContext, ArenaConstructionFactory> Service =
-        _ => new ArenaConstructionFactory(
-            new CompactParserHints(),
-            trackSourceReferences: false,
-            CompactMetadataOptions.None,
-            CompactDocumentLayout.FrozenColumns
-        );
-
-    public static readonly IConfiguration DefaultConfig = Configuration.Default.With(Service);
-    public static readonly IBrowsingContext DefaultContext = BrowsingContext.New(DefaultConfig);
-    private static readonly IBrowsingContext FrozenParentContext = CreateContextCore(
-        CompactMetadataOptions.ParentLinks,
-        CompactDocumentLayout.FrozenColumns
-    );
-    private static readonly IBrowsingContext FrozenSourceContext = CreateContextCore(
-        CompactMetadataOptions.SourceLocations,
-        CompactDocumentLayout.FrozenColumns
-    );
-    private static readonly IBrowsingContext FrozenParentSourceContext = CreateContextCore(
-        CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations,
-        CompactDocumentLayout.FrozenColumns
-    );
-    private static readonly IBrowsingContext PackedContext = CreateContextCore(
-        CompactMetadataOptions.None,
-        CompactDocumentLayout.Packed
-    );
-    private static readonly IBrowsingContext PackedParentContext = CreateContextCore(
-        CompactMetadataOptions.ParentLinks,
-        CompactDocumentLayout.Packed
-    );
-    private static readonly IBrowsingContext PackedSourceContext = CreateContextCore(
-        CompactMetadataOptions.SourceLocations,
-        CompactDocumentLayout.Packed
-    );
-    private static readonly IBrowsingContext PackedParentSourceContext = CreateContextCore(
-        CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations,
-        CompactDocumentLayout.Packed
-    );
-
-    public static IBrowsingContext CreateContext(
-        CompactMetadataOptions options = CompactMetadataOptions.None,
-        CompactParserHints? hints = null,
-        CompactDocumentLayout layout = CompactDocumentLayout.FrozenColumns
-    )
-    {
-        if (hints is not null)
-            return CreateContextCore(options, layout, hints);
-
-        return (options, layout) switch
-        {
-            (CompactMetadataOptions.None, CompactDocumentLayout.FrozenColumns) => DefaultContext,
-            (CompactMetadataOptions.ParentLinks, CompactDocumentLayout.FrozenColumns) => FrozenParentContext,
-            (CompactMetadataOptions.SourceLocations, CompactDocumentLayout.FrozenColumns) => FrozenSourceContext,
-            (
-                CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations,
-                CompactDocumentLayout.FrozenColumns
-            ) => FrozenParentSourceContext,
-            (CompactMetadataOptions.None, CompactDocumentLayout.Packed) => PackedContext,
-            (CompactMetadataOptions.ParentLinks, CompactDocumentLayout.Packed) => PackedParentContext,
-            (CompactMetadataOptions.SourceLocations, CompactDocumentLayout.Packed) => PackedSourceContext,
-            (
-                CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations,
-                CompactDocumentLayout.Packed
-            ) => PackedParentSourceContext,
-            _ => throw new ArgumentOutOfRangeException(nameof(options)),
-        };
-    }
-
-    private static IBrowsingContext CreateContextCore(
-        CompactMetadataOptions options,
-        CompactDocumentLayout layout,
-        CompactParserHints? hints = null
-    )
-    {
-        var effectiveHints = hints ?? new CompactParserHints();
-        var trackSourceReferences = options.HasFlag(CompactMetadataOptions.SourceLocations);
-        var configuration = Configuration.Default.With(_ => new ArenaConstructionFactory(
-            effectiveHints,
-            trackSourceReferences,
-            options,
-            layout
-        ));
-        return BrowsingContext.New(configuration);
-    }
-
     public static HtmlParser CreateParser(
         CompactMetadataOptions options = CompactMetadataOptions.None,
         CompactParserHints? hints = null,
@@ -127,7 +42,7 @@ public static class CompactParser
             options,
             layout
         );
-        var context = BrowsingContext.New(Configuration.Default.With(_ => factory));
+        var context = BrowsingContext.New(Configuration.Default);
         return new ArenaHtmlParser(effectiveParserOptions, context, factory);
     }
 
@@ -179,13 +94,9 @@ public static class CompactParser
         CancellationToken cancel = default
     )
     {
-        var document = parser is IArenaHtmlParser arenaParser
-            ? await arenaParser
-                .ParseArenaDocumentAsync(source, sourceMode, encoding, middleware, cancel)
-                .ConfigureAwait(false)
-            : await parser
-                .ParseDocumentAsync<ArenaDocument, ArenaElement>(source, sourceMode, encoding, middleware, cancel)
-                .ConfigureAwait(false);
+        var document = await RequireArenaParser(parser)
+            .ParseArenaDocumentAsync(source, sourceMode, encoding, middleware, cancel)
+            .ConfigureAwait(false);
         try
         {
             return document.CreateCompactDocument();
@@ -214,11 +125,22 @@ public static class CompactParser
                 attributeFilter(ref token, name);
     }
 
+    /// <summary>
+    /// Compact parsing runs on the arena's handle-based construction backend, which only
+    /// <see cref="CreateParser"/> can wire up: AngleSharp hands the backend to the tree builder as an
+    /// argument rather than resolving it from the browsing context, and <see cref="HtmlParser"/> does
+    /// not expose its context.
+    /// </summary>
+    private static IArenaHtmlParser RequireArenaParser(IHtmlParser parser) =>
+        parser as IArenaHtmlParser
+        ?? throw new InvalidOperationException(
+            $"Compact documents require a parser created by {nameof(CompactParser)}.{nameof(CreateParser)}(), "
+                + $"but received a {parser.GetType().Name}."
+        );
+
     private static CompactDocument Parse(IHtmlParser parser, TextSource source, TokenizerMiddleware? middleware)
     {
-        var document = parser is IArenaHtmlParser arenaParser
-            ? arenaParser.ParseArenaDocument(source, middleware)
-            : parser.ParseDocument<ArenaDocument, ArenaElement>(source, middleware);
+        var document = RequireArenaParser(parser).ParseArenaDocument(source, middleware);
         try
         {
             return document.CreateCompactDocument();

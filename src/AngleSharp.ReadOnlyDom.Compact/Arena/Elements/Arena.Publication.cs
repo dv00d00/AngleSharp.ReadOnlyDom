@@ -136,8 +136,6 @@ internal sealed partial class Arena
             remap: null
         );
         _columns.ReleaseConstructionColumns(options.HasFlag(CompactMetadataOptions.ParentLinks));
-        _nodes?.Dispose();
-        _attributeWrappers?.Dispose();
         return new CompactDocument(
             this,
             source,

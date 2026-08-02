@@ -1,13 +1,11 @@
-﻿using AngleSharp.Common;
+using AngleSharp.Common;
 using AngleSharp.Dom;
 using AngleSharp.Html.Construction;
 using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.Compact.Arena;
 
-internal sealed partial class ArenaConstructionFactory
-    : IDomConstructionElementFactory<ArenaDocument, ArenaElement>,
-        IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>
+internal sealed class ArenaConstructionFactory : IHtmlTreeConstructionFactory<ArenaDocument, ArenaHandle>
 {
     private readonly CompactParserHints _hints;
     private readonly bool _trackSourceReferences;
@@ -30,56 +28,75 @@ internal sealed partial class ArenaConstructionFactory
         _constructionView = constructionView;
     }
 
-    public ArenaElement Create(
-        ArenaDocument document,
-        StringOrMemory localName,
-        StringOrMemory prefix = default,
-        NodeFlags flags = NodeFlags.None
-    )
-    {
-        return document.Arena.CreateElement(localName, prefix, GetHtmlFlags(localName, flags));
-    }
-
-    public ArenaElement CreateNoScript(ArenaDocument document, bool scripting) => Create(document, TagNames.NoScript);
-
-    public IConstructableNode CreateDocumentType(
-        ArenaDocument document,
-        StringOrMemory name,
-        StringOrMemory publicIdentifier,
-        StringOrMemory systemIdentifier
-    ) => document.Arena.CreateLeaf(name, default, CompactNodeKind.Other);
-
-    public IConstructableMathElement CreateMath(ArenaDocument document, StringOrMemory name = default)
-        => (IConstructableMathElement)
-            document.Arena.CreateElement(name, default, GetMathFlags(name), ElementMarker.Math);
-
-    public IConstructableSvgElement CreateSvg(ArenaDocument document, StringOrMemory name = default)
-        => (IConstructableSvgElement)
-            document.Arena.CreateElement(name, default, GetSvgFlags(name), ElementMarker.Svg);
-
-    public IConstructableMetaElement CreateMeta(ArenaDocument document) =>
-        (IConstructableMetaElement)CreateKnown(document, TagNames.Meta, ElementMarker.Meta);
-
-    public IConstructableScriptElement CreateScript(ArenaDocument document, bool parserInserted, bool started) =>
-        (IConstructableScriptElement)CreateKnown(document, TagNames.Script, ElementMarker.Script);
-
-    public IConstructableFrameElement CreateFrame(ArenaDocument document) =>
-        (IConstructableFrameElement)CreateKnown(document, TagNames.Frame, ElementMarker.Frame);
-
-    public IConstructableTemplateElement CreateTemplate(ArenaDocument document) =>
-        (IConstructableTemplateElement)CreateKnown(document, TagNames.Template, ElementMarker.Template);
-
-    public IConstructableFormElement CreateForm(ArenaDocument document) =>
-        (IConstructableFormElement)CreateKnown(document, TagNames.Form, ElementMarker.Form);
-
-    public ArenaElement CreateUnknown(ArenaDocument document, StringOrMemory tagName) => Create(document, tagName);
-
     public ArenaDocument CreateDocument(TextSource source, IBrowsingContext? context = null) =>
         new Arena(ScaledHints(source), _trackSourceReferences, _constructionView?.CreateState(source)).CreateDocument(
             source,
             _options,
             _layout
         );
+
+    public ArenaHandle Create(
+        ArenaDocument document,
+        StringOrMemory localName,
+        StringOrMemory prefix = default,
+        NodeFlags flags = NodeFlags.None
+    ) => new(document.Arena, document.Arena.CreateElementHandle(localName, prefix, GetHtmlFlags(localName, flags)));
+
+    public ArenaHandle CreateNoScript(ArenaDocument document, bool scripting) =>
+        CreateKnown(document, TagNames.NoScript);
+
+    public ArenaHandle CreateDocumentType(
+        ArenaDocument document,
+        StringOrMemory name,
+        StringOrMemory publicIdentifier,
+        StringOrMemory systemIdentifier
+    ) => new(document.Arena, document.Arena.CreateLeafHandle(name, default, CompactNodeKind.Other));
+
+    public ArenaHandle CreateMath(ArenaDocument document, StringOrMemory name = default) =>
+        new(document.Arena, document.Arena.CreateElementHandle(name, default, GetMathFlags(name)));
+
+    public ArenaHandle CreateSvg(ArenaDocument document, StringOrMemory name = default) =>
+        new(document.Arena, document.Arena.CreateElementHandle(name, default, GetSvgFlags(name)));
+
+    public ArenaHandle CreateMeta(ArenaDocument document) => CreateKnown(document, TagNames.Meta);
+
+    public ArenaHandle CreateScript(ArenaDocument document, bool parserInserted, bool started) =>
+        CreateKnown(document, TagNames.Script);
+
+    public ArenaHandle CreateFrame(ArenaDocument document) => CreateKnown(document, TagNames.Frame);
+
+    public ArenaHandle CreateTemplate(ArenaDocument document) => CreateKnown(document, TagNames.Template);
+
+    public ArenaHandle CreateForm(ArenaDocument document) => CreateKnown(document, TagNames.Form);
+
+    public ArenaHandle CreateUnknown(ArenaDocument document, StringOrMemory tagName) => CreateKnown(document, tagName);
+
+    public ArenaHandle GetDocumentNode(ArenaDocument document) => new(document.Arena, document.NodeHandle);
+
+    public ArenaHandle GetDocumentElement(ArenaDocument document)
+    {
+        for (var i = 0; i < document.Arena.ChildCount(document.NodeHandle); i++)
+        {
+            var handle = document.Arena.ChildAt(document.NodeHandle, i);
+            if (document.Arena.Kind(handle) == CompactNodeKind.Element)
+                return new ArenaHandle(document.Arena, handle);
+        }
+        return default;
+    }
+
+    public ArenaHandle GetHead(ArenaDocument document)
+    {
+        var root = GetDocumentElement(document);
+        if (root.IsNull)
+            return default;
+        for (var i = 0; i < root.ChildCount; i++)
+        {
+            var child = root.ChildAt(i);
+            if (child.LocalName.Equals(TagNames.Head))
+                return child;
+        }
+        return default;
+    }
 
     /// <summary>
     /// Sizes the initial column capacities from the input length so typical documents avoid the
@@ -100,10 +117,8 @@ internal sealed partial class ArenaConstructionFactory
         static int Scale(int estimate, int hint) => Math.Max(hint, Math.Min(estimate, 1 << 20));
     }
 
-    private static ArenaElement CreateKnown(ArenaDocument document, StringOrMemory name, ElementMarker marker)
-    {
-        return document.Arena.CreateElement(name, default, GetHtmlFlags(name), marker);
-    }
+    private static ArenaHandle CreateKnown(ArenaDocument document, StringOrMemory name) =>
+        new(document.Arena, document.Arena.CreateElementHandle(name, default, GetHtmlFlags(name)));
 
     private static NodeFlags GetHtmlFlags(StringOrMemory name, NodeFlags flags = NodeFlags.None)
     {

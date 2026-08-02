@@ -10,20 +10,6 @@ internal sealed partial class Arena
         return payload < 0 ? 0 : _payloads![payload].AttributeCount;
     }
 
-    public ArenaAttribute? GetAttribute(int handle, StringOrMemory name)
-    {
-        if (!_names.TryGetId(name, out var nameId))
-            return null;
-        var attribute = FirstAttribute(handle);
-        while (attribute >= 0)
-        {
-            if (_attributes![attribute].NameId == nameId)
-                return AttributeNode(attribute);
-            attribute = _attributes[attribute].Next;
-        }
-        return null;
-    }
-
     internal StringOrMemory GetAttributeValue(int handle, StringOrMemory name)
     {
         if (!_names.TryGetId(name, out var nameId))
@@ -45,12 +31,6 @@ internal sealed partial class Arena
             if (attributes[attribute].NameId == nameId)
                 return true;
         return false;
-    }
-
-    public IEnumerable<ArenaAttribute> Attributes(int handle)
-    {
-        for (var attribute = FirstAttribute(handle); attribute >= 0; attribute = _attributes![attribute].Next)
-            yield return AttributeNode(attribute);
     }
 
     public StringOrMemory AttributeName(int handle) => _names.GetName(_attributes![handle].NameId);
@@ -115,7 +95,6 @@ internal sealed partial class Arena
         ref var payload = ref _payloads![payloadIndex];
         var attributeHandle = _attributes.Add(new MutableAttribute(nameId, value));
         _textLength = checked(_textLength + value.Length);
-        _attributeWrappers?.AddEmpty();
         if (payload.FirstAttribute < 0)
             payload.FirstAttribute = attributeHandle;
         else
@@ -123,28 +102,6 @@ internal sealed partial class Arena
         payload.LastAttribute = attributeHandle;
         payload.AttributeCount++;
         _constructionView?.AttributeRetained(value);
-    }
-
-    private ArenaAttribute AttributeNode(int handle)
-    {
-        var wrappers = _attributeWrappers;
-        if (wrappers is null)
-        {
-            wrappers = new PooledReferenceBuffer<ArenaAttribute>(
-                ValidateCapacity(_hints.InitialAttributeCapacity, nameof(CompactParserHints.InitialAttributeCapacity))
-            );
-            for (var i = 0; i < _attributes!.Count; i++)
-                wrappers.AddEmpty();
-            _attributeWrappers = wrappers;
-        }
-
-        var wrapper = wrappers[handle];
-        if (wrapper is null)
-        {
-            wrapper = new ArenaAttribute(this, handle);
-            wrappers[handle] = wrapper;
-        }
-        return wrapper;
     }
 
     public void CompleteAttributes(int handle) => _constructionView?.CompleteAttributes(this, handle);

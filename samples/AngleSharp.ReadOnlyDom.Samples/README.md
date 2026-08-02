@@ -27,7 +27,6 @@ The sample demonstrates:
 - query helpers such as `QueryOne`, `TagId`, and `CountTagClass`;
 - `CompactParser` with optional parent links and allocation-free compact queries;
 - `CompactExtractionPlan` with borrowed attribute and owned normalized-text fields;
-- `CompactStreamingExtractor` for the specialized `first tag#id -> normalized text` view;
 - `CompactAggregate` for owned JSON, normalized text, and minimal structural Markdown;
 - `StreamQuery` for fluent tag/attribute paths and one completed-element callback instead of manual start/text/end plumbing;
 - automatic projection of predicate attributes and explicit projection of optional attributes;
