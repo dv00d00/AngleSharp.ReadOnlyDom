@@ -90,9 +90,15 @@ public readonly struct Node
 
     public string Text()
     {
-        var builder = new StringBuilder(TextLength());
-        AppendText(builder);
-        return builder.ToString();
+        return string.Create(
+            TextLength(),
+            this,
+            static (destination, node) =>
+            {
+                if (!node.TryWriteText(destination, out var written) || written != destination.Length)
+                    throw new InvalidOperationException("Descendant text length changed while materializing text.");
+            }
+        );
     }
 
     /// <summary>Total length of this node's descendant text, without materializing it.</summary>
