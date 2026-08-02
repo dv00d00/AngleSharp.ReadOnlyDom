@@ -40,7 +40,8 @@ public sealed class HtmlTextExtractorTests
         writer.Append("Delta  "u8);
         writer.ParagraphBreak();
 
-        await Assert.That(Encoding.UTF8.GetString(output.WrittenSpan))
+        await Assert
+            .That(Encoding.UTF8.GetString(output.WrittenSpan))
             .IsEqualTo("Alpha \u2003\n\nBeta Ж🙂\tGamma\nDelta");
     }
 

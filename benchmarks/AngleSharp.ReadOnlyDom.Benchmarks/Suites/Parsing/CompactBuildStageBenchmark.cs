@@ -66,7 +66,6 @@ public class CompactBuildStageBenchmark
         }
     }
 
-    private static TextSource CreateSource() =>
-        new(new StringTextSource(CompactBuildBenchmark.StructuralPage));
+    private static TextSource CreateSource() => new(new StringTextSource(CompactBuildBenchmark.StructuralPage));
 }
 #endif

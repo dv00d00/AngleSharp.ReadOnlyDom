@@ -60,7 +60,8 @@ internal sealed class Utf8RewriteCollector
         Write(output, source[cursor..]);
     }
 
-    private static bool IsHtmlSpace(byte value) => value is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\f' or (byte)'\r';
+    private static bool IsHtmlSpace(byte value) =>
+        value is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\f' or (byte)'\r';
 
     private static void ValidateName(ReadOnlySpan<byte> name)
     {

@@ -153,9 +153,7 @@ public sealed class StreamingOutcomeQueryTests
         var root = StreamQuery.For<ObservationState>("main");
         var descendant = root.Descendant("article").OnStart((ref ObservationState _, in Element _) => starts++);
 
-        StreamQuery
-            .Observe(root, descendant)
-            .Execute("<main><article></article></main>"u8, new ObservationState());
+        StreamQuery.Observe(root, descendant).Execute("<main><article></article></main>"u8, new ObservationState());
 
         await Assert.That(starts).IsEqualTo(1);
     }

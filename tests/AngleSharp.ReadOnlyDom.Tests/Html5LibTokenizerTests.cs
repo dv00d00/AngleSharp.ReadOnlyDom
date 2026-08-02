@@ -91,7 +91,7 @@ public sealed class Html5LibTokenizerTests
                         failuresByFixtureAndState
                             .OrderByDescending(static pair => pair.Value)
                             .ThenBy(static pair => pair.Key, StringComparer.Ordinal)
-                            .Select(static pair => $"  {pair.Value,4}  {pair.Key}")
+                            .Select(static pair => $"  {pair.Value, 4}  {pair.Key}")
                     )
                     + "\nTop failing vectors:\n"
                     + String.Join(
@@ -100,7 +100,7 @@ public sealed class Html5LibTokenizerTests
                             .OrderByDescending(static pair => pair.Value)
                             .ThenBy(static pair => pair.Key, StringComparer.Ordinal)
                             .Take(40)
-                            .Select(static pair => $"  {pair.Value,4}  {pair.Key}")
+                            .Select(static pair => $"  {pair.Value, 4}  {pair.Key}")
                     )
                     + "\nFirst mismatch per failing fixture:\n"
                     + String.Join("\n", firstFailureByFixture.Values)
@@ -290,11 +290,7 @@ public sealed class Html5LibTokenizerTests
 
         public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
         {
-            _startTag = SpecToken.StartTag(
-                DecodeSemanticName(name),
-                new Dictionary<string, string>(),
-                false
-            );
+            _startTag = SpecToken.StartTag(DecodeSemanticName(name), new Dictionary<string, string>(), false);
             return Utf8HtmlStartTagCapture.Attributes;
         }
 
