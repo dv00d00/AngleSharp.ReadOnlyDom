@@ -76,6 +76,29 @@ public sealed class CompactParserTests
     }
 
     [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task StringNameQueriesDoNotRequireResolvedIds(CompactDocumentLayout layout)
+    {
+        using var document = CompactParser
+            .CreateParser(layout: layout)
+            .ParseCompactDocument("<main class='selected wide' data-kind=sample>text</main>");
+
+        var main = document.Elements("main").WithClass("wide").WithAttribute("data-kind", "sample").First();
+        var firstMain = document.IndexOfName("main");
+        var mainCount = document.CountElements("main".AsSpan());
+
+        await Assert.That(main.Exists).IsTrue();
+        await Assert.That(main.HasClass("selected")).IsTrue();
+        await Assert.That(main.HasAttr("data-kind")).IsTrue();
+        await Assert.That(main.Attr("data-kind").ToString()).IsEqualTo("sample");
+        await Assert.That(firstMain).IsEqualTo(main.Handle);
+        await Assert.That(mainCount).IsEqualTo(1);
+        await Assert.That(document.IndexOfName("missing")).IsEqualTo(-1);
+        await Assert.That(document.CountElements("missing")).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task Utf8StreamConstructsCompactDocumentThroughBoundedSource()
     {
         var source = Encoding.UTF8.GetBytes("<main data-kind=stream>café</main>");
