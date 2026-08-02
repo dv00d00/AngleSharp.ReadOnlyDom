@@ -110,11 +110,6 @@ internal static class QueryPlanCompiler
             );
         }
 
-        var tags = sourceNodes
-            .Select(static node => node.Selector.TagName)
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
         var tagDispatch = nodes
             .GroupBy(static node => (node.TagIdentity, node.TagIdentityLength))
             .Select(static group => new CompiledTagDispatch(
@@ -125,21 +120,13 @@ internal static class QueryPlanCompiler
             .OrderBy(static entry => entry.Identity)
             .ThenBy(static entry => entry.IdentityLength)
             .ToArray();
-        var explanation = new QueryExplanation(
-            QueryExecutionModel.LexicalStreaming,
-            tags,
-            attributeNames,
-            nodes.Length,
-            24
-        );
         return new QueryPlan<TState>(
             nodes,
             attributeNames,
             attributeNamesUtf8,
             attributeIdentities,
             compactAttributeMask,
-            tagDispatch,
-            explanation
+            tagDispatch
         );
     }
 

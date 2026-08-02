@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateSet("small", "full", "retained", "compact", "compact-stages", "query", "extraction", "scraping", "utf8", "utf8-baseline", "rows", "long-streaming", "utf8-tokenizer", "utf8-rodom", "utf8-dom", "all")]
+    [ValidateSet("small", "full", "retained", "compact", "compact-stages", "query", "extraction", "scraping", "utf8", "utf8-baseline", "rows", "long-streaming", "utf8-rodom", "utf8-dom", "all")]
     [string] $Tier = "all",
     [switch] $HardwareCounters
 )
@@ -69,10 +69,7 @@ if ($Tier -in @("scraping", "extraction", "all")) {
 }
 if ($HardwareCounters) { $env:AS_BENCH_HARDWARE_COUNTERS = "1" }
 
-if ($Tier -in @("utf8-tokenizer", "utf8", "all")) {
-    Invoke-Benchmark "*Utf8TokenizerBenchmark*" "utf8-tokenizer"
-}
-if ($Tier -in @("utf8-baseline", "all")) {
+if ($Tier -in @("utf8-baseline", "utf8", "all")) {
     Invoke-Benchmark "*Utf8TokenizerBaselineBenchmark*" "utf8-baseline"
     dotnet run --project $project -c Release -f net10.0 --no-build -- `
         --utf8-tokenizer-baseline --output (Join-Path $output "utf8-baseline-diagnostics.md")

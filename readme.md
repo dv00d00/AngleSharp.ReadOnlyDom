@@ -109,7 +109,7 @@ Nodes and attributes live in pooled columns; lightweight handles provide the obj
 Use stream queries when the desired result is known before parsing and no DOM needs to escape.
 
 ```csharp
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Stream.Query;
+using AngleSharp.ReadOnlyDom.Streaming;
 
 var query = StreamQuery
     .For<List<string>>("article")
@@ -120,10 +120,14 @@ var query = StreamQuery
 var headings = query.Execute(htmlUtf8, new List<string>());
 ```
 
+`Child` and `Descendant` follow the lexical start/end-tag stack, not browser-corrected HTML tree topology; use a retained
+DOM lane when implied end tags, foster parenting, or other tree-construction recovery must affect relationships.
+
 Callbacks can consume borrowed UTF-8 spans or explicitly materialize owned strings. More complete examples cover
-attributes, typed products, subtree text, arbitrary aggregate state, `PipeReader`, and backpressured output.
-Independent query roots can be combined with `StreamQuery.Observe(...)`; `.Resolve(...)` turns their shared evidence
-state into a caller-defined success, empty-result, provider-error, or unexpected-response outcome after EOF.
+attributes, typed products, subtree text, arbitrary aggregate state, and an end-to-end `PipeReader` to backpressured
+NDJSON `PipeWriter` content-feed transformation with no intermediate DOM or row list.
+Independent query roots can be combined with `StreamQuery.Observe(...)`; after execution, caller-owned evidence can be
+resolved into success, empty-result, provider-error, or unexpected-response outcomes.
 
 ## Run it
 
@@ -137,6 +141,14 @@ The Markdown proxy is an intentionally visible end-to-end demonstration of strea
 
 ```powershell
 dotnet run --project samples/AngleSharp.ReadOnlyDom.MarkdownProxy -c Release
+```
+
+Opinionated text/Markdown projections and safe local Markdown navigation remain runnable examples rather than library
+surface:
+
+```powershell
+dotnet run --project samples/AngleSharp.ReadOnlyDom.ExtractionExamples -c Release
+dotnet run --project samples/AngleSharp.ReadOnlyDom.MarkdownNavigation -c Release
 ```
 
 Run the test suite from the repository root:
@@ -160,6 +172,8 @@ docs/         architecture decisions, performance evidence, and upstream notes
 Start with:
 
 - [Samples](samples/AngleSharp.ReadOnlyDom.Samples/README.md)
+- [Text and Markdown extraction examples](samples/AngleSharp.ReadOnlyDom.ExtractionExamples/README.md)
+- [Streaming HTML-to-Markdown navigation](samples/AngleSharp.ReadOnlyDom.MarkdownNavigation/README.md)
 - [Benchmark methodology and current results](docs/BENCHMARKING.md)
 - [Compact DOM design](docs/COMPACT_DOM_DECISION.md)
 - [Query-directed engine direction](docs/QUERY_DIRECTED_ENGINE_DIRECTION.md)

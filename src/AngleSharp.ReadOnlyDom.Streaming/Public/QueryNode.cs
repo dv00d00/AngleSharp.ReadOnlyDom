@@ -1,5 +1,9 @@
 ﻿namespace AngleSharp.ReadOnlyDom.Streaming;
 
+/// <summary>
+/// Defines a mutable query over the token stream's lexical start/end-tag stack. It does not represent
+/// browser-corrected HTML tree topology.
+/// </summary>
 public sealed class QueryNode<TState>
 {
     private readonly QueryNode<TState> _root;
@@ -38,10 +42,12 @@ public sealed class QueryNode<TState>
 
     internal QueryNode<TState> Descendant(Selector selector) => AddChild(selector, QueryRelation.Descendant);
 
+    /// <summary>Adds a query whose tag must have this node in its active lexical ancestor stack.</summary>
     public QueryNode<TState> Descendant(string tagName) => Descendant(Selector.Tag(tagName));
 
     internal QueryNode<TState> Child(Selector selector) => AddChild(selector, QueryRelation.Child);
 
+    /// <summary>Adds a query whose tag must be immediately enclosed by this node's lexical frame.</summary>
     public QueryNode<TState> Child(string tagName) => Child(Selector.Tag(tagName));
 
     public QueryNode<TState> Id(string value)
@@ -70,24 +76,28 @@ public sealed class QueryNode<TState>
 
     public QueryNode<TState> OnStart(StartHandler<TState> handler, params string[] projectedAttributes)
     {
-        EnsureLowLevelHandlersCanBeAdded();
-        _start = handler ?? throw new ArgumentNullException(nameof(handler));
-        foreach (var attribute in projectedAttributes)
-            _projectedAttributes.Add(Selector.NormalizeName(attribute, nameof(projectedAttributes)));
+        ArgumentNullException.ThrowIfNull(handler);
+        ArgumentNullException.ThrowIfNull(projectedAttributes);
+        EnsureLowLevelHandlerCanBeAdded(_start, "start");
+        var normalizedAttributes = NormalizeProjectedAttributes(projectedAttributes);
+        _start = handler;
+        _projectedAttributes.UnionWith(normalizedAttributes);
         return this;
     }
 
     public QueryNode<TState> OnText(TextHandler<TState> handler)
     {
-        EnsureLowLevelHandlersCanBeAdded();
-        _text = handler ?? throw new ArgumentNullException(nameof(handler));
+        ArgumentNullException.ThrowIfNull(handler);
+        EnsureLowLevelHandlerCanBeAdded(_text, "text");
+        _text = handler;
         return this;
     }
 
     public QueryNode<TState> OnEnd(EndHandler<TState> handler)
     {
-        EnsureLowLevelHandlersCanBeAdded();
-        _end = handler ?? throw new ArgumentNullException(nameof(handler));
+        ArgumentNullException.ThrowIfNull(handler);
+        EnsureLowLevelHandlerCanBeAdded(_end, "end");
+        _end = handler;
         return this;
     }
 
@@ -123,24 +133,33 @@ public sealed class QueryNode<TState>
         string[] projectedAttributes
     )
     {
+        ArgumentNullException.ThrowIfNull(handler);
+        ArgumentNullException.ThrowIfNull(projectedAttributes);
         if (_start is not null || _text is not null || _end is not null)
             throw new InvalidOperationException(
                 "A completed-element callback cannot be combined with start, text, or end callbacks on the same query node."
             );
         if (_completed is not null)
             throw new InvalidOperationException("A query node can have only one completed-element callback.");
-        _completed = handler ?? throw new ArgumentNullException(nameof(handler));
+        var normalizedAttributes = NormalizeProjectedAttributes(projectedAttributes);
+        _completed = handler;
         _completedTextMode = textMode;
-        foreach (var attribute in projectedAttributes)
-            _projectedAttributes.Add(Selector.NormalizeName(attribute, nameof(projectedAttributes)));
+        _projectedAttributes.UnionWith(normalizedAttributes);
         return this;
     }
 
-    private void EnsureLowLevelHandlersCanBeAdded()
+    private static string[] NormalizeProjectedAttributes(string[] projectedAttributes) =>
+        projectedAttributes
+            .Select(attribute => Selector.NormalizeAttributeName(attribute, nameof(projectedAttributes)))
+            .ToArray();
+
+    private void EnsureLowLevelHandlerCanBeAdded(Delegate? existingHandler, string handlerName)
     {
         if (_completed is not null)
             throw new InvalidOperationException(
                 "Start, text, and end callbacks cannot be combined with a completed-element callback on the same query node."
             );
+        if (existingHandler is not null)
+            throw new InvalidOperationException($"A query node can have only one {handlerName} callback.");
     }
 }

@@ -2,6 +2,10 @@
 
 namespace AngleSharp.ReadOnlyDom.Streaming;
 
+/// <summary>
+/// A callback-scoped captured lexical element. Completion occurs on a matching end tag, lexical recovery,
+/// a void/self-closing start tag, or end of input.
+/// </summary>
 public readonly ref struct CompletedElement
 {
     private readonly CapturedElementBuffer _capture;
@@ -28,6 +32,7 @@ public readonly ref struct CompletedElement
     /// <summary>Returns an owned UTF-16 string, decoding only when requested.</summary>
     public string GetText() => _capture.GetText();
 
+    /// <summary>Returns a callback-scoped borrowed attribute value using case-insensitive HTML name matching.</summary>
     public bool TryGetAttributeUtf8(string name, out ReadOnlySpan<byte> value)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -52,8 +57,10 @@ public readonly ref struct CompletedElement
         return false;
     }
 
+    /// <summary>Returns an owned UTF-16 attribute value, decoding only when requested.</summary>
     public string? GetAttribute(string name) =>
         TryGetAttributeUtf8(name, out var value) ? Encoding.UTF8.GetString(value) : null;
 
+    /// <summary>Returns an owned UTF-16 attribute value, or an empty string when the attribute is absent.</summary>
     public string GetAttributeOrEmpty(string name) => GetAttribute(name) ?? string.Empty;
 }

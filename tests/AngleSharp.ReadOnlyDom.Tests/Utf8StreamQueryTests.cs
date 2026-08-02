@@ -54,6 +54,77 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task StartHandlersSeeOnlyTheirOwnProjectedAttributesWithAsciiInsensitiveStringLookup()
+    {
+        var root = StreamQuery.For<QueryState>("main");
+        root.Descendant("a")
+            .OnStart(
+                static (ref QueryState state, in Element element) =>
+                    state.Events.Add(
+                        $"first:{element.TryGetAttribute("HREF", out _)}:{element.TryGetAttribute("title", out _)}"
+                    ),
+                "href"
+            );
+        root.Descendant("a")
+            .OnStart(
+                static (ref QueryState state, in Element element) =>
+                    state.Events.Add(
+                        $"second:{element.TryGetAttribute("href", out _)}:{element.TryGetAttribute("TITLE", out _)}"
+                    ),
+                "title"
+            );
+
+        var state = root.Compile().Execute("<main><a href=/item title=Item></a></main>"u8, new QueryState());
+
+        await Assert.That(state.Events).IsEquivalentTo(["first:True:False", "second:False:True"]);
+    }
+
+    [Test]
+    public async Task RepeatedLowLevelHandlersAndNullProjectionArraysAreRejected()
+    {
+        var start = StreamQuery
+            .For<QueryState>("div")
+            .OnStart(static (ref QueryState _, in Element _) => { });
+        var text = StreamQuery
+            .For<QueryState>("div")
+            .OnText(static (ref QueryState _, ReadOnlySpan<byte> _) => { });
+        var end = StreamQuery.For<QueryState>("div").OnEnd(static (ref QueryState _) => { });
+
+        await Assert
+            .That(() => start.OnStart(static (ref QueryState _, in Element _) => { }))
+            .Throws<InvalidOperationException>();
+        await Assert
+            .That(() => text.OnText(static (ref QueryState _, ReadOnlySpan<byte> _) => { }))
+            .Throws<InvalidOperationException>();
+        await Assert
+            .That(() => end.OnEnd(static (ref QueryState _) => { }))
+            .Throws<InvalidOperationException>();
+        await Assert
+            .That(() => StreamQuery.For<QueryState>("div").OnStart(static (ref QueryState _, in Element _) => { }, null!))
+            .Throws<ArgumentNullException>();
+        await Assert
+            .That(() => StreamQuery.For<QueryState>("div").OnClose(static (ref QueryState _, in CompletedElement _) => { }, null!))
+            .Throws<ArgumentNullException>();
+    }
+
+    [Test]
+    public async Task SelectorNamesRejectOnlyUnsupportedAsciiDelimitersAndControls()
+    {
+        foreach (var name in new[] { "a b", "a/b", "a>b", "a\0b", "a\u0001b", "a\u007Fb" })
+        {
+            await Assert.That(() => StreamQuery.For<QueryState>(name)).Throws<ArgumentException>();
+            await Assert
+                .That(() => StreamQuery.For<QueryState>("div").Attribute(name))
+                .Throws<ArgumentException>();
+        }
+
+        StreamQuery.For<QueryState>("a=b").Attribute("data'value").Compile();
+        await Assert
+            .That(() => StreamQuery.For<QueryState>("div").Attribute("data=value"))
+            .Throws<ArgumentException>();
+    }
+
+    [Test]
     public async Task MixedCaseCompactAndFallbackNamesPreserveFirstDuplicateAttribute()
     {
         var root = StreamQuery
@@ -335,16 +406,10 @@ public sealed class QueryTests
     }
 
     [Test]
-    public async Task ExplanationAndNodeLimitMakeTheExecutionModelExplicit()
+    public async Task QueryNodeLimitIsEnforced()
     {
         var root = StreamQuery.For<QueryState>("ul").Class("news-list");
         root.Descendant("a").Attribute("href").OnStart(static (ref QueryState _, in Element _) => { }, "title");
-        var explanation = root.Compile().Explanation;
-
-        await Assert.That(explanation.ExecutionModel).IsEqualTo(QueryExecutionModel.LexicalStreaming);
-        await Assert.That(explanation.QueryNodes).IsEqualTo(2);
-        await Assert.That(explanation.RequiredTags).IsEquivalentTo(["a", "ul"]);
-        await Assert.That(explanation.RequiredAttributes).IsEquivalentTo(["class", "href", "title"]);
 
         var node = root;
         for (var index = 0; index < 63; index++)

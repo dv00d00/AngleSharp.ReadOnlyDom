@@ -23,7 +23,7 @@ RunReadOnlyDom();
 RunCompactDom();
 RunConstructionTimeViews();
 StreamingQueryExamples.Run();
-StreamingOutcomeExample.Run();
+await StreamingContentJsonExample.RunAsync();
 
 static void RunReadOnlyDom()
 {

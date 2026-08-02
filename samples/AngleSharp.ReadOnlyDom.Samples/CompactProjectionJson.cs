@@ -1,7 +1,6 @@
 using System.Buffers;
 using System.Text;
 using System.Text.Json;
-using AngleSharp.ReadOnlyDom.Compact;
 using AngleSharp.ReadOnlyDom.Compact.Projection;
 
 internal static class CompactProjectionJson

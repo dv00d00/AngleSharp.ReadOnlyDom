@@ -15,6 +15,8 @@
     <Project Path="benchmarks/AngleSharp.ReadOnlyDom.Benchmarks/AngleSharp.ReadOnlyDom.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/Samples/">
+    <Project Path="samples/AngleSharp.ReadOnlyDom.ExtractionExamples/AngleSharp.ReadOnlyDom.ExtractionExamples.csproj" />
+    <Project Path="samples/AngleSharp.ReadOnlyDom.MarkdownNavigation/AngleSharp.ReadOnlyDom.MarkdownNavigation.csproj" />
     <Project Path="samples/AngleSharp.ReadOnlyDom.MarkdownProxy/AngleSharp.ReadOnlyDom.MarkdownProxy.csproj" />
     <Project Path="samples/AngleSharp.ReadOnlyDom.Samples/AngleSharp.ReadOnlyDom.Samples.csproj" />
   </Folder>
