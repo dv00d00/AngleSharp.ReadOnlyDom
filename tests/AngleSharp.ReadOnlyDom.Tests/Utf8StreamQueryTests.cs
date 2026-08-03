@@ -405,6 +405,43 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task TextHandlerFiresOnceRegardlessOfNestedSameTagActiveCount()
+    {
+        var root = StreamQuery
+            .For<NestedTextState>("div")
+            .OnStart(static (ref NestedTextState state, in Element _) => state.Start())
+            .OnText(static (ref NestedTextState state, ReadOnlySpan<byte> text) => state.Text(text))
+            .OnEnd(static (ref NestedTextState state) => state.End());
+
+        var state = root.Compile().Execute("<div><div>inner-text</div></div>"u8, new NestedTextState());
+
+        await Assert.That(state.TextInvocations).IsEqualTo(1);
+        await Assert.That(state.Lengths).IsEquivalentTo([10, 10]);
+    }
+
+    private sealed class NestedTextState
+    {
+        private readonly List<int> _active = [];
+        public List<int> Lengths { get; } = [];
+        public int TextInvocations { get; private set; }
+
+        public void Start()
+        {
+            _active.Add(Lengths.Count);
+            Lengths.Add(0);
+        }
+
+        public void Text(ReadOnlySpan<byte> utf8)
+        {
+            TextInvocations++;
+            foreach (var index in _active)
+                Lengths[index] += utf8.Length;
+        }
+
+        public void End() => _active.RemoveAt(_active.Count - 1);
+    }
+
+    [Test]
     public async Task QueryNodeLimitIsEnforced()
     {
         var root = StreamQuery.For<QueryState>("ul").Class("news-list");

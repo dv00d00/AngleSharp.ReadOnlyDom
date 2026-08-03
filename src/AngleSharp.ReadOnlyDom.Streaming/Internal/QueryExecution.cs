@@ -270,9 +270,7 @@ internal sealed class QueryExecution<TState>
         {
             var nodeIndex = BitOperations.TrailingZeroCount(handlers);
             handlers &= handlers - 1;
-            var count = _activeCounts[nodeIndex];
-            for (var match = 0; match < count; match++)
-                _plan.Nodes[nodeIndex].Text!.Invoke(ref _state, utf8);
+            _plan.Nodes[nodeIndex].Text!.Invoke(ref _state, utf8);
         }
         AppendCompletedText(utf8);
     }

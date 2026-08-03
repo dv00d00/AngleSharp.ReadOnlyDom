@@ -1,5 +1,6 @@
 #if NET10_0
 using System.Text;
+using System.Text.RegularExpressions;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Benchmarks.Support;
 using AngleSharp.ReadOnlyDom.Streaming.Public;
@@ -19,6 +20,15 @@ public class Utf8DomProjectionBenchmark
         .OnEnd(static (ref state) => state.End())
         .Compile();
 
+    // <template> content is parsed into an inert fragment excluded from the live DOM tree, so a real HTML5 parser
+    // never yields its descendant <div>s from QuerySelectorAll. The lexical StreamQuery engine has no such special
+    // case (see issue #42 on the documented lexical-topology boundary), so it matches them like any other div.
+    // Stripped here so both projection paths compare against equivalent, unambiguous markup.
+    private static readonly Regex TemplateElement = new(
+        @"<template\b[^>]*>.*?</template\s*>",
+        RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled
+    );
+
     private readonly HtmlParser _parser = new();
     private byte[] _utf8 = null!;
     private ulong _expected;
@@ -27,7 +37,7 @@ public class Utf8DomProjectionBenchmark
     public void Setup()
     {
         var document = BenchmarkCorpus.LoadLargestAnonymized(2)[1];
-        _utf8 = Encoding.UTF8.GetBytes(document.Html);
+        _utf8 = Encoding.UTF8.GetBytes(TemplateElement.Replace(document.Html, ""));
         _expected = DecodeParseAndProject();
         var native = NativeUtf8Project();
         if (native != _expected)
