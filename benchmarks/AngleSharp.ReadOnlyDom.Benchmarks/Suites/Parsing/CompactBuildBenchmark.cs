@@ -1,11 +1,9 @@
 #if NET10_0
 using AngleSharp.Html.Parser;
-using AngleSharp.Html.Parser.Tokens.Struct;
-using AngleSharp.ReadOnlyDom.Compact;
 using AngleSharp.ReadOnlyDom.Compact.Parsing;
 using BenchmarkDotNet.Attributes;
 
-namespace AngleSharp.ReadOnlyDom.Benchmarks;
+namespace AngleSharp.ReadOnlyDom.Benchmarks.Suites.Parsing;
 
 [BenchmarkCategory("Parsing")]
 [MemoryDiagnoser]

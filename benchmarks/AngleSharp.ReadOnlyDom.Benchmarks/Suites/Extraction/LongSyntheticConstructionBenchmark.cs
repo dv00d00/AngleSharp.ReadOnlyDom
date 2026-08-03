@@ -1,15 +1,14 @@
 ﻿#if NET10_0
 using System.Text;
 using AngleSharp.Html.Parser;
-using AngleSharp.ReadOnlyDom.Compact;
 using AngleSharp.ReadOnlyDom.Compact.Parsing;
 using AngleSharp.ReadOnlyDom.Compact.Projection;
 using AngleSharp.ReadOnlyDom.Compact.Query;
-using AngleSharp.ReadOnlyDom.Html;
-using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Public;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 using BenchmarkDotNet.Attributes;
 
-namespace AngleSharp.ReadOnlyDom.Benchmarks;
+namespace AngleSharp.ReadOnlyDom.Benchmarks.Suites.Extraction;
 
 /// <summary>
 /// Full-input workload with a small result near EOF. The construction-time paths still run the complete AngleSharp

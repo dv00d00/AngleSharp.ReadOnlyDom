@@ -1,6 +1,7 @@
 ﻿using System.Text;
+using AngleSharp.ReadOnlyDom.Streaming.Internal;
 
-namespace AngleSharp.ReadOnlyDom.Streaming;
+namespace AngleSharp.ReadOnlyDom.Streaming.Public;
 
 /// <summary>
 /// A callback-scoped captured lexical element. Completion occurs on a matching end tag, lexical recovery,

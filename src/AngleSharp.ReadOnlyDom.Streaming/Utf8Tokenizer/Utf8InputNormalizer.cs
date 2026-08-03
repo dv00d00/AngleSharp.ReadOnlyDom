@@ -1,10 +1,9 @@
 #pragma warning disable CS1591 // Experimental implementation detail; shape is intentionally unsettled.
 
-using System;
 using System.Buffers;
 using System.Text;
 
-namespace AngleSharp.Streaming.Utf8;
+namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 
 public enum Utf8InputContract : byte
 {

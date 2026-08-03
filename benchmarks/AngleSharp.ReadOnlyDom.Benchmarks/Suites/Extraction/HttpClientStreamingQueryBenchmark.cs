@@ -3,10 +3,10 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Public;
 using BenchmarkDotNet.Attributes;
 
-namespace AngleSharp.ReadOnlyDom.Benchmarks;
+namespace AngleSharp.ReadOnlyDom.Benchmarks.Suites.Extraction;
 
 [BenchmarkCategory("Query", "IO")]
 [MemoryDiagnoser]

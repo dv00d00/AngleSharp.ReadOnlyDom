@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
+using AngleSharp.ReadOnlyDom.TagGenerator;
 
 string[] hotTags =
 [
@@ -219,16 +220,16 @@ return 0;
 
 static string FormatFlags(NodeFlags flags)
 {
-    var remaining = Convert.ToUInt64(flags);
+    var remaining = Convert.ToUInt64((object?)flags);
     var names = Enum.GetValues<NodeFlags>()
-        .Select(flag => (Flag: flag, Value: Convert.ToUInt64(flag)))
+        .Select(flag => (Flag: flag, Value: Convert.ToUInt64((object?)flag)))
         .Where(item => item.Value != 0 && (item.Value & (item.Value - 1)) == 0 && (remaining & item.Value) != 0)
         .OrderBy(item => item.Value)
         .Select(item => $"NodeFlags.{item.Flag}")
         .ToArray();
     foreach (var flag in Enum.GetValues<NodeFlags>())
     {
-        var value = Convert.ToUInt64(flag);
+        var value = Convert.ToUInt64((object?)flag);
         if (value != 0 && (value & (value - 1)) == 0)
             remaining &= ~value;
     }
@@ -245,6 +246,9 @@ static IEnumerable<string> GetStringConstants(Type type) =>
 
 static string Literal(string value) => $"\"{value.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
 
-internal sealed record Tag(string Constant, string Value, NodeFlags Flags = NodeFlags.None);
+namespace AngleSharp.ReadOnlyDom.TagGenerator
+{
+    internal sealed record Tag(string Constant, string Value, NodeFlags Flags = NodeFlags.None);
 
-internal sealed record KnownName(string Value, ushort Id);
+    internal sealed record KnownName(string Value, ushort Id);
+}

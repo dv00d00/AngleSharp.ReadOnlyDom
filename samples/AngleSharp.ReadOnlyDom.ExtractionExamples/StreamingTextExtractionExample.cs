@@ -1,4 +1,6 @@
-using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Public;
+
+namespace AngleSharp.ReadOnlyDom.ExtractionExamples;
 
 internal static class StreamingTextExtractionExample
 {

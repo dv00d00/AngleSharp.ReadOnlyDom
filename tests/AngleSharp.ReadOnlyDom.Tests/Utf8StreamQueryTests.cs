@@ -4,6 +4,9 @@ using System.Text;
 using System.IO.Pipelines;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Internal;
+using AngleSharp.ReadOnlyDom.Streaming.Public;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 
 namespace AngleSharp.Readonly.Tests;
 

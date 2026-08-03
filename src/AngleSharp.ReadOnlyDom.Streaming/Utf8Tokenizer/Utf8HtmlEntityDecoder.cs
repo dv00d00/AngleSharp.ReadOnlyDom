@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace AngleSharp.Streaming.Utf8;
+namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 
 internal static class Utf8HtmlEntityDecoder
 {

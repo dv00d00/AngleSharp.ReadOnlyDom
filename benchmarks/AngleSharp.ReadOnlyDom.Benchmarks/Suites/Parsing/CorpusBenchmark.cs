@@ -1,8 +1,9 @@
 using AngleSharp.Html.Parser;
+using AngleSharp.ReadOnlyDom.Benchmarks.Support;
 using AngleSharp.ReadOnlyDom.Filters;
 using BenchmarkDotNet.Attributes;
 
-namespace AngleSharp.ReadOnlyDom.Benchmarks;
+namespace AngleSharp.ReadOnlyDom.Benchmarks.Suites.Parsing;
 
 [BenchmarkCategory("Parsing")]
 [MemoryDiagnoser]

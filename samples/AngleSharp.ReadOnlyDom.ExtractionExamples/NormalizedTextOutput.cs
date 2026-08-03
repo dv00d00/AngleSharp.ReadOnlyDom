@@ -1,6 +1,8 @@
 using System.Buffers;
 using System.Text;
 
+namespace AngleSharp.ReadOnlyDom.ExtractionExamples;
+
 internal sealed class NormalizedTextOutput
 {
     private readonly StringBuilder _output = new();

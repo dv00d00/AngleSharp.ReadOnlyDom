@@ -1,6 +1,6 @@
 using System.Buffers;
 
-namespace AngleSharp.ReadOnlyDom.Streaming;
+namespace AngleSharp.ReadOnlyDom.Streaming.Internal;
 
 /// <summary>
 /// Writes UTF-8 text while collapsing source whitespace and delaying semantic separators until

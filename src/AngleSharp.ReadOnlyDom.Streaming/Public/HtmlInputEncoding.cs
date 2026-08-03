@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace AngleSharp.ReadOnlyDom.Streaming;
+namespace AngleSharp.ReadOnlyDom.Streaming.Public;
 
 /// <summary>Selects how a byte stream's HTML encoding is chosen before query callbacks begin.</summary>
 public readonly struct HtmlInputEncoding

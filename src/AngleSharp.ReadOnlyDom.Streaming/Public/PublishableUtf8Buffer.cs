@@ -1,6 +1,6 @@
 using System.Buffers;
 
-namespace AngleSharp.ReadOnlyDom.Streaming;
+namespace AngleSharp.ReadOnlyDom.Streaming.Public;
 
 /// <summary>
 /// A reusable UTF-8 buffer whose publishable prefix can be consumed without moving its tentative suffix.

@@ -1,10 +1,10 @@
 #if NET10_0
 using System.IO.Pipelines;
 using System.Text;
-using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 using BenchmarkDotNet.Attributes;
 
-namespace AngleSharp.ReadOnlyDom.Benchmarks;
+namespace AngleSharp.ReadOnlyDom.Benchmarks.Suites.Utf8;
 
 public enum Utf8BaselineWorkload
 {

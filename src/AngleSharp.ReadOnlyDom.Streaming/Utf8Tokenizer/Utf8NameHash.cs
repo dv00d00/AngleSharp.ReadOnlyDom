@@ -1,7 +1,6 @@
-using System;
 using System.Runtime.CompilerServices;
 
-namespace AngleSharp.Streaming.Utf8;
+namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 
 #pragma warning disable CS1591 // Experimental API surface; shape is intentionally unsettled.
 

@@ -1,6 +1,6 @@
 using System.Buffers;
 
-namespace AngleSharp.ReadOnlyDom.Streaming;
+namespace AngleSharp.ReadOnlyDom.Streaming.Internal;
 
 internal sealed class Utf8RewriteCollector
 {

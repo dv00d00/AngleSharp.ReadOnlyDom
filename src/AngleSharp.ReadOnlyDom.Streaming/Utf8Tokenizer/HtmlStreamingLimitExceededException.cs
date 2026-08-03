@@ -1,10 +1,6 @@
 #pragma warning disable CS1591 // Experimental API surface; shape is intentionally unsettled.
 
-using System.IO;
-
-namespace AngleSharp.Streaming.Utf8;
-
-using System;
+namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 
 public enum HtmlStreamingLimit
 {

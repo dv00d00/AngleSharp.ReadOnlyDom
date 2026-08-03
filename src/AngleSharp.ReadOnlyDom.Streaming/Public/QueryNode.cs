@@ -1,4 +1,6 @@
-﻿namespace AngleSharp.ReadOnlyDom.Streaming;
+﻿using AngleSharp.ReadOnlyDom.Streaming.Internal;
+
+namespace AngleSharp.ReadOnlyDom.Streaming.Public;
 
 /// <summary>
 /// Defines a mutable query over the token stream's lexical start/end-tag stack. It does not represent

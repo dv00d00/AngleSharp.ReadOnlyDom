@@ -1,10 +1,6 @@
 #pragma warning disable CS1591 // Experimental diagnostics surface; not proposed as final API.
 
-using System.Collections.Generic;
-
-namespace AngleSharp.Streaming.Utf8;
-
-using System;
+namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 
 public sealed class Utf8HtmlTokenizerStateMetrics(Int32 stateCount)
 {

@@ -1,4 +1,9 @@
 ﻿using System.Runtime;
+using AngleSharp.ReadOnlyDom.Benchmarks.Support;
+#if NET10_0
+using AngleSharp.ReadOnlyDom.Benchmarks.Suites.Extraction;
+using AngleSharp.ReadOnlyDom.Benchmarks.Suites.Utf8;
+#endif
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Diagnosers;

@@ -1,4 +1,6 @@
-namespace AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Internal;
+
+namespace AngleSharp.ReadOnlyDom.Streaming.Public;
 
 /// <summary>Records byte-preserving edits to the currently matched start tag.</summary>
 public ref struct StartTagEditor

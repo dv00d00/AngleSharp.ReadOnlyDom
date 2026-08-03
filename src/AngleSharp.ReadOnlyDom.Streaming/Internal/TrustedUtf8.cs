@@ -1,7 +1,7 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
-namespace AngleSharp.ReadOnlyDom.Streaming;
+namespace AngleSharp.ReadOnlyDom.Streaming.Internal;
 
 /// <summary>
 /// Operations for UTF-8 emitted by the tokenizer. Callers must only pass complete,

@@ -1,4 +1,4 @@
-﻿namespace AngleSharp.ReadOnlyDom.Streaming;
+﻿namespace AngleSharp.ReadOnlyDom.Streaming.Public;
 
 /// <summary>
 /// A callback-scoped start-tag view. Attribute spans borrow execution buffers and are valid only until
