@@ -77,4 +77,5 @@ be expressed safely within the streaming contract.
 
 Start with tag, id, class token, attribute equality, descendant/direct-child paths, first/all cardinality, attribute projection, and normalized subtree text. Use an inspectable interpreted plan. Do not begin with a full CSS language, generic optimizer, generated IL, SIMD selectors, bitmap rank/select storage, or a universal column framework.
 
-Issue #7 remains the separate semantic text-projection investigation. The structured query engine may share lower-level machinery later, but neither should be forced into the other's public API before measurements.
+Issue #7 is closed. Opinionated text and Markdown projection policies now remain runnable examples over Streaming and
+Compact mechanisms rather than becoming another public library abstraction.
