@@ -5,17 +5,24 @@ package referenced by `Directory.Packages.props`. The generator reflects AngleSh
 every public `TagNames` entry, and records its effective `NodeFlags`. This makes the package's runtime construction behavior
 the canonical source instead of maintaining a second handwritten table.
 
+`src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs` is the same table emitted into the
+`AngleSharp.ReadOnlyDom.Compact` namespace, so the compact parser owns its copy instead of depending on the
+`AngleSharp.ReadOnlyDom` project for it. `--namespace` selects the emitted namespace; both files must be regenerated
+together.
+
 Regenerate after changing the AngleSharp package version:
 
 ```powershell
 dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- src/AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
-csharpier format src/AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
+dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --namespace AngleSharp.ReadOnlyDom.Compact src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
+csharpier format src/AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
 ```
 
 Verify that checked-in output is current:
 
 ```powershell
 dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --check src/AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
+dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --check --namespace AngleSharp.ReadOnlyDom.Compact src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
 ```
 
 The output uses a length switch and orders high-frequency corpus tags first within each length. Custom elements retain an

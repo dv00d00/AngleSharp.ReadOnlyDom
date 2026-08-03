@@ -26,10 +26,42 @@ string[] hotTags =
 ];
 var hotTagRanks = hotTags.Select((tag, index) => (tag, index)).ToDictionary(item => item.tag, item => item.index);
 
-var check = args.Length == 2 && args[0].Equals("--check", StringComparison.Ordinal);
-if ((!check && args.Length != 1) || (check && args.Length != 2))
+var check = false;
+var generatedNamespace = "AngleSharp.ReadOnlyDom";
+string? outputArgument = null;
+for (var index = 0; index < args.Length; index++)
 {
-    Console.Error.WriteLine("Usage: AngleSharp.ReadOnlyDom.TagGenerator [--check] <generated-file>");
+    var argument = args[index];
+    if (argument.Equals("--check", StringComparison.Ordinal))
+    {
+        check = true;
+    }
+    else if (argument.Equals("--namespace", StringComparison.Ordinal))
+    {
+        if (++index == args.Length)
+        {
+            Console.Error.WriteLine("--namespace requires a value.");
+            return 2;
+        }
+
+        generatedNamespace = args[index];
+    }
+    else if (outputArgument is null)
+    {
+        outputArgument = argument;
+    }
+    else
+    {
+        outputArgument = null;
+        break;
+    }
+}
+
+if (outputArgument is null)
+{
+    Console.Error.WriteLine(
+        "Usage: AngleSharp.ReadOnlyDom.TagGenerator [--check] [--namespace <namespace>] <generated-file>"
+    );
     return 2;
 }
 
@@ -83,7 +115,7 @@ output.AppendLine();
 output.AppendLine("using AngleSharp.Common;");
 output.AppendLine("using AngleSharp.Dom;");
 output.AppendLine();
-output.AppendLine("namespace AngleSharp.ReadOnlyDom;");
+output.AppendLine($"namespace {generatedNamespace};");
 output.AppendLine();
 output.AppendLine("internal static class GeneratedTagMetadata");
 output.AppendLine("{");
@@ -165,7 +197,7 @@ output.AppendLine("    }");
 output.AppendLine("#endif");
 output.AppendLine("}");
 
-var outputPath = Path.GetFullPath(args[^1]);
+var outputPath = Path.GetFullPath(outputArgument);
 var generated = output.ToString().ReplaceLineEndings("\n");
 if (check)
 {
