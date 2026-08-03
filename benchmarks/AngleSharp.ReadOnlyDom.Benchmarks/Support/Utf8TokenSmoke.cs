@@ -3,7 +3,7 @@ using System.Buffers;
 using System.Text;
 using AngleSharp.Html;
 using AngleSharp.Html.Parser;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks.Support;

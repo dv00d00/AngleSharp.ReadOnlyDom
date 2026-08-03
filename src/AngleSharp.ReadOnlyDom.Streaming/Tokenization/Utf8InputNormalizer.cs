@@ -3,7 +3,7 @@
 using System.Buffers;
 using System.Text;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 public enum Utf8InputContract : byte
 {

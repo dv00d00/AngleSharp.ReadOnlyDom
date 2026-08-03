@@ -1,6 +1,6 @@
 ﻿using System.Buffers;
 using System.Text;
-using AngleSharp.ReadOnlyDom.Streaming.Public;
+using AngleSharp.ReadOnlyDom.Streaming.Output;
 
 namespace AngleSharp.ReadOnlyDom.MarkdownProxy.MD
 {

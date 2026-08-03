@@ -1,7 +1,7 @@
 #if NET10_0
 using System.IO.Pipelines;
 using System.Text;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks.Suites.Utf8;

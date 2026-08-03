@@ -111,7 +111,7 @@ Nodes and attributes live in pooled columns; lightweight handles provide the obj
 Use stream queries when the desired result is known before parsing and no DOM needs to escape.
 
 ```csharp
-using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
 
 var query = StreamQuery
     .For<List<string>>("article")

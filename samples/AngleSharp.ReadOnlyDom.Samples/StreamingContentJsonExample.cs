@@ -3,7 +3,8 @@ using System.Buffers.Text;
 using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
-using AngleSharp.ReadOnlyDom.Streaming.Public;
+using AngleSharp.ReadOnlyDom.Streaming.Output;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
 
 namespace AngleSharp.ReadOnlyDom.Samples;
 

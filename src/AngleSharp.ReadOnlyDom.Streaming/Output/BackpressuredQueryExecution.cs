@@ -1,8 +1,9 @@
 using System.IO.Pipelines;
-using AngleSharp.ReadOnlyDom.Streaming.Internal;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+using AngleSharp.ReadOnlyDom.Streaming.Input;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Public;
+namespace AngleSharp.ReadOnlyDom.Streaming.Output;
 
 public static class BackpressuredQueryExecution
 {

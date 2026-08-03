@@ -3,8 +3,8 @@ using System.Text;
 using System.Text.RegularExpressions;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Benchmarks.Support;
-using AngleSharp.ReadOnlyDom.Streaming.Public;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks.Suites.Utf8;

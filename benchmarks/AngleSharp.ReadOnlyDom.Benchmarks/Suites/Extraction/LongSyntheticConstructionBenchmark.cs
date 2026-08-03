@@ -4,8 +4,8 @@ using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Compact.Parsing;
 using AngleSharp.ReadOnlyDom.Compact.Projection;
 using AngleSharp.ReadOnlyDom.Compact.Query;
-using AngleSharp.ReadOnlyDom.Streaming.Public;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks.Suites.Extraction;

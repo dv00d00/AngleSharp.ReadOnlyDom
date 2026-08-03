@@ -3,7 +3,7 @@
 using System.Buffers;
 using System.IO.Pipelines;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 public sealed class Utf8HtmlTokenizer
 {

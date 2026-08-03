@@ -2,7 +2,7 @@
 
 using System.Buffers;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 internal static class Utf8AttributeNameIndex
 {

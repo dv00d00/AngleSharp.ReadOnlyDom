@@ -1,4 +1,6 @@
-namespace AngleSharp.ReadOnlyDom.Streaming.Public;
+using AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
+
+namespace AngleSharp.ReadOnlyDom.Streaming.Query;
 
 internal enum QueryRelation : byte
 {

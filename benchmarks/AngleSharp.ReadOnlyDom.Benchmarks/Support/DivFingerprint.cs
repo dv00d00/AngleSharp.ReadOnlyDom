@@ -1,7 +1,7 @@
 #if NET10_0
 using System.Buffers;
-using AngleSharp.ReadOnlyDom.Streaming.Internal;
-using AngleSharp.ReadOnlyDom.Streaming.Public;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks.Support;
 

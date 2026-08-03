@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 /// <summary>
 /// A callback-scoped HTML name retaining its source spelling while exposing its

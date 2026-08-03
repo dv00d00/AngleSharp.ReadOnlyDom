@@ -1,4 +1,4 @@
-﻿namespace AngleSharp.ReadOnlyDom.Streaming.Public;
+﻿namespace AngleSharp.ReadOnlyDom.Streaming.Output;
 
 /// <summary>
 /// Exposes UTF-8 bytes that are final and safe to publish downstream. The memory remains valid until
