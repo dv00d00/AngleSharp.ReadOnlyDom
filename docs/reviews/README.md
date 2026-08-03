@@ -5,7 +5,7 @@ These documents capture the cleanup review performed against pull request #56 at
 
 - [Compact lane review](2026-08-02-pr-56-compact.md)
 - [Compact refactor follow-up](2026-08-02-compact-refactor-follow-up.md)
-- [Open GitHub issues audit](2026-08-02-open-issues-audit.md)
+- [Open GitHub issues audit and disposition](2026-08-02-open-issues-audit.md)
 - [Streaming lane review](2026-08-02-pr-56-streaming.md)
 - [Streaming refactor follow-up](2026-08-03-streaming-refactor-follow-up.md)
 - [Repository structure and cleanup review](2026-08-02-pr-56-repository-cleanup.md)

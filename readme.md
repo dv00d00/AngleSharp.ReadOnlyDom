@@ -93,7 +93,9 @@ they expose.
 Use the compact representation when a parsed document must survive several known queries.
 
 ```csharp
-using AngleSharp.ReadOnlyDom.Compact;
+using AngleSharp.ReadOnlyDom.Compact.Document;
+using AngleSharp.ReadOnlyDom.Compact.Parsing;
+using AngleSharp.ReadOnlyDom.Compact.Query;
 
 var parser = CompactParser.CreateParser(CompactMetadataOptions.ParentLinks);
 using var document = parser.ParseCompactDocument(html);

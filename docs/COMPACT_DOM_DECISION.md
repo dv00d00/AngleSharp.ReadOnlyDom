@@ -42,6 +42,11 @@ If a permanently owned representation is required later, it should be an explici
 caller `HtmlParserOptions`. Internal middleware and attribute-filter paths still support predicate pushdown for projections
 and benchmarks; discarded subtrees and attributes never enter the arena.
 
+The default Compact parser is extraction-oriented: it suppresses comments and processing instructions while retaining
+the constructed element and text topology. Callers that require those node kinds must pass explicit `HtmlParserOptions`
+with `SkipComments` and `SkipProcessingInstructions` disabled. This policy is parser configuration, not a limitation of
+the columnar representation, and no hidden named fidelity preset changes it.
+
 Namespace and prefix values are derived, source-reference storage is conditional, template storage is lazy, and the
 attribute arena is allocated only after the first accepted attribute.
 
