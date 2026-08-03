@@ -3,32 +3,34 @@ using System.Buffers.Text;
 using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
-using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Public;
+
+namespace AngleSharp.ReadOnlyDom.Samples;
 
 internal static class StreamingContentJsonExample
 {
     private static readonly byte[] Html =
         """
-        <html>
-          <head><title>Developer resources</title></head>
-          <body>
-            <main>
-              <article data-kind="guide">
-                <h2>Streaming HTML</h2>
-                <p>Process large responses without retaining a DOM.</p>
-                <a href="/guides/streaming">Read guide</a>
-                <span class="reading-time" data-minutes="8">8 minutes</span>
-              </article>
-              <article data-kind="reference">
-                <h2>Query API</h2>
-                <p>Match known structures directly over UTF-8 input.</p>
-                <a href="https://example.com/api">Open reference</a>
-                <span class="reading-time" data-minutes="5">5 minutes</span>
-              </article>
-            </main>
-          </body>
-        </html>
-        """u8.ToArray();
+            <html>
+              <head><title>Developer resources</title></head>
+              <body>
+                <main>
+                  <article data-kind="guide">
+                    <h2>Streaming HTML</h2>
+                    <p>Process large responses without retaining a DOM.</p>
+                    <a href="/guides/streaming">Read guide</a>
+                    <span class="reading-time" data-minutes="8">8 minutes</span>
+                  </article>
+                  <article data-kind="reference">
+                    <h2>Query API</h2>
+                    <p>Match known structures directly over UTF-8 input.</p>
+                    <a href="https://example.com/api">Open reference</a>
+                    <span class="reading-time" data-minutes="5">5 minutes</span>
+                  </article>
+                </main>
+              </body>
+            </html>
+            """u8.ToArray();
 
     private static readonly QueryPlan<ContentJsonOutput> Plan = CreatePlan();
 

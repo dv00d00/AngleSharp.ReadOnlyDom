@@ -3,11 +3,10 @@ using System.Buffers;
 using System.Text;
 using AngleSharp.Html;
 using AngleSharp.Html.Parser;
-using AngleSharp.Html.Parser.Tokens;
-using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 using AngleSharp.Text;
 
-namespace AngleSharp.ReadOnlyDom.Benchmarks;
+namespace AngleSharp.ReadOnlyDom.Benchmarks.Support;
 
 internal static class Utf8TokenSmoke
 {

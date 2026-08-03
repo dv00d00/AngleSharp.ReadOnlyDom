@@ -1,8 +1,6 @@
 #pragma warning disable CS1591 // Experimental implementation detail; shape is intentionally unsettled.
 
-using System;
-
-namespace AngleSharp.Streaming.Utf8;
+namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 
 /// <summary>
 /// Frames streaming input, enforces the source-byte limit, and optionally repairs malformed UTF-8

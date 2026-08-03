@@ -1,4 +1,4 @@
-namespace AngleSharp.ReadOnlyDom.Benchmarks;
+namespace AngleSharp.ReadOnlyDom.Benchmarks.Support;
 
 internal sealed record CorpusDocument(string Name, string Html);
 

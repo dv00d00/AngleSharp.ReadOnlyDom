@@ -1,5 +1,9 @@
 using System.IO.Pipelines;
+// The markdown projection types are linked in from the MarkdownProxy sample.
+using AngleSharp.ReadOnlyDom.MarkdownProxy.MD;
 using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Public;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 using AngleSharp.Streaming.Utf8;
 
 const long MaximumPageBytes = 1024 * 1024;

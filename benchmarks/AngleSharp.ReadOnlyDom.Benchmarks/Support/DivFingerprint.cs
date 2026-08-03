@@ -1,8 +1,9 @@
 #if NET10_0
 using System.Buffers;
-using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Internal;
+using AngleSharp.ReadOnlyDom.Streaming.Public;
 
-namespace AngleSharp.ReadOnlyDom.Benchmarks;
+namespace AngleSharp.ReadOnlyDom.Benchmarks.Support;
 
 internal static class DivFingerprint
 {

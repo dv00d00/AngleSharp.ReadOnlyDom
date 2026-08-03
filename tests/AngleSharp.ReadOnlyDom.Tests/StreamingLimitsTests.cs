@@ -2,6 +2,8 @@
 using System.IO.Pipelines;
 using System.Text;
 using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Public;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 
 namespace AngleSharp.Readonly.Tests;
 

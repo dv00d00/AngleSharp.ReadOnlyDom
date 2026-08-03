@@ -3,6 +3,8 @@ using System.Buffers;
 using System.IO.Pipelines;
 using System.Text;
 using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Internal;
+using AngleSharp.ReadOnlyDom.Streaming.Public;
 
 namespace AngleSharp.Readonly.Tests;
 

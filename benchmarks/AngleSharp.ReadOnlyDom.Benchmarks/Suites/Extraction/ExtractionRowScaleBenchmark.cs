@@ -1,14 +1,13 @@
 #if NET10_0
 using System.Text;
 using AngleSharp.Html.Parser;
-using AngleSharp.ReadOnlyDom.Compact;
 using AngleSharp.ReadOnlyDom.Compact.Parsing;
 using AngleSharp.ReadOnlyDom.Compact.Projection;
 using AngleSharp.ReadOnlyDom.Compact.Query;
 using AngleSharp.ReadOnlyDom.Html;
 using BenchmarkDotNet.Attributes;
 
-namespace AngleSharp.ReadOnlyDom.Benchmarks;
+namespace AngleSharp.ReadOnlyDom.Benchmarks.Suites.Extraction;
 
 /// <summary>
 /// Many-rows extraction: every lane produces one owned row per section, so cost scales with

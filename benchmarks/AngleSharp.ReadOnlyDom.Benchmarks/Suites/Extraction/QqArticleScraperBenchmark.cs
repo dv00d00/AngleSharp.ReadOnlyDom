@@ -4,20 +4,21 @@ using System.IO.Pipelines;
 using System.Text;
 using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens.Struct;
-using AngleSharp.ReadOnlyDom.Compact;
+using AngleSharp.ReadOnlyDom.Benchmarks.Support;
 using AngleSharp.ReadOnlyDom.Compact.Document;
 using AngleSharp.ReadOnlyDom.Compact.Parsing;
 using AngleSharp.ReadOnlyDom.Compact.Query;
 using AngleSharp.ReadOnlyDom.Filters;
 using AngleSharp.ReadOnlyDom.Html;
-using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Streaming.Public;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 using AngleSharp.Text;
 using BenchmarkDotNet.Attributes;
 using AngleSharpDocument = AngleSharp.Dom.IDocument;
 using MutableDocument = AngleSharp.Dom.Document;
 using MutableElement = AngleSharp.Dom.Element;
 
-namespace AngleSharp.ReadOnlyDom.Benchmarks;
+namespace AngleSharp.ReadOnlyDom.Benchmarks.Suites.Extraction;
 
 /// <summary>
 /// Turns the README's pathological ParserBenchmark [UrlTest=qq] fixture into a realistic scraper.

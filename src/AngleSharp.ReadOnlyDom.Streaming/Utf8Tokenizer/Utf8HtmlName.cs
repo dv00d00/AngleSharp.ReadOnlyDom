@@ -1,12 +1,11 @@
 #pragma warning disable CS1591 // Experimental API surface; shape is intentionally unsettled.
 
-using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
-namespace AngleSharp.Streaming.Utf8;
+namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 
 /// <summary>
 /// A callback-scoped HTML name retaining its source spelling while exposing its

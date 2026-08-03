@@ -3,6 +3,8 @@ using AngleSharp.ReadOnlyDom.Compact.Document;
 using AngleSharp.ReadOnlyDom.Compact.Parsing;
 using AngleSharp.ReadOnlyDom.Compact.Query;
 
+namespace AngleSharp.ReadOnlyDom.ExtractionExamples;
+
 internal static class CompactMarkdownProjectionExample
 {
     internal static string ProjectArticle(string html, string id, params string[] excludedElements)

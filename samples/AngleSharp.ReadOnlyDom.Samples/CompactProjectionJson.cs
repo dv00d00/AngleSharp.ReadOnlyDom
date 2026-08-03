@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using AngleSharp.ReadOnlyDom.Compact.Projection;
 
+namespace AngleSharp.ReadOnlyDom.Samples;
+
 internal static class CompactProjectionJson
 {
     internal static string SerializeFirst(CompactProjectionResult result)

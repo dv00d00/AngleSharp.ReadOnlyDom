@@ -1,8 +1,9 @@
 #if NET10_0
 using System.Text;
-using AngleSharp.ReadOnlyDom.Streaming;
+using AngleSharp.ReadOnlyDom.Benchmarks.Suites.Utf8;
+using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
 
-namespace AngleSharp.ReadOnlyDom.Benchmarks;
+namespace AngleSharp.ReadOnlyDom.Benchmarks.Support;
 
 internal static class Utf8TokenizerBaselineRunner
 {
