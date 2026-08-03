@@ -9,7 +9,7 @@ public enum CompactNodeKind : byte
     Text,
     Comment,
     ProcessingInstruction,
-    Other
+    Other,
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -80,11 +80,11 @@ public enum CompactMetadataOptions
 {
     None = 0,
     ParentLinks = 1 << 0,
-    SourceLocations = 1 << 1
+    SourceLocations = 1 << 1,
 }
 
 internal enum CompactDocumentLayout
 {
     FrozenColumns,
-    Packed
+    Packed,
 }

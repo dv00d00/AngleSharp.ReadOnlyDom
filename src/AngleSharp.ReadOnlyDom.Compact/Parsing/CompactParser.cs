@@ -69,10 +69,7 @@ public static class CompactParser
         return CreateParserForTesting(attributeFilter: attributeFilter);
     }
 
-    internal static HtmlParser CreateParser(
-        HtmlParserOptions parserOptions,
-        CompactAttributeFilter attributeFilter
-    )
+    internal static HtmlParser CreateParser(HtmlParserOptions parserOptions, CompactAttributeFilter attributeFilter)
     {
         return CreateParserForTesting(attributeFilter: attributeFilter, parserOptions: parserOptions);
     }
@@ -108,10 +105,7 @@ public static class CompactParser
         return Parse(parser, source, middleware);
     }
 
-    public static CompactDocument ParseCompactDocument(
-        this IHtmlParser parser,
-        string source
-    )
+    public static CompactDocument ParseCompactDocument(this IHtmlParser parser, string source)
     {
         return Parse(parser, new TextSource(new StringTextSource(source)), null);
     }
@@ -125,10 +119,7 @@ public static class CompactParser
         return Parse(parser, new TextSource(new StringTextSource(source)), middleware);
     }
 
-    public static CompactDocument ParseCompactDocument(
-        this IHtmlParser parser,
-        ReadOnlyMemory<char> source
-    )
+    public static CompactDocument ParseCompactDocument(this IHtmlParser parser, ReadOnlyMemory<char> source)
     {
         return Parse(parser, new TextSource(new ReadOnlyMemoryTextSource(source)), null);
     }
@@ -216,7 +207,7 @@ public static class CompactParser
         {
             SkipComments = true,
             SkipProcessingInstructions = true,
-            IsKeepingSourceReferences = options.HasFlag(CompactMetadataOptions.SourceLocations)
+            IsKeepingSourceReferences = options.HasFlag(CompactMetadataOptions.SourceLocations),
         };
     }
 
@@ -239,10 +230,10 @@ public static class CompactParser
     private static IArenaHtmlParser RequireArenaParser(IHtmlParser parser)
     {
         return parser as IArenaHtmlParser
-               ?? throw new InvalidOperationException(
-                   $"Compact documents require a parser created by {nameof(CompactParser)}.{nameof(CreateParser)}(), "
-                   + $"but received a {parser.GetType().Name}."
-               );
+            ?? throw new InvalidOperationException(
+                $"Compact documents require a parser created by {nameof(CompactParser)}.{nameof(CreateParser)}(), "
+                    + $"but received a {parser.GetType().Name}."
+            );
     }
 
     private static CompactDocument Parse(IHtmlParser parser, TextSource source, TokenizerMiddleware? middleware)
@@ -286,14 +277,7 @@ public static class CompactParser
             CancellationToken cancel
         )
         {
-            return ParseDocumentAsync(
-                source,
-                sourceMode,
-                _factory,
-                encoding,
-                middleware,
-                cancel
-            );
+            return ParseDocumentAsync(source, sourceMode, _factory, encoding, middleware, cancel);
         }
     }
 }

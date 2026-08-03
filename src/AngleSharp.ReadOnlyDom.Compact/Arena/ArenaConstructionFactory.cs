@@ -32,12 +32,11 @@ internal sealed class ArenaConstructionFactory : IHtmlTreeConstructionFactory<Ar
 
     public ArenaDocument CreateDocument(TextSource source, IBrowsingContext? context = null)
     {
-        return new Arena(ScaledHints(source), _trackSourceReferences, _constructionView?.CreateState(source))
-            .CreateDocument(
-                source,
-                _options,
-                _layout
-            );
+        return new Arena(
+            ScaledHints(source),
+            _trackSourceReferences,
+            _constructionView?.CreateState(source)
+        ).CreateDocument(source, _options, _layout);
     }
 
     public ArenaHandle Create(
@@ -47,8 +46,10 @@ internal sealed class ArenaConstructionFactory : IHtmlTreeConstructionFactory<Ar
         NodeFlags flags = NodeFlags.None
     )
     {
-        return new ArenaHandle(document.Arena,
-            document.Arena.CreateElementHandle(localName, prefix, GetHtmlFlags(localName, flags)));
+        return new ArenaHandle(
+            document.Arena,
+            document.Arena.CreateElementHandle(localName, prefix, GetHtmlFlags(localName, flags))
+        );
     }
 
     public ArenaHandle CreateNoScript(ArenaDocument document, bool scripting)
@@ -151,7 +152,7 @@ internal sealed class ArenaConstructionFactory : IHtmlTreeConstructionFactory<Ar
             InitialNodeCapacity = Scale(length / 32, _hints.InitialNodeCapacity),
             InitialPayloadCapacity = Scale(length / 48, _hints.InitialPayloadCapacity),
             InitialAttributeCapacity = Scale(length / 48, _hints.InitialAttributeCapacity),
-            InitialTextCapacity = Scale(length / 2, _hints.InitialTextCapacity)
+            InitialTextCapacity = Scale(length / 2, _hints.InitialTextCapacity),
         };
 
         static int Scale(int estimate, int hint)
@@ -190,7 +191,8 @@ internal sealed class ArenaConstructionFactory : IHtmlTreeConstructionFactory<Ar
             || name.Equals(TagNames.Mtext)
         )
             flags |= NodeFlags.MathTip | NodeFlags.Special | NodeFlags.Scoped;
-        else if (name.Equals(TagNames.AnnotationXml)) flags |= NodeFlags.Special | NodeFlags.Scoped;
+        else if (name.Equals(TagNames.AnnotationXml))
+            flags |= NodeFlags.Special | NodeFlags.Scoped;
         return flags;
     }
 }

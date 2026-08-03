@@ -3,7 +3,7 @@ namespace AngleSharp.ReadOnlyDom.Compact.Projection;
 internal enum CompactProjectionCardinality
 {
     First,
-    All
+    All,
 }
 
 public static class CompactProjection

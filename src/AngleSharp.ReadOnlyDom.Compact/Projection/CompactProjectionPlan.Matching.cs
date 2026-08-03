@@ -46,11 +46,7 @@ public sealed partial class CompactProjectionPlan
         CompactProjectionExecutionState state
     )
     {
-        for (
-            var handle = arena.FirstChild(scope);
-            handle >= 0;
-            handle = NextInSubtree(arena, handle, scope)
-        )
+        for (var handle = arena.FirstChild(scope); handle >= 0; handle = NextInSubtree(arena, handle, scope))
         {
             if (arena.Kind(handle) != CompactNodeKind.Element)
                 continue;
@@ -126,9 +122,7 @@ public sealed partial class CompactProjectionPlan
 
         var parent = arena.Parent(handle);
         if (steps[index].Axis == CompactPathAxis.Child)
-            return Store(
-                parent >= 0 && MatchesChain(arena, parent, steps, index - 1, state, useMemoization, memo)
-            );
+            return Store(parent >= 0 && MatchesChain(arena, parent, steps, index - 1, state, useMemoization, memo));
 
         // Descendant chains can reach the same (ancestor, step) pair through many different
         // backtracking paths when the selector contains at least two descendant axes. Allocate the

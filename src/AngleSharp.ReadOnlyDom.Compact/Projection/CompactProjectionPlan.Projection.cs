@@ -27,9 +27,7 @@ public sealed partial class CompactProjectionPlan
     )
     {
         var values = new CompactProjectionField[_fields.Length];
-        Span<int> targetCache = _targetSlotCount <= 32
-            ? stackalloc int[_targetSlotCount]
-            : new int[_targetSlotCount];
+        Span<int> targetCache = _targetSlotCount <= 32 ? stackalloc int[_targetSlotCount] : new int[_targetSlotCount];
         targetCache.Fill(UnresolvedTarget);
 
         foreach (var index in _evaluationOrder)
@@ -59,7 +57,7 @@ public sealed partial class CompactProjectionPlan
                     CompactFieldProjectionKind.NormalizedText => new CompactProjectionValue(
                         NormalizeText(arena, target, state)
                     ),
-                    _ => throw new InvalidOperationException("Unknown field projection.")
+                    _ => throw new InvalidOperationException("Unknown field projection."),
                 };
             if (field.Required && !value.Exists)
             {
@@ -95,11 +93,7 @@ public sealed partial class CompactProjectionPlan
         return default;
     }
 
-    private static string NormalizeText(
-        ConstructionArena arena,
-        int target,
-        CompactProjectionExecutionState state
-    )
+    private static string NormalizeText(ConstructionArena arena, int target, CompactProjectionExecutionState state)
     {
         state.NormalizedTextProjected();
         var output = TextBuilderPool.Get();

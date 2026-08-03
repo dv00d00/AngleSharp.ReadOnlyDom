@@ -71,8 +71,7 @@ public static class CompactQuery
 
     internal static ElementQuery Elements(this CompactDocument document, ushort tagId)
     {
-        return new ElementQuery(document, tagId, 0, document.NodeCount, false, default, null, false, default,
-            null);
+        return new ElementQuery(document, tagId, 0, document.NodeCount, false, default, null, false, default, null);
     }
 
     public static ElementQuery Elements(this Node node, string tag)
@@ -95,18 +94,7 @@ public static class CompactQuery
         var document = node.Document;
         var start = node.Handle + 1;
         var end = document.IsTemplate(node.Handle) ? start : document.GetNode(node.Handle).SubtreeEndExclusive;
-        return new ElementQuery(
-            document,
-            tagId,
-            start,
-            end,
-            false,
-            default,
-            null,
-            false,
-            default,
-            null
-        );
+        return new ElementQuery(document, tagId, start, end, false, default, null, false, default, null);
     }
 
     public struct DescendantScan
@@ -195,9 +183,18 @@ public static class CompactQuery
         /// <summary>Filters by a class token using a previously resolved <c>class</c> attribute name ID.</summary>
         internal ElementQuery WithClass(ushort classNameId, string token)
         {
-            return new ElementQuery(_document, _tagId, _start, _endExclusive, true, classNameId, token, _hasAttr,
+            return new ElementQuery(
+                _document,
+                _tagId,
+                _start,
+                _endExclusive,
+                true,
+                classNameId,
+                token,
+                _hasAttr,
                 _attrId,
-                _attrValue);
+                _attrValue
+            );
         }
 
         /// <summary>Filters by attribute presence or value equality.</summary>
@@ -209,8 +206,18 @@ public static class CompactQuery
         /// <summary>Filters by a previously resolved attribute name ID.</summary>
         internal ElementQuery WithAttribute(ushort nameId, string? value = null)
         {
-            return new ElementQuery(_document, _tagId, _start, _endExclusive, _hasClass, _classId, _classToken, true,
-                nameId, value);
+            return new ElementQuery(
+                _document,
+                _tagId,
+                _start,
+                _endExclusive,
+                _hasClass,
+                _classId,
+                _classToken,
+                true,
+                nameId,
+                value
+            );
         }
 
         public Enumerator GetEnumerator()

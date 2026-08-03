@@ -39,13 +39,11 @@ public sealed partial class CompactProjectionPlan
         _retainedAttributes = [.. Requirements.RetainedAttributes];
 
         _factory = CreateFactory(collectDiagnostics: false);
-        _diagnosticRuntime = new Lazy<(ArenaConstructionFactory, IBrowsingContext)>(
-            () =>
-            {
-                var factory = CreateFactory(collectDiagnostics: true);
-                return (factory, BrowsingContext.New(Configuration.Default.With(_ => factory)));
-            }
-        );
+        _diagnosticRuntime = new Lazy<(ArenaConstructionFactory, IBrowsingContext)>(() =>
+        {
+            var factory = CreateFactory(collectDiagnostics: true);
+            return (factory, BrowsingContext.New(Configuration.Default.With(_ => factory)));
+        });
         _context = BrowsingContext.New(Configuration.Default.With(_ => _factory));
         _parserOptions = CompactParser.CreateParserOptions(CompactMetadataOptions.None);
         _parserOptions.ShouldEmitAttribute = ShouldRetainAttribute;

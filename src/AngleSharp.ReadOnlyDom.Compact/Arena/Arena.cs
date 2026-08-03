@@ -211,8 +211,8 @@ internal sealed partial class Arena : IDisposable
 
     private bool ShouldRetainWhitespaceAt(int parent, int? index)
     {
-        if (_columns.Kinds[parent] == CompactNodeKind.Element &&
-            (_columns.Flags[parent] & NodeFlags.Special) == 0) return true;
+        if (_columns.Kinds[parent] == CompactNodeKind.Element && (_columns.Flags[parent] & NodeFlags.Special) == 0)
+            return true;
 
         var previous = index is > 0 ? ChildAt(parent, index.Value - 1) : _columns.LastChildren[parent];
         while (previous >= 0)
@@ -242,7 +242,7 @@ internal sealed partial class Arena : IDisposable
             CompactNodeKind.Text => true,
             CompactNodeKind.Element => (_columns.Flags[handle] & NodeFlags.Special) == 0,
             CompactNodeKind.Comment or CompactNodeKind.ProcessingInstruction => null,
-            _ => false
+            _ => false,
         };
     }
 
@@ -274,7 +274,7 @@ internal sealed partial class Arena : IDisposable
     public CompactProjectionResult CreateProjectionResult(int root, int inputBytesConsumed)
     {
         return (_constructionView as CompactProjectionExecutionState)?.CreateResult(this, root, inputBytesConsumed)
-               ?? throw new InvalidOperationException("The arena was not configured for projection extraction.");
+            ?? throw new InvalidOperationException("The arena was not configured for projection extraction.");
     }
 
     public void SetTokensProcessed(int count)

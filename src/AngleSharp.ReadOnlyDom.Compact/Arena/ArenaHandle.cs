@@ -125,9 +125,7 @@ internal readonly struct ArenaHandle : IHtmlTreeConstructionNode<ArenaHandle>
         return Arena.AttributesSame(Value, other.Value);
     }
 
-    public void SetupElement()
-    {
-    }
+    public void SetupElement() { }
 
     public ArenaHandle ShallowCopy()
     {
@@ -146,9 +144,7 @@ internal readonly struct ArenaHandle : IHtmlTreeConstructionNode<ArenaHandle>
         Arena.PopulateTemplate(Value);
     }
 
-    public void HandleMeta()
-    {
-    }
+    public void HandleMeta() { }
 
     public bool PrepareScript(IConstructableDocumentState document)
     {

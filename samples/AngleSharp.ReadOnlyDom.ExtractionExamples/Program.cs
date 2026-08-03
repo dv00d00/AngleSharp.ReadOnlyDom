@@ -22,10 +22,7 @@ var html = args.Length == 0 ? ExampleHtml : await File.ReadAllTextAsync(args[0])
 
 Write("STREAMING TEXT EXTRACTION", StreamingTextExtractionExample.Extract(Encoding.UTF8.GetBytes(html)));
 Write("COMPACT DOM TEXT EXTRACTION", CompactTextExtractionExample.Extract(html));
-Write(
-    "COMPACT MARKDOWN PROJECTION",
-    CompactMarkdownProjectionExample.ProjectArticle(html, "content", "nav", "aside")
-);
+Write("COMPACT MARKDOWN PROJECTION", CompactMarkdownProjectionExample.ProjectArticle(html, "content", "nav", "aside"));
 
 static void Write(string title, string value)
 {

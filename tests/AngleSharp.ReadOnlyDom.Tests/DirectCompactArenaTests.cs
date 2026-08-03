@@ -323,9 +323,7 @@ internal sealed class CompactParserTests
         await Assert.That(required.Counters.RowsRejected).IsEqualTo(1);
         await Assert.That(optional.Rows.Count).IsEqualTo(3);
         await Assert.That(optional.Rows[1]["value"].Exists).IsFalse();
-        await Assert
-            .That(() => optional.Rows[0]["unknown"])
-            .Throws<KeyNotFoundException>();
+        await Assert.That(() => optional.Rows[0]["unknown"]).Throws<KeyNotFoundException>();
     }
 
     [Test]
@@ -356,18 +354,12 @@ internal sealed class CompactParserTests
             .First(CompactProjectionSelector.Tag("article"))
             .Field(
                 "href",
-                CompactFieldProjection.FirstAttribute(
-                    CompactProjectionSelector.Tag("a").WithClass("target"),
-                    "href"
-                ),
+                CompactFieldProjection.FirstAttribute(CompactProjectionSelector.Tag("a").WithClass("target"), "href"),
                 required: true
             )
             .Field(
                 "title",
-                CompactFieldProjection.FirstAttribute(
-                    CompactProjectionSelector.Tag("A").WithClass("target"),
-                    "title"
-                )
+                CompactFieldProjection.FirstAttribute(CompactProjectionSelector.Tag("A").WithClass("target"), "title")
             )
             .Compile()
             .ExecuteWithDiagnostics(html.ToString());
@@ -380,12 +372,8 @@ internal sealed class CompactParserTests
     [Test]
     public async Task EofProjectionFirstProjectionsRejectNullSelectors()
     {
-        await Assert
-            .That(() => CompactFieldProjection.FirstNormalizedText(null!))
-            .Throws<ArgumentNullException>();
-        await Assert
-            .That(() => CompactFieldProjection.FirstAttribute(null!, "href"))
-            .Throws<ArgumentNullException>();
+        await Assert.That(() => CompactFieldProjection.FirstNormalizedText(null!)).Throws<ArgumentNullException>();
+        await Assert.That(() => CompactFieldProjection.FirstAttribute(null!, "href")).Throws<ArgumentNullException>();
     }
 
     [Test]
@@ -414,9 +402,7 @@ internal sealed class CompactParserTests
     public async Task EofProjectionClassTokenRejectsEmbeddedHtmlWhitespace()
     {
         foreach (var token in new[] { "two tokens", "two\ttokens", "two\ntokens", "two\ftokens", "two\rtokens" })
-            await Assert
-                .That(() => CompactProjectionSelector.Tag("p").WithClass(token))
-                .Throws<ArgumentException>();
+            await Assert.That(() => CompactProjectionSelector.Tag("p").WithClass(token)).Throws<ArgumentException>();
     }
 
     [Test]

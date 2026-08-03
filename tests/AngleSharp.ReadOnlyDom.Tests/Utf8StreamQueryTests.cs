@@ -82,12 +82,8 @@ public sealed class QueryTests
     [Test]
     public async Task RepeatedLowLevelHandlersAndNullProjectionArraysAreRejected()
     {
-        var start = StreamQuery
-            .For<QueryState>("div")
-            .OnStart(static (ref QueryState _, in Element _) => { });
-        var text = StreamQuery
-            .For<QueryState>("div")
-            .OnText(static (ref QueryState _, ReadOnlySpan<byte> _) => { });
+        var start = StreamQuery.For<QueryState>("div").OnStart(static (ref QueryState _, in Element _) => { });
+        var text = StreamQuery.For<QueryState>("div").OnText(static (ref QueryState _, ReadOnlySpan<byte> _) => { });
         var end = StreamQuery.For<QueryState>("div").OnEnd(static (ref QueryState _) => { });
 
         await Assert
@@ -96,14 +92,18 @@ public sealed class QueryTests
         await Assert
             .That(() => text.OnText(static (ref QueryState _, ReadOnlySpan<byte> _) => { }))
             .Throws<InvalidOperationException>();
+        await Assert.That(() => end.OnEnd(static (ref QueryState _) => { })).Throws<InvalidOperationException>();
         await Assert
-            .That(() => end.OnEnd(static (ref QueryState _) => { }))
-            .Throws<InvalidOperationException>();
-        await Assert
-            .That(() => StreamQuery.For<QueryState>("div").OnStart(static (ref QueryState _, in Element _) => { }, null!))
+            .That(() =>
+                StreamQuery.For<QueryState>("div").OnStart(static (ref QueryState _, in Element _) => { }, null!)
+            )
             .Throws<ArgumentNullException>();
         await Assert
-            .That(() => StreamQuery.For<QueryState>("div").OnClose(static (ref QueryState _, in CompletedElement _) => { }, null!))
+            .That(() =>
+                StreamQuery
+                    .For<QueryState>("div")
+                    .OnClose(static (ref QueryState _, in CompletedElement _) => { }, null!)
+            )
             .Throws<ArgumentNullException>();
     }
 
@@ -113,15 +113,11 @@ public sealed class QueryTests
         foreach (var name in new[] { "a b", "a/b", "a>b", "a\0b", "a\u0001b", "a\u007Fb" })
         {
             await Assert.That(() => StreamQuery.For<QueryState>(name)).Throws<ArgumentException>();
-            await Assert
-                .That(() => StreamQuery.For<QueryState>("div").Attribute(name))
-                .Throws<ArgumentException>();
+            await Assert.That(() => StreamQuery.For<QueryState>("div").Attribute(name)).Throws<ArgumentException>();
         }
 
         StreamQuery.For<QueryState>("a=b").Attribute("data'value").Compile();
-        await Assert
-            .That(() => StreamQuery.For<QueryState>("div").Attribute("data=value"))
-            .Throws<ArgumentException>();
+        await Assert.That(() => StreamQuery.For<QueryState>("div").Attribute("data=value")).Throws<ArgumentException>();
     }
 
     [Test]

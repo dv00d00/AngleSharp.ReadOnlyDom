@@ -27,10 +27,7 @@ internal sealed class CompactProjectionExecutionState : ICompactConstructionView
 {
     private readonly CompactProjectionPlan _plan;
 
-    internal CompactProjectionExecutionState(
-        CompactProjectionPlan plan,
-        CompactProjectionDiagnostics? diagnostics
-    )
+    internal CompactProjectionExecutionState(CompactProjectionPlan plan, CompactProjectionDiagnostics? diagnostics)
     {
         _plan = plan;
         Diagnostics = diagnostics;
@@ -53,9 +50,7 @@ internal sealed class CompactProjectionExecutionState : ICompactConstructionView
         Diagnostics?.AttributeRetained(value);
     }
 
-    public void CompleteAttributes(ConstructionArena arena, int handle)
-    {
-    }
+    public void CompleteAttributes(ConstructionArena arena, int handle) { }
 
     public StringOrMemory SelectTextValue(StringOrMemory value)
     {

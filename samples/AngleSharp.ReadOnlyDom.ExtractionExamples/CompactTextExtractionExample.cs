@@ -81,7 +81,9 @@ internal static class CompactTextExtractionExample
             output.ParagraphBreak();
         foreach (var child in node.Children())
             Visit(child, output);
-        if (tag.Equals("td", StringComparison.OrdinalIgnoreCase) || tag.Equals("th", StringComparison.OrdinalIgnoreCase))
+        if (
+            tag.Equals("td", StringComparison.OrdinalIgnoreCase) || tag.Equals("th", StringComparison.OrdinalIgnoreCase)
+        )
             output.CellBreak();
         else if (block)
             output.ParagraphBreak();

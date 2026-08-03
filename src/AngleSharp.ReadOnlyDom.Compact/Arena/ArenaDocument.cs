@@ -44,9 +44,7 @@ internal sealed class ArenaDocument : IConstructableDocumentState, IDisposable
         Arena.AddComment(NodeHandle, ref token);
     }
 
-    public void TrackError(Exception exception)
-    {
-    }
+    public void TrackError(Exception exception) { }
 
     public void Dispose()
     {
