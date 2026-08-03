@@ -52,8 +52,8 @@ public readonly struct Node
     internal bool Is(ushort tagId)
     {
         return tagId != ushort.MaxValue
-               && _document!.KindAt(Handle) == CompactNodeKind.Element
-               && _document.NameIdAt(Handle) == tagId;
+            && _document!.KindAt(Handle) == CompactNodeKind.Element
+            && _document.NameIdAt(Handle) == tagId;
     }
 
     /// <summary>The parent node, or a non-existent cursor when parent links were not retained.</summary>
@@ -63,10 +63,10 @@ public readonly struct Node
     public bool IsDescendantOf(Node ancestor)
     {
         return _document is not null
-               && ReferenceEquals(_document, ancestor._document)
-               && _document.IsInSameTreeScope(Handle, ancestor.Handle)
-               && Handle > ancestor.Handle
-               && Handle < ancestor.Raw.SubtreeEndExclusive;
+            && ReferenceEquals(_document, ancestor._document)
+            && _document.IsInSameTreeScope(Handle, ancestor.Handle)
+            && Handle > ancestor.Handle
+            && Handle < ancestor.Raw.SubtreeEndExclusive;
     }
 
     public bool TryGetSourceLocation(out CompactSourceLocation source)
@@ -234,8 +234,11 @@ public readonly struct Node
 
     public ChildCursor Children()
     {
-        return new ChildCursor(_document!, _document!.IsTemplate(Handle) ? -1 : Raw.FirstChild,
-            Raw.SubtreeEndExclusive);
+        return new ChildCursor(
+            _document!,
+            _document!.IsTemplate(Handle) ? -1 : Raw.FirstChild,
+            Raw.SubtreeEndExclusive
+        );
     }
 
     public ChildCursor TemplateContent()

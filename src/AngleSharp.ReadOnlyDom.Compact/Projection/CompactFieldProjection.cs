@@ -3,7 +3,7 @@ namespace AngleSharp.ReadOnlyDom.Compact.Projection;
 internal enum CompactFieldProjectionKind
 {
     Attribute,
-    NormalizedText
+    NormalizedText,
 }
 
 public sealed class CompactFieldProjection

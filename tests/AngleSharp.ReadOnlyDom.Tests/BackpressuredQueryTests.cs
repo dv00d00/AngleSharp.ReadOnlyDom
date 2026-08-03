@@ -193,13 +193,7 @@ public sealed class BackpressuredQueryTests
                 flushThreshold: 1,
                 inputSliceSize: 1
             )
-            : await plan.ExecuteBackpressuredAsync(
-                reader,
-                writer,
-                initialState,
-                flushThreshold: 1,
-                inputSliceSize: 1
-            );
+            : await plan.ExecuteBackpressuredAsync(reader, writer, initialState, flushThreshold: 1, inputSliceSize: 1);
         await reader.CompleteAsync();
         await writer.CompleteAsync();
 

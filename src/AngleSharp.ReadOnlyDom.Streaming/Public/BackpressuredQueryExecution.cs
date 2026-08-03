@@ -87,7 +87,8 @@ public static class BackpressuredQueryExecution
                         input.Write(segment.Slice(offset, length));
                         if (execution.State.PublishableUtf8.Length >= flushThreshold)
                         {
-                            await PublishAvailableAsync(writer, execution.State, cancellationToken).ConfigureAwait(false);
+                            await PublishAvailableAsync(writer, execution.State, cancellationToken)
+                                .ConfigureAwait(false);
                         }
                     }
                 }

@@ -43,13 +43,7 @@ internal static class StreamingContentJsonExample
         using var output = new ContentJsonOutput();
         try
         {
-            await Plan.ExecuteBackpressuredAsync(
-                reader,
-                writer,
-                output,
-                flushThreshold: 1,
-                inputSliceSize: 64
-            );
+            await Plan.ExecuteBackpressuredAsync(reader, writer, output, flushThreshold: 1, inputSliceSize: 64);
         }
         finally
         {
@@ -59,55 +53,41 @@ internal static class StreamingContentJsonExample
 
         Console.WriteLine(Encoding.UTF8.GetString(json.ToArray()));
         Console.WriteLine("transformation  : page metadata and resource fields are selected while HTML is parsed");
-        Console.WriteLine("output          : each complete NDJSON record is published through backpressured PipeWriter");
+        Console.WriteLine(
+            "output          : each complete NDJSON record is published through backpressured PipeWriter"
+        );
         Console.WriteLine("materialization : no DOM or result list; only the current record is buffered");
     }
 
     private static QueryPlan<ContentJsonOutput> CreatePlan()
     {
-        var html = StreamQuery
-            .For<ContentJsonOutput>("html")
-            .OnEnd(static (ref output) => output.CompleteDocument());
+        var html = StreamQuery.For<ContentJsonOutput>("html").OnEnd(static (ref output) => output.CompleteDocument());
 
         html.Descendant("head")
             .Child("title")
-            .OnNormalizedText(
-                static (ref output, in title) => output.WritePageTitle(title.TextUtf8)
-            );
+            .OnNormalizedText(static (ref output, in title) => output.WritePageTitle(title.TextUtf8));
 
         var resources = html.Descendant("body").Child("main");
 
-        var resource = resources.Child("article")
+        var resource = resources
+            .Child("article")
             .Attribute("data-kind")
-            .OnStart(
-                static (ref output, in article) => output.StartResource(article),
-                "data-kind"
-            )
+            .OnStart(static (ref output, in article) => output.StartResource(article), "data-kind")
             .OnEnd(static (ref output) => output.EndResource());
 
-        resource.Child("h2")
-            .OnNormalizedText(
-                static (ref output, in heading) =>
-                    output.WriteResourceTitle(heading.TextUtf8)
-            );
-        resource.Child("p")
-            .OnNormalizedText(
-                static (ref output, in summary) =>
-                    output.WriteSummary(summary.TextUtf8)
-            );
-        resource.Child("a")
-            .Attribute("href")
-            .OnClose(
-                static (ref output, in link) => output.WriteUrl(link),
-                "href"
-            );
-        resource.Child("span")
+        resource
+            .Child("h2")
+            .OnNormalizedText(static (ref output, in heading) => output.WriteResourceTitle(heading.TextUtf8));
+        
+        resource.Child("p").OnNormalizedText(static (ref output, in summary) => output.WriteSummary(summary.TextUtf8));
+        
+        resource.Child("a").Attribute("href").OnClose(static (ref output, in link) => output.WriteUrl(link), "href");
+        
+        resource
+            .Child("span")
             .Class("reading-time")
             .Attribute("data-minutes")
-            .OnClose(
-                static (ref output, in time) => output.WriteReadingMinutes(time),
-                "data-minutes"
-            );
+            .OnClose(static (ref output, in time) => output.WriteReadingMinutes(time), "data-minutes");
 
         return html.Compile();
     }

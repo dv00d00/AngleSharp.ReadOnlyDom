@@ -137,13 +137,7 @@ internal sealed partial class Arena
         var nameArray = CopyCustomNames(_names);
         var templateBoundaries = CreateTemplateBoundaries(_columns.Count, true, null, null);
         var ownedText = OwnTextValues();
-        FillSubtreeEnds(
-            _columns.NextSiblings.AsSpan(0, _columns.Count),
-            _columns.Count,
-            true,
-            null,
-            null
-        );
+        FillSubtreeEnds(_columns.NextSiblings.AsSpan(0, _columns.Count), _columns.Count, true, null, null);
         _columns.ReleaseConstructionColumns(options.HasFlag(CompactMetadataOptions.ParentLinks));
         return new CompactDocument(
             this,
@@ -330,7 +324,7 @@ internal sealed partial class Arena
     private bool IsHtmlTemplate(int handle)
     {
         return (_columns.Flags[handle] & NodeFlags.HtmlMember) != 0
-               && _names.GetName(_columns.NameIds[handle]).Equals(TagNames.Template);
+            && _names.GetName(_columns.NameIds[handle]).Equals(TagNames.Template);
     }
 
     private static CompactSourceLocation GetSource(ISourceReference? source)

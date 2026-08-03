@@ -9,7 +9,7 @@ internal enum CompactPathAxis
     Descendant,
 
     /// <summary>Matches only as a direct child of the previous step.</summary>
-    Child
+    Child,
 }
 
 /// <summary>

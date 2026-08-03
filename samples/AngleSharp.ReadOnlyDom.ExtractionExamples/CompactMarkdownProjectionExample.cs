@@ -64,7 +64,10 @@ internal static class CompactMarkdownProjectionExample
             {
                 EnsureNewlines(1);
             }
-            else if (tag.Equals("ul", StringComparison.OrdinalIgnoreCase) || tag.Equals("ol", StringComparison.OrdinalIgnoreCase))
+            else if (
+                tag.Equals("ul", StringComparison.OrdinalIgnoreCase)
+                || tag.Equals("ol", StringComparison.OrdinalIgnoreCase)
+            )
             {
                 EnsureNewlines(2);
                 VisitChildren(node, inPre: false);
@@ -77,14 +80,20 @@ internal static class CompactMarkdownProjectionExample
                 VisitChildren(node, inPre: false);
                 EnsureNewlines(1);
             }
-            else if (tag.Equals("strong", StringComparison.OrdinalIgnoreCase) || tag.Equals("b", StringComparison.OrdinalIgnoreCase))
+            else if (
+                tag.Equals("strong", StringComparison.OrdinalIgnoreCase)
+                || tag.Equals("b", StringComparison.OrdinalIgnoreCase)
+            )
             {
                 FlushPendingSpace();
                 _output.Append("**");
                 VisitChildren(node, inPre: false);
                 _output.Append("**");
             }
-            else if (tag.Equals("em", StringComparison.OrdinalIgnoreCase) || tag.Equals("i", StringComparison.OrdinalIgnoreCase))
+            else if (
+                tag.Equals("em", StringComparison.OrdinalIgnoreCase)
+                || tag.Equals("i", StringComparison.OrdinalIgnoreCase)
+            )
             {
                 FlushPendingSpace();
                 _output.Append('*');

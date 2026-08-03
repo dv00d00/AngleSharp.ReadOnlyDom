@@ -7,17 +7,17 @@ using AngleSharp.ReadOnlyDom.Compact.Projection;
 using AngleSharp.ReadOnlyDom.Compact.Query;
 
 const string Html = """
-                    <!doctype html>
-                    <html>
-                      <body>
-                        <article id="content" class="guide" data-kind="sample">
-                          <h1>Parsing <em>real</em> HTML </h1>
-                          <p>Use the <a href="/parser">HTML parser</a>, not regex. </p>
-                          <ul><li>Correct tables </li><li>Malformed markup</li></ul>
-                        </article>
-                      </body>
-                    </html>
-                    """;
+    <!doctype html>
+    <html>
+      <body>
+        <article id="content" class="guide" data-kind="sample">
+          <h1>Parsing <em>real</em> HTML </h1>
+          <p>Use the <a href="/parser">HTML parser</a>, not regex. </p>
+          <ul><li>Correct tables </li><li>Malformed markup</li></ul>
+        </article>
+      </body>
+    </html>
+    """;
 
 RunReadOnlyDom();
 RunCompactDom();
@@ -60,11 +60,7 @@ static void RunConstructionTimeViews()
 
     var projectionPlan = CompactProjection
         .First(CompactProjectionSelector.Tag("article").WithId("content"))
-        .Field(
-            "title",
-            CompactFieldProjection.FirstNormalizedText(CompactProjectionSelector.Tag("h1")),
-            required: true
-        )
+        .Field("title", CompactFieldProjection.FirstNormalizedText(CompactProjectionSelector.Tag("h1")), required: true)
         .Field("kind", CompactFieldProjection.SelfAttribute("data-kind"), required: true)
         .Field("text", CompactFieldProjection.SelfNormalizedText())
         .Compile();

@@ -80,7 +80,7 @@ internal sealed partial class Arena
         {
             Array = segment.Array!,
             Start = segment.Offset,
-            End = segment.Offset + segment.Count
+            End = segment.Offset + segment.Count,
         };
         return true;
     }
