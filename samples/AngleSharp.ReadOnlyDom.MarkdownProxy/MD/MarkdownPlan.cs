@@ -1,4 +1,4 @@
-﻿using AngleSharp.ReadOnlyDom.Streaming.Public;
+﻿using AngleSharp.ReadOnlyDom.Streaming.Query;
 
 namespace AngleSharp.ReadOnlyDom.MarkdownProxy.MD
 {

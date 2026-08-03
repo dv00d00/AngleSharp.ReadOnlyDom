@@ -1,10 +1,12 @@
 ﻿using System.Buffers;
 using System.IO.Pipelines;
 using System.Text;
-using AngleSharp.ReadOnlyDom.Streaming.Internal;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+using AngleSharp.ReadOnlyDom.Streaming.Input;
+using AngleSharp.ReadOnlyDom.Streaming.Query.Execution;
+using AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
+using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Public;
+namespace AngleSharp.ReadOnlyDom.Streaming.Query;
 
 public sealed class QueryPlan<TState>
 {

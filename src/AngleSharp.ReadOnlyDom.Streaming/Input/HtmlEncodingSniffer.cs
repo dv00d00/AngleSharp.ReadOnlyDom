@@ -1,7 +1,7 @@
 using System.Text;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Internal;
+namespace AngleSharp.ReadOnlyDom.Streaming.Input;
 
 internal static class HtmlEncodingSniffer
 {

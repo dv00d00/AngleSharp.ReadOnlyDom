@@ -1,9 +1,9 @@
 ﻿using System.Buffers;
 using System.Numerics;
-using AngleSharp.ReadOnlyDom.Streaming.Public;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+using AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
+using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Internal;
+namespace AngleSharp.ReadOnlyDom.Streaming.Query.Execution;
 
 internal sealed class QueryExecution<TState>
     : IUtf8HtmlTokenSink,

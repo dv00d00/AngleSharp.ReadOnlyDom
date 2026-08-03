@@ -10,7 +10,8 @@ using FsCheck.Fluent;
 using AngleSharp.ReadOnlyDom.Compact.Document;
 using AngleSharp.ReadOnlyDom.Compact.Parsing;
 using AngleSharp.ReadOnlyDom.Compact.Projection;
-using AngleSharp.ReadOnlyDom.Streaming.Public;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
+using Element = AngleSharp.ReadOnlyDom.Streaming.Query.Element;
 #endif
 
 namespace AngleSharp.Readonly.Tests;
@@ -169,7 +170,7 @@ public class MalformedHtmlPropertyTests
     {
         var plan = StreamQuery
             .For<DivTextTotals>("div")
-            .OnStart(static (ref DivTextTotals state, in AngleSharp.ReadOnlyDom.Streaming.Public.Element _) => state.Start())
+            .OnStart(static (ref DivTextTotals state, in Element _) => state.Start())
             .OnText(static (ref DivTextTotals state, ReadOnlySpan<byte> text) => state.Text(text))
             .OnEnd(static (ref DivTextTotals state) => state.End())
             .Compile();

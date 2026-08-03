@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Internal;
+namespace AngleSharp.ReadOnlyDom.Streaming.Input;
 
 internal static partial class HtmlEncodingLabels
 {

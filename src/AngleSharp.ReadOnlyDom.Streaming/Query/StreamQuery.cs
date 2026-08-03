@@ -1,6 +1,6 @@
-using AngleSharp.ReadOnlyDom.Streaming.Internal;
+using AngleSharp.ReadOnlyDom.Streaming.Query.Execution;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Public;
+namespace AngleSharp.ReadOnlyDom.Streaming.Query;
 
 public static class StreamQuery
 {

@@ -1,6 +1,6 @@
-﻿using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+﻿using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Internal;
+namespace AngleSharp.ReadOnlyDom.Streaming.Query.Execution;
 
 internal static class HtmlVoidElements
 {

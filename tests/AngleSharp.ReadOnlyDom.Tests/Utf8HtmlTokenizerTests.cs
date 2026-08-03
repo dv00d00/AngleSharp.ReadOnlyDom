@@ -7,9 +7,8 @@ using AngleSharp.Html.Parser;
 using AngleSharp.Html.Parser.Tokens;
 using AngleSharp.Text;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.ReadOnlyDom.Streaming.Internal;
-using AngleSharp.ReadOnlyDom.Streaming.Public;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+using AngleSharp.ReadOnlyDom.Streaming.Input;
+using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 namespace AngleSharp.Readonly.Tests;
 

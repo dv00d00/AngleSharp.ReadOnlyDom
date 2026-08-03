@@ -2,8 +2,8 @@
 using System.Buffers;
 using System.Text;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.ReadOnlyDom.Streaming.Internal;
-using AngleSharp.ReadOnlyDom.Streaming.Public;
+using AngleSharp.ReadOnlyDom.Streaming.Output;
+using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 namespace AngleSharp.Readonly.Tests;
 

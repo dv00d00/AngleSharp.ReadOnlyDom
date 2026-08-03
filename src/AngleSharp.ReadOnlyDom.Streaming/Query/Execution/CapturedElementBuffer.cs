@@ -1,7 +1,8 @@
 ﻿using System.Buffers;
 using System.Text;
+using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Internal;
+namespace AngleSharp.ReadOnlyDom.Streaming.Query.Execution;
 
 internal sealed class CapturedElementBuffer : IDisposable
 {

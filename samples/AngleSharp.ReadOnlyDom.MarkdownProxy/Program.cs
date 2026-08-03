@@ -1,8 +1,6 @@
 using AngleSharp.ReadOnlyDom.MarkdownProxy.MD;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.ReadOnlyDom.Streaming.Public;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
-using AngleSharp.Streaming.Utf8;
+using AngleSharp.ReadOnlyDom.Streaming.Output;
 
 const long MaximumInputBytes = 4L * 1024 * 1024;
 var limits = new HtmlStreamingLimits(maximumInputBytes: MaximumInputBytes);

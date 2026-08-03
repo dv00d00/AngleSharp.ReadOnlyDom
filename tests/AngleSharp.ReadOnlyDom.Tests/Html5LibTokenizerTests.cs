@@ -3,8 +3,8 @@ using System.Text;
 using System.Text.Json;
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Streaming;
-using AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
-using HtmlParseMode = AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer.HtmlParseMode;
+using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
+using HtmlParseMode = AngleSharp.ReadOnlyDom.Streaming.Tokenization.HtmlParseMode;
 
 namespace AngleSharp.Readonly.Tests;
 

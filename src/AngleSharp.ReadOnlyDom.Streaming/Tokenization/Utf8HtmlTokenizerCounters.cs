@@ -1,4 +1,4 @@
-﻿namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+﻿namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 #pragma warning disable CS1591 // Experimental diagnostics surface; not proposed as final API.
 

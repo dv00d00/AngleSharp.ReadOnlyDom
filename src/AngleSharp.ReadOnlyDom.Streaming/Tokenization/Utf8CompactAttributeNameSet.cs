@@ -1,6 +1,6 @@
 #pragma warning disable CS1591 // Experimental implementation detail; shape is intentionally unsettled.
 
-namespace AngleSharp.ReadOnlyDom.Streaming.Utf8Tokenizer;
+namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 internal sealed class Utf8CompactAttributeNameSet
 {
