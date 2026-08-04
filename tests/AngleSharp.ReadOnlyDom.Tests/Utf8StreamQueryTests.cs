@@ -336,6 +336,41 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task DiscardedTagTailMatchesAcrossEveryChunkBoundary()
+    {
+        var plan = StreamQuery
+            .For<QueryState>("mark")
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("match"))
+            .Compile();
+        (string Html, int Matches)[] cases =
+        [
+            ("<aside alpha=one beta=two><mark></mark></aside>", 1),
+            ("<aside alpha=\"x>y\" beta='z' gamma=u delta = \"v\"/><mark></mark>", 1),
+            ("<aside alpha='closed'unexpected=ok><mark></mark></aside>", 1),
+            ("<aside alpha='unterminated><mark></mark></aside>", 0),
+        ];
+
+        foreach (var (html, expectedMatches) in cases)
+        {
+            var utf8 = Encoding.UTF8.GetBytes(html);
+            for (var split = 0; split <= utf8.Length; split++)
+            {
+                var state = new QueryState();
+                using var execution = plan.CreateExecution(state);
+                var tokenizer = new Utf8HtmlTokenizer(execution);
+                tokenizer.Write(utf8.AsSpan(0, split));
+                tokenizer.Write(utf8.AsSpan(split));
+                tokenizer.Complete();
+
+                await Assert
+                    .That(state.Events.Count)
+                    .IsEqualTo(expectedMatches)
+                    .Because($"split {split} changed tokenization for {html}");
+            }
+        }
+    }
+
+    [Test]
     public async Task CompletedElementCallbackCapturesNestedTextAndAttributesOnce()
     {
         var root = StreamQuery.For<QueryState>("main");
