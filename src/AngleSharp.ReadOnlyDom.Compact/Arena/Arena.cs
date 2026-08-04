@@ -33,7 +33,7 @@ internal sealed partial class Arena : IDisposable
         _textNameId = _names.GetId("#text");
     }
 
-    private static ReadOnlySpan<char> WhiteSpace => " \t\r\n";
+    private static ReadOnlySpan<char> WhiteSpace => " \t\r\n\f";
 
     internal int NodeCount => _columns.Count;
 

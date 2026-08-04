@@ -196,14 +196,14 @@ public sealed partial class CompactProjectionPlan
         while (!values.IsEmpty)
         {
             var start = 0;
-            while (start < values.Length && CompactProjectionSelector.IsHtmlSpace(values[start]))
+            while (start < values.Length && HtmlClassToken.IsSpace(values[start]))
                 start++;
             values = values[start..];
             if (values.IsEmpty)
                 return false;
 
             var end = 0;
-            while (end < values.Length && !CompactProjectionSelector.IsHtmlSpace(values[end]))
+            while (end < values.Length && !HtmlClassToken.IsSpace(values[end]))
                 end++;
             if (values[..end].SequenceEqual(wanted))
                 return true;
