@@ -2,7 +2,7 @@
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-public sealed class Utf8HtmlTokenizerStateMetrics(Int32 stateCount)
+internal sealed class Utf8HtmlTokenizerStateMetrics(Int32 stateCount)
 {
     private readonly Int64[] _byteVisits = new Int64[stateCount];
     private readonly Int64[] _runs = new Int64[stateCount];
@@ -69,7 +69,7 @@ public sealed class Utf8HtmlTokenizerStateMetrics(Int32 stateCount)
     }
 }
 
-public readonly record struct Utf8HtmlTokenizerStateMetric(
+internal readonly record struct Utf8HtmlTokenizerStateMetric(
     String State,
     Int64 ByteVisits,
     Int64 Runs,

@@ -5,7 +5,7 @@ using System.IO.Pipelines;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-public sealed class Utf8HtmlTokenizer
+internal sealed class Utf8HtmlTokenizer
 {
     private const Int32 AttributeIndexPromotionThreshold = 16;
     private const UInt64 IframeKey = 0x000000001CBB9A4AUL;
@@ -209,7 +209,7 @@ public sealed class Utf8HtmlTokenizer
     public Utf8HtmlTokenizerCounters Counters => GetCounters(_inputBytesConsumed);
 
     internal Utf8HtmlTokenizerCounters GetCounters(Int64 sourceBytesConsumed) =>
-        new(sourceBytesConsumed, _segments, _reconsumes, 0, _maximumBufferedTokenBytes);
+        new(sourceBytesConsumed, _segments, _reconsumes, _maximumBufferedTokenBytes);
 
     /// <summary>
     /// Applies the tokenizer state selected by an external tree constructor.

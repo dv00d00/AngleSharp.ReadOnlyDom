@@ -25,10 +25,3 @@ recommended issue hygiene was applied on 2026-08-03.
 | [#54 Object-DOM selector compatibility](https://github.com/dv00d00/AngleSharp.ReadOnlyDom/issues/54) | Coherent lower-priority object-DOM enhancement, independent of Compact projection selectors. |
 | [#9 NuGet publishing](https://github.com/dv00d00/AngleSharp.ReadOnlyDom/issues/9) | Release infrastructure backlog, explicitly blocked on package dependency and contract decisions. |
 | [#57 Paired-repository CI and formatter pinning](https://github.com/dv00d00/AngleSharp.ReadOnlyDom/issues/57) | Immediate repository infrastructure: paired AngleSharp checkout, source-reference verification, build/test gates, SDK policy, and a local CSharpier manifest. |
-
-## Remaining repository cleanup
-
-Issue hygiene does not replace the still-valid code cleanup from the repository review:
-
-- organize the surviving object-DOM files after deletion;
-- decide which experimental low-level tokenizer diagnostics belong in the public pre-alpha surface.
