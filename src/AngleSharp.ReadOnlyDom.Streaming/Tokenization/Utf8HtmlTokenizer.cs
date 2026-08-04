@@ -2610,6 +2610,38 @@ internal sealed class Utf8HtmlTokenizer
                     {
                         _stateMetrics?.Record((Int32)state, run);
                         index += run;
+                        if (index < utf8.Length)
+                        {
+                            var terminator = utf8[index];
+                            _stateMetrics?.Record((Int32)state, 1);
+                            if (terminator == (Byte)'=')
+                            {
+                                index++;
+                                _state = State.BeforeAttributeValue;
+                                if (index < utf8.Length)
+                                {
+                                    var valueStart = utf8[index];
+                                    if (valueStart is (Byte)'"' or (Byte)'\'')
+                                    {
+                                        _stateMetrics?.Record((Int32)State.BeforeAttributeValue, 1);
+                                        index++;
+                                        _state =
+                                            valueStart == (Byte)'"'
+                                                ? State.AttributeValueDoubleQuoted
+                                                : State.AttributeValueSingleQuoted;
+                                    }
+                                }
+                            }
+                            else if (IsSpace(terminator))
+                            {
+                                index++;
+                                _state = State.AfterAttributeName;
+                            }
+                            else
+                            {
+                                _state = State.BeforeAttributeName;
+                            }
+                        }
                         continue;
                     }
                     break;
@@ -2622,6 +2654,12 @@ internal sealed class Utf8HtmlTokenizer
                     {
                         _stateMetrics?.Record((Int32)state, run);
                         index += run;
+                        if (index < utf8.Length)
+                        {
+                            _stateMetrics?.Record((Int32)state, 1);
+                            index++;
+                            _state = State.AfterAttributeValueQuoted;
+                        }
                         continue;
                     }
                     break;
@@ -2631,6 +2669,20 @@ internal sealed class Utf8HtmlTokenizer
                     {
                         _stateMetrics?.Record((Int32)state, run);
                         index += run;
+                        if (index < utf8.Length)
+                        {
+                            var terminator = utf8[index];
+                            _stateMetrics?.Record((Int32)state, 1);
+                            if (terminator == (Byte)'>')
+                            {
+                                FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
+                            }
+                            else
+                            {
+                                index++;
+                                _state = State.BeforeAttributeName;
+                            }
+                        }
                         continue;
                     }
                     break;

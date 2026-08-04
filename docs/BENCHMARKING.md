@@ -18,10 +18,49 @@ Run a maintained tier from the repository root:
 ./scripts/bench.ps1 utf8-baseline
 ./scripts/bench.ps1 retained
 ./scripts/bench.ps1 all
+./scripts/bench-native-console.ps1
+./scripts/bench-product.ps1
 ```
 
 Use `-HardwareCounters` only for a longer confirmatory run. Counter availability is host-dependent; portable time,
 throughput, and allocation remain the default gate.
+
+## Native product comparison
+
+The primary engine comparison uses two standalone console applications, with no P/Invoke and no HTTP stack in the
+timed region. The Rust release binary and .NET Release JIT process load the same UTF-8 corpus before timing, create a new
+rewriter/query execution per document, feed it in exact 4 KiB chunks, own every selected URL, and consume an identical
+checksum. The default run alternates process order over five 10-second rounds:
+
+```powershell
+./scripts/bench-native-console.ps1
+```
+
+`-Workload passthrough` keeps an identical never-matching `zz` selector on both sides, forcing both engines to parse
+tags while leaving the document unchanged. `-Workload match` runs the product selector and counts matches without
+materializing attribute values. The default `-Workload extract` owns the selected UTF-8 URLs and checks their content.
+The handler-free `lol_html` raw-forwarding fast path is intentionally not used for the comparable passthrough lane.
+
+Use `-NativeAot` for the secondary ahead-of-time comparison. It publishes with the standard
+`OptimizationPreference=Speed`; keep JIT as the default for sustained production-server throughput.
+
+For an end-to-end service comparison, `bench-product.ps1` compares two independent long-lived HTTP services without
+interop: a normal Rust release binary using `lol_html` and a .NET NativeAOT/Kestrel binary using the streaming query
+engine.
+
+The load runner sends HTTP/1.1
+keep-alive POST requests whose UTF-8 bodies are transferred without a content length and written in 4 KiB chunks. Both
+services consume the request as a stream, execute the same selector, own the selected URLs, and return the same
+newline-delimited UTF-8 response. A correctness request runs before timing.
+
+The default run uses three alternating 10-second rounds at concurrency 1 and 6 over the checked-in QQ page and its 4x
+body variant. Alternating service order reduces temperature and frequency bias. The report includes throughput, p50,
+p95, p99, process CPU per request, and peak process working set. This is an end-to-end service comparison: HTTP stack,
+request streaming, parser/query, result ownership, and response writing are intentionally included.
+
+```powershell
+./scripts/bench-product.ps1 -Seconds 15 -Rounds 5 -Concurrency "1,6"
+```
 
 ## Maintained inventory
 

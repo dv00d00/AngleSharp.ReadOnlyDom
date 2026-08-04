@@ -12,6 +12,9 @@
   </Folder>
   <Folder Name="/Benchmarks/">
     <Project Path="benchmarks/AngleSharp.ReadOnlyDom.Benchmarks/AngleSharp.ReadOnlyDom.Benchmarks.csproj" />
+    <Project Path="benchmarks/ProductComparison/AngleSharp.NativeConsole/AngleSharp.NativeConsole.csproj" />
+    <Project Path="benchmarks/ProductComparison/AngleSharp.NativeServer/AngleSharp.NativeServer.csproj" />
+    <Project Path="benchmarks/ProductComparison/LoadRunner/LoadRunner.csproj" />
   </Folder>
   <Folder Name="/Samples/">
     <Project Path="samples/AngleSharp.ReadOnlyDom.ExtractionExamples/AngleSharp.ReadOnlyDom.ExtractionExamples.csproj" />
