@@ -11,7 +11,7 @@ namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 /// A callback-scoped HTML name retaining its source spelling while exposing its
 /// ASCII case-insensitive semantic identity.
 /// </summary>
-public readonly ref struct Utf8HtmlName
+internal readonly ref struct Utf8HtmlName
 {
     private readonly ref Utf8HtmlNameIdentityCache _cache;
 

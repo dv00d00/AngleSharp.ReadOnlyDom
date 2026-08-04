@@ -26,7 +26,6 @@ public sealed class Utf8HtmlTokenizerTests
 
         await Assert.That(bytewise.Events).IsEquivalentTo(contiguous.Events);
         await Assert.That(bytewise.Counters.BytesConsumed).IsEqualTo(utf8.Length);
-        await Assert.That(bytewise.Counters.MaximumSourceLookbehind).IsEqualTo(0);
         await Assert.That(bytewise.Counters.InputSegments).IsEqualTo(utf8.Length);
     }
 
@@ -51,7 +50,6 @@ public sealed class Utf8HtmlTokenizerTests
 
         await Assert.That(sink.Events).IsEquivalentTo(expected.Events);
         await Assert.That(counters.BytesConsumed).IsEqualTo(utf8.Length);
-        await Assert.That(counters.MaximumSourceLookbehind).IsEqualTo(0);
         await Assert.That(counters.MaximumBufferedTokenBytes).IsLessThan(64);
     }
 

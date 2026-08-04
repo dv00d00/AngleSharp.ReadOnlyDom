@@ -2,7 +2,7 @@
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-public readonly ref struct Utf8DoctypeToken(
+internal readonly ref struct Utf8DoctypeToken(
     ReadOnlySpan<Byte> name,
     ReadOnlySpan<Byte> publicIdentifier,
     Boolean isPublicIdentifierMissing,

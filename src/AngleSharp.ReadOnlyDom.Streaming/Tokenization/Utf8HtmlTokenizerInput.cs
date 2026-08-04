@@ -6,7 +6,7 @@ namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 /// Frames streaming input, enforces the source-byte limit, and optionally repairs malformed UTF-8
 /// before complete, well-formed spans reach <see cref="Utf8HtmlTokenizer"/>.
 /// </summary>
-public sealed class Utf8HtmlTokenizerInput
+internal sealed class Utf8HtmlTokenizerInput
 {
     private Utf8InputNormalizer _normalizer;
     private readonly Utf8HtmlTokenizer _tokenizer;

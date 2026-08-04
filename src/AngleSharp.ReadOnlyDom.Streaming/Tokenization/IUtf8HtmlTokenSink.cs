@@ -3,14 +3,14 @@
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 [Flags]
-public enum Utf8HtmlStartTagCapture : byte
+internal enum Utf8HtmlStartTagCapture : byte
 {
     None = 0,
     Attributes = 1,
 }
 
 [Flags]
-public enum Utf8HtmlTokenCapture : byte
+internal enum Utf8HtmlTokenCapture : byte
 {
     None = 0,
     Text = 1,
@@ -20,7 +20,7 @@ public enum Utf8HtmlTokenCapture : byte
 /// Synchronous borrowed views over tokenizer-owned or PipeReader-owned UTF-8. Every span is valid only for the duration
 /// of its callback. The split start-tag callbacks let a construction sink collect only attributes it needs.
 /// </summary>
-public interface IUtf8HtmlTokenSink
+internal interface IUtf8HtmlTokenSink
 {
     Utf8HtmlTokenCapture Capture { get; }
 
@@ -51,7 +51,7 @@ public interface IUtf8HtmlTokenSink
 /// Opt-in capability for sinks that need the half-open normalized UTF-8 byte range of each start tag.
 /// The range callback immediately precedes <see cref="IUtf8HtmlTokenSink.StartTagEnd"/>.
 /// </summary>
-public interface IUtf8HtmlStartTagSourceRangeSink
+internal interface IUtf8HtmlStartTagSourceRangeSink
 {
     Boolean WantsStartTagSourceRanges { get; }
 
@@ -64,7 +64,7 @@ public interface IUtf8HtmlStartTagSourceRangeSink
 /// Optional streaming comment capability. Implement this interface to consume comment payloads incrementally or to
 /// decline them from <see cref="BeginComment"/> without materializing the complete payload in tokenizer scratch.
 /// </summary>
-public interface IUtf8HtmlStreamingCommentSink
+internal interface IUtf8HtmlStreamingCommentSink
 {
     /// <summary>Returns whether the payload of the next comment should be delivered.</summary>
     Boolean BeginComment();
