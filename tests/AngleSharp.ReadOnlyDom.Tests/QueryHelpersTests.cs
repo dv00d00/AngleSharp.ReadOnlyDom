@@ -10,6 +10,38 @@ namespace AngleSharp.Readonly.Tests;
 public class QueryHelpersTests
 {
     [Test]
+    [Arguments("\t")]
+    [Arguments("\n")]
+    [Arguments("\f")]
+    [Arguments("\r")]
+    [Arguments(" ")]
+    public async Task ClassQueriesUseOnlyHtmlWhitespaceSeparators(string separator)
+    {
+        var parser = new HtmlParser(default, ReadOnlyParser.DefaultContext);
+        using var document = parser.ParseReadOnlyDocument($"<p id=content class='alpha{separator}beta'></p>");
+        var content = document.QueryOne(static node => node.TagId("p", "content"))!;
+
+        await Assert.That(content.Class("alpha")).IsTrue();
+        await Assert.That(content.Class("beta")).IsTrue();
+        await Assert.That(content.Classes("alpha", "beta")).IsTrue();
+    }
+
+    [Test]
+    public async Task ClassQueriesKeepNbspInsideTokenAndRejectEmptyToken()
+    {
+        const string joined = "alpha\u00a0beta";
+        var parser = new HtmlParser(default, ReadOnlyParser.DefaultContext);
+        using var document = parser.ParseReadOnlyDocument($"<p id=content class='{joined}'></p>");
+        var content = document.QueryOne(static node => node.TagId("p", "content"))!;
+
+        await Assert.That(content.Class("alpha")).IsFalse();
+        await Assert.That(content.Class("beta")).IsFalse();
+        await Assert.That(content.Class(joined)).IsTrue();
+        await Assert.That(content.Class("")).IsFalse();
+        await Assert.That(content.Classes("", "")).IsFalse();
+    }
+
+    [Test]
     [Arguments("")]
     [Arguments(" ")]
     [Arguments(" \t\r\n")]

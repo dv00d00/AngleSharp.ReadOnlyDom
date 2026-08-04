@@ -8,7 +8,6 @@ using AngleSharp.ReadOnlyDom.Benchmarks.Support;
 using AngleSharp.ReadOnlyDom.Compact.Document;
 using AngleSharp.ReadOnlyDom.Compact.Parsing;
 using AngleSharp.ReadOnlyDom.Compact.Query;
-using AngleSharp.ReadOnlyDom.Filters;
 using AngleSharp.ReadOnlyDom.Html;
 using AngleSharp.ReadOnlyDom.Streaming.Query;
 using AngleSharp.ReadOnlyDom.Streaming.Tokenization;

@@ -9,7 +9,6 @@
     <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8" />
     <PackageVersion Include="FsCheck" Version="3.3.4" />
     <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="10.0.9" />
-    <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageVersion Include="Polyfill" Version="8.9.0" />
     <PackageVersion Include="System.Buffers" Version="4.6.1" />
     <PackageVersion Include="System.IO.Pipelines" Version="10.0.9" />

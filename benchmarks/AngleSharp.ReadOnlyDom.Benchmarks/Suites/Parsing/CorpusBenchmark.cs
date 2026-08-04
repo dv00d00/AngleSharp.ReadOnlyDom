@@ -1,6 +1,5 @@
 using AngleSharp.Html.Parser;
 using AngleSharp.ReadOnlyDom.Benchmarks.Support;
-using AngleSharp.ReadOnlyDom.Filters;
 using BenchmarkDotNet.Attributes;
 
 namespace AngleSharp.ReadOnlyDom.Benchmarks.Suites.Parsing;
