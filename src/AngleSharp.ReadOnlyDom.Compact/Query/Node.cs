@@ -17,17 +17,41 @@ public readonly struct Node
         Handle = handle;
     }
 
-    public bool Exists => _document is not null && Handle >= 0;
+    public bool Exists
+    {
+        get
+        {
+            if (_document is null)
+                return false;
+            _document.ThrowIfDisposed();
+            return Handle >= 0;
+        }
+    }
     internal int Handle { get; }
 
-    internal CompactDocument Document => _document!;
+    internal CompactDocument Document
+    {
+        get
+        {
+            var document = _document!;
+            document.ThrowIfDisposed();
+            return document;
+        }
+    }
 
-    private CompactNode Raw => _document!.GetNode(Handle);
+    private CompactNode Raw => Document.GetNode(Handle);
 
-    public CompactNodeKind Kind => _document!.KindAt(Handle);
-    public bool IsElement => _document!.KindAt(Handle) == CompactNodeKind.Element;
+    public CompactNodeKind Kind => Document.KindAt(Handle);
+    public bool IsElement => Document.KindAt(Handle) == CompactNodeKind.Element;
     internal ushort NameId => _document!.NameIdAt(Handle);
-    public string Name => _document!.GetName(_document.NameIdAt(Handle));
+    public string Name
+    {
+        get
+        {
+            var document = Document;
+            return document.GetName(document.NameIdAt(Handle));
+        }
+    }
 
     public ReadOnlySpan<char> LocalName
     {
@@ -41,12 +65,12 @@ public readonly struct Node
 
     public bool Is(string tag)
     {
-        return Is(_document!.ResolveNameId(tag));
+        return Is(Document.ResolveNameId(tag));
     }
 
     public bool Is(ReadOnlySpan<char> tag)
     {
-        return Is(_document!.ResolveNameId(tag));
+        return Is(Document.ResolveNameId(tag));
     }
 
     internal bool Is(ushort tagId)
@@ -57,13 +81,25 @@ public readonly struct Node
     }
 
     /// <summary>The parent node, or a non-existent cursor when parent links were not retained.</summary>
-    public Node Parent =>
-        _document is not null && _document.HasParentLinks ? new Node(_document, _document.GetParent(Handle)) : default;
+    public Node Parent
+    {
+        get
+        {
+            if (_document is null)
+                return default;
+            _document.ThrowIfDisposed();
+            return _document.HasParentLinks ? new Node(_document, _document.GetParent(Handle)) : default;
+        }
+    }
 
     public bool IsDescendantOf(Node ancestor)
     {
-        return _document is not null
-            && ReferenceEquals(_document, ancestor._document)
+        if (_document is null)
+            return false;
+        _document.ThrowIfDisposed();
+        if (ancestor._document is not null)
+            ancestor._document.ThrowIfDisposed();
+        return ReferenceEquals(_document, ancestor._document)
             && _document.IsInSameTreeScope(Handle, ancestor.Handle)
             && Handle > ancestor.Handle
             && Handle < ancestor.Raw.SubtreeEndExclusive;
@@ -72,7 +108,10 @@ public readonly struct Node
     public bool TryGetSourceLocation(out CompactSourceLocation source)
     {
         if (_document is not null)
+        {
+            _document.ThrowIfDisposed();
             return _document.TryGetSourceLocation(Handle, out source);
+        }
         source = default;
         return false;
     }
@@ -85,7 +124,7 @@ public readonly struct Node
 
     public ReadOnlySpan<char> Attr(ReadOnlySpan<char> name)
     {
-        return Attr(_document!.ResolveNameId(name));
+        return Attr(Document.ResolveNameId(name));
     }
 
     internal ReadOnlySpan<char> Attr(ushort nameId)
@@ -100,7 +139,7 @@ public readonly struct Node
 
     public bool HasAttr(ReadOnlySpan<char> name)
     {
-        return HasAttr(_document!.ResolveNameId(name));
+        return HasAttr(Document.ResolveNameId(name));
     }
 
     /// <summary>Checks an attribute using a previously resolved name ID.</summary>
@@ -111,14 +150,16 @@ public readonly struct Node
 
     public bool HasClass(string token)
     {
+        var document = Document;
         HtmlClassToken.Validate(token, nameof(token));
-        return HasClass(_document!.ResolveNameId("class"), token);
+        return HasClass(document.ResolveNameId("class"), token);
     }
 
     public bool HasClass(ReadOnlySpan<char> token)
     {
+        var document = Document;
         HtmlClassToken.Validate(token, nameof(token));
-        return HasClass(_document!.ResolveNameId("class"), token);
+        return HasClass(document.ResolveNameId("class"), token);
     }
 
     /// <summary>Checks a class token using a previously resolved <c>class</c> attribute name ID.</summary>
@@ -158,7 +199,7 @@ public readonly struct Node
     internal void WriteText<TSink>(ref TSink sink)
         where TSink : ISpanSink
     {
-        var document = _document!;
+        var document = Document;
         var endExclusive = document.SubtreeEndAt(Handle);
         for (var handle = Handle; handle < endExclusive; handle++)
         {
@@ -208,7 +249,7 @@ public readonly struct Node
 
     private bool WriteInto(Span<char> destination, ref int written)
     {
-        var document = _document!;
+        var document = Document;
         var endExclusive = document.SubtreeEndAt(Handle);
         for (var handle = Handle; handle < endExclusive; handle++)
         {
@@ -236,19 +277,19 @@ public readonly struct Node
 
     public ChildCursor Children()
     {
-        return new ChildCursor(
-            _document!,
-            _document!.IsTemplate(Handle) ? -1 : Raw.FirstChild,
-            Raw.SubtreeEndExclusive
-        );
+        var document = Document;
+        var raw = document.GetNode(Handle);
+        return new ChildCursor(document, document.IsTemplate(Handle) ? -1 : raw.FirstChild, raw.SubtreeEndExclusive);
     }
 
     public ChildCursor TemplateContent()
     {
+        var document = Document;
+        var raw = document.GetNode(Handle);
         return new ChildCursor(
-            _document!,
-            _document!.TryGetTemplateContent(Handle, out var contentStart) ? contentStart : -1,
-            Raw.SubtreeEndExclusive
+            document,
+            document.TryGetTemplateContent(Handle, out var contentStart) ? contentStart : -1,
+            raw.SubtreeEndExclusive
         );
     }
 
@@ -297,10 +338,18 @@ public readonly struct Node
             _started = false;
         }
 
-        public readonly Node Current => new(_document, _current);
+        public readonly Node Current
+        {
+            get
+            {
+                _document.ThrowIfDisposed();
+                return new Node(_document, _current);
+            }
+        }
 
         public bool MoveNext()
         {
+            _document.ThrowIfDisposed();
             if (!_started)
             {
                 _started = true;
@@ -316,6 +365,7 @@ public readonly struct Node
 
         public readonly ChildCursor GetEnumerator()
         {
+            _document.ThrowIfDisposed();
             return this;
         }
     }

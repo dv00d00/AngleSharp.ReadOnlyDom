@@ -420,6 +420,54 @@ public sealed class QueryTests
         await Assert.That(state.Lengths).IsEquivalentTo([10, 10]);
     }
 
+    [Test]
+    public async Task TextHandlersReceiveTextOnlyWhileTheirOwnQueryIsActive()
+    {
+        var first = StreamQuery
+            .For<QueryState>("a")
+            .OnText(
+                static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                    state.Events.Add($"a:{Encoding.UTF8.GetString(text)}")
+            );
+        var second = StreamQuery
+            .For<QueryState>("b")
+            .OnText(
+                static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                    state.Events.Add($"b:{Encoding.UTF8.GetString(text)}")
+            );
+
+        var state = StreamQuery
+            .Observe(first, second)
+            .Execute("<a>first</a><b>second</b>"u8, new QueryState());
+
+        await Assert.That(string.Join('|', state.Events)).IsEqualTo("a:first|b:second");
+    }
+
+    [Test]
+    public async Task SelfClosingFlagDoesNotCloseNonVoidHtmlQueryFrames()
+    {
+        var div = StreamQuery
+            .For<QueryState>("div")
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("div:start"))
+            .OnText(
+                static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                    state.Events.Add($"div:text:{Encoding.UTF8.GetString(text)}")
+            )
+            .OnEnd(static (ref QueryState state) => state.Events.Add("div:end"));
+        var image = StreamQuery
+            .For<QueryState>("img")
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("img:start"))
+            .OnEnd(static (ref QueryState state) => state.Events.Add("img:end"));
+
+        var state = StreamQuery
+            .Observe(div, image)
+            .Execute("<div/>content</div><img/>"u8, new QueryState());
+
+        await Assert
+            .That(string.Join('|', state.Events))
+            .IsEqualTo("div:start|div:text:content|div:end|img:start|img:end");
+    }
+
     private sealed class NestedTextState
     {
         private readonly List<int> _active = [];

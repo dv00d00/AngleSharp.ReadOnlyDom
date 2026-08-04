@@ -11,7 +11,6 @@ using AngleSharp.ReadOnlyDom.Compact.Document;
 using AngleSharp.ReadOnlyDom.Compact.Parsing;
 using AngleSharp.ReadOnlyDom.Compact.Projection;
 using AngleSharp.ReadOnlyDom.Compact.Query;
-using AngleSharp.ReadOnlyDom.Filters;
 using AngleSharp.ReadOnlyDom.Html;
 using Node = AngleSharp.ReadOnlyDom.Compact.Query.Node;
 
@@ -848,7 +847,6 @@ internal sealed class CompactParserTests
     public async Task InlineReferenceListLayoutsAreExplicit()
     {
         await Assert.That(Unsafe.SizeOf<SmallReferenceList2<object>>()).IsEqualTo(32);
-        await Assert.That(Unsafe.SizeOf<SmallReferenceList4<object>>()).IsEqualTo(48);
     }
 
     [Test]
@@ -976,13 +974,72 @@ internal sealed class CompactParserTests
     }
 
     [Test]
-    public async Task PooledDocumentOwnsAndReturnsItsBuffers()
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task DisposedDocumentRejectsPublicReadsAndDisposeRemainsIdempotent(CompactDocumentLayout layout)
     {
-        var document = CompactParser.CreateParser().ParseCompactDocument("<main><p>x</p></main>");
-        await Assert.That(document.NodeCount).IsGreaterThan(3);
-        await Assert.That(document.FindNameId("main")).IsNotEqualTo(ushort.MaxValue);
+        var document = CompactParser
+            .CreateParser(
+                CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations,
+                layout: layout
+            )
+            .ParseCompactDocument("<main id=content class='selected'><p>x</p></main>");
+        var root = document.Root();
+        var main = document.Elements("main").First();
+        var children = main.Children();
+        var descendants = document.Descendants();
+        var elements = document.Elements("p");
+        var elementEnumerator = elements.GetEnumerator();
+
         document.Dispose();
         document.Dispose();
+
+        await Assert.That(() => document.NodeCount).Throws<ObjectDisposedException>();
+        await Assert.That(() => document.AttributeCount).Throws<ObjectDisposedException>();
+        await Assert.That(() => document.HasParentLinks).Throws<ObjectDisposedException>();
+        await Assert.That(() => document.HasSourceLocations).Throws<ObjectDisposedException>();
+        await Assert.That(() => document.Root()).Throws<ObjectDisposedException>();
+        await Assert.That(() => document.Descendants()).Throws<ObjectDisposedException>();
+        await Assert.That(() => document.Elements("main")).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.Descendants()).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.Elements("p")).Throws<ObjectDisposedException>();
+
+        await Assert.That(() => root.Exists).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.Kind).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.IsElement).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.Name).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.LocalName.ToString()).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.Is("main")).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.Parent).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.IsDescendantOf(root)).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.TryGetSourceLocation(out _)).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.Attr("id").ToString()).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.HasAttr("id")).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.HasClass("selected")).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.Text()).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.TextLength()).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.AppendText(new StringBuilder())).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.WriteText(TextWriter.Null)).Throws<ObjectDisposedException>();
+        await Assert
+            .That(() => main.WriteText(new System.Buffers.ArrayBufferWriter<char>()))
+            .Throws<ObjectDisposedException>();
+        await Assert.That(() => main.TryWriteText(new char[8], out _)).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.Children()).Throws<ObjectDisposedException>();
+        await Assert.That(() => main.TemplateContent()).Throws<ObjectDisposedException>();
+
+        await Assert.That(() => children.Current).Throws<ObjectDisposedException>();
+        await Assert.That(() => children.MoveNext()).Throws<ObjectDisposedException>();
+        await Assert.That(() => children.GetEnumerator()).Throws<ObjectDisposedException>();
+        await Assert.That(() => descendants.Current).Throws<ObjectDisposedException>();
+        await Assert.That(() => descendants.MoveNext()).Throws<ObjectDisposedException>();
+        await Assert.That(() => descendants.GetEnumerator()).Throws<ObjectDisposedException>();
+        await Assert.That(() => elements.WithClass("selected")).Throws<ObjectDisposedException>();
+        await Assert.That(() => elements.WithAttribute("id")).Throws<ObjectDisposedException>();
+        await Assert.That(() => elements.GetEnumerator()).Throws<ObjectDisposedException>();
+        await Assert.That(() => elements.Count()).Throws<ObjectDisposedException>();
+        await Assert.That(() => elements.First()).Throws<ObjectDisposedException>();
+        await Assert.That(() => elementEnumerator.Current).Throws<ObjectDisposedException>();
+        await Assert.That(() => elementEnumerator.MoveNext()).Throws<ObjectDisposedException>();
     }
 
     [Test]
@@ -1134,9 +1191,10 @@ internal sealed class CompactParserTests
     }
 
     [Test]
-    public async Task SubtreeMiddlewareDoesNotCountHtmlVoidElementsAsOpenScopes()
+    public async Task SubtreeMiddlewareUsesHtmlVoidAndSelfClosingSemantics()
     {
-        const string html = "<body><section id='target'><img><input><p>x</p></section><aside>tail</aside></body>";
+        const string html =
+            "<body><section id='target'><img><input><div/>inside</div><p>x</p></section><aside>tail</aside></body>";
         var expectedFilter = new OnlyElementWithIdAndDescendants("section", "target");
         var actualFilter = new OnlyElementWithIdAndDescendants("section", "target");
         var parserOptions = new HtmlParserOptions

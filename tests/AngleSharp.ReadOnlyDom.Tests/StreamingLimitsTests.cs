@@ -163,6 +163,23 @@ public sealed class StreamingLimitsTests
     }
 
     [Test]
+    public async Task CloseOnlyCaptureDoesNotReserveTextCaptureBudget()
+    {
+        var completed = 0;
+        var root = StreamQuery.For<TestState>("main").OnText(static (ref TestState _, ReadOnlySpan<byte> _) => { });
+        root.Descendant("section").OnClose((ref TestState _, in CompletedElement _) => completed++);
+
+        root.Compile()
+            .Execute(
+                "<main><section>text larger than the capture budget</section></main>"u8,
+                new TestState(),
+                Limits(capture: 1)
+            );
+
+        await Assert.That(completed).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task UnlimitedPreservesOptOut()
     {
         var tokenizer = new Utf8HtmlTokenizer(new NullSink(), HtmlStreamingLimits.Unlimited);

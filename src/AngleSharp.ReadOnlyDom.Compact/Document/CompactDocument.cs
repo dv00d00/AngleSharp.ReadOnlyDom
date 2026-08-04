@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using AngleSharp.Text;
 using ArenaStorage = AngleSharp.ReadOnlyDom.Compact.Arena.Arena;
@@ -12,6 +13,8 @@ public sealed class CompactDocument : IDisposable
     private readonly bool _hasTemplates;
     private readonly CompactMetadataOptions _metadataOptions;
     private readonly int _nameCount;
+    private readonly int _nodeCount;
+    private readonly int _attributeCount;
 
     private readonly string[] _names;
     private readonly CompactNode[]? _nodes;
@@ -47,9 +50,9 @@ public sealed class CompactDocument : IDisposable
         _parents = parents;
         _sources = sources;
         _templateBoundaries = templateBoundaries;
-        NodeCount = nodeCount;
+        _nodeCount = nodeCount;
         PayloadCount = payloadCount;
-        AttributeCount = attributeCount;
+        _attributeCount = attributeCount;
         _nameCount = nameCount;
         TextLength = textLength;
         _hasTemplates = templateBoundaries.Length != 0;
@@ -72,9 +75,9 @@ public sealed class CompactDocument : IDisposable
         _arena = arena;
         _source = source;
         _names = names;
-        NodeCount = nodeCount;
+        _nodeCount = nodeCount;
         PayloadCount = payloadCount;
-        AttributeCount = attributeCount;
+        _attributeCount = attributeCount;
         _nameCount = nameCount;
         TextLength = textLength;
         _metadataOptions = metadataOptions;
@@ -86,19 +89,60 @@ public sealed class CompactDocument : IDisposable
     internal CompactDocumentLayout Layout =>
         _arena is null ? CompactDocumentLayout.Packed : CompactDocumentLayout.FrozenColumns;
 
-    public int NodeCount { get; }
+    public int NodeCount
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return _nodeCount;
+        }
+    }
 
-    public int AttributeCount { get; }
+    public int AttributeCount
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return _attributeCount;
+        }
+    }
+
+    internal int RawNodeCount => _nodeCount;
 
     internal int PayloadCount { get; }
 
     internal int TextLength { get; }
 
-    public bool HasParentLinks =>
+    public bool HasParentLinks
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return RetainsParentLinks;
+        }
+    }
+
+    public bool HasSourceLocations
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return RetainsSourceLocations;
+        }
+    }
+
+    private bool RetainsParentLinks =>
         _arena is null ? _parents is not null : _metadataOptions.HasFlag(CompactMetadataOptions.ParentLinks);
 
-    public bool HasSourceLocations =>
+    private bool RetainsSourceLocations =>
         _arena is null ? _sources is not null : _metadataOptions.HasFlag(CompactMetadataOptions.SourceLocations);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void ThrowIfDisposed()
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+            throw new ObjectDisposedException(nameof(CompactDocument));
+    }
 
     public void Dispose()
     {
@@ -296,7 +340,7 @@ public sealed class CompactDocument : IDisposable
     {
         if (start < 0)
             start = 0;
-        endExclusive = Math.Min(endExclusive, NodeCount);
+        endExclusive = Math.Min(endExclusive, _nodeCount);
         if (start >= endExclusive)
             return -1;
         if (_arena is not null)
@@ -335,7 +379,7 @@ public sealed class CompactDocument : IDisposable
 
     internal int GetParent(int handle)
     {
-        if (!HasParentLinks)
+        if (!RetainsParentLinks)
             throw new InvalidOperationException("Parent links were not retained.");
         return _arena is null ? _parents![handle] : _arena.FrozenParent(handle);
     }
@@ -344,7 +388,7 @@ public sealed class CompactDocument : IDisposable
     {
         if (_arena is not null)
         {
-            if (HasSourceLocations)
+            if (RetainsSourceLocations)
                 return _arena.TryGetFrozenSourceLocation(handle, out source);
             source = default;
             return false;
@@ -375,7 +419,7 @@ public sealed class CompactDocument : IDisposable
     internal int CountElements(ushort nameId)
     {
         var count = 0;
-        for (var handle = 0; handle < NodeCount; handle++)
+        for (var handle = 0; handle < _nodeCount; handle++)
         {
             if (TryGetContainingTemplateContentEnd(handle, out var contentEnd))
             {
@@ -500,10 +544,10 @@ public sealed class CompactDocument : IDisposable
 
     private bool ContainsNameId(ushort id)
     {
-        for (var handle = 0; handle < NodeCount; handle++)
+        for (var handle = 0; handle < _nodeCount; handle++)
             if (NameIdAt(handle) == id)
                 return true;
-        for (var attribute = 0; attribute < AttributeCount; attribute++)
+        for (var attribute = 0; attribute < _attributeCount; attribute++)
             if (AttributeNameIdAt(attribute) == id)
                 return true;
         return false;
