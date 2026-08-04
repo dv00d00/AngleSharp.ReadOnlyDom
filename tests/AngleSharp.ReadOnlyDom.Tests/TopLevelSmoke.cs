@@ -266,11 +266,11 @@ public class TopLevelSmoke
             )
             .Distinct();
 
-    public class SelectorTestCase
+    public sealed class SelectorTestCase
     {
-        public required string FileName { get; set; }
-        public required string CssSelector { get; set; }
-        public required Func<IReadOnlyNode, bool>[] Chain { get; set; }
+        public required string FileName { get; init; }
+        public required string CssSelector { get; init; }
+        public required Func<IReadOnlyNode, bool>[] Chain { get; init; }
 
         public override string ToString()
         {
