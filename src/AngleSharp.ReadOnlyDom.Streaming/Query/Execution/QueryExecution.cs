@@ -183,8 +183,11 @@ internal sealed class QueryExecution<TState>
             matches |= 1UL << node.Index;
         }
 
-        var closesImmediately =
-            selfClosing || IsVoidTag(_pendingTagIdentity, _pendingTagIdentityLength, _pendingTagNameLength);
+        var closesImmediately = IsVoidTag(
+            _pendingTagIdentity,
+            _pendingTagIdentityLength,
+            _pendingTagNameLength
+        );
         if (!closesImmediately && _frameCount >= _maximumNestingDepth)
             throw new HtmlStreamingLimitExceededException(
                 HtmlStreamingLimit.NestingDepth,
@@ -270,6 +273,8 @@ internal sealed class QueryExecution<TState>
         {
             var nodeIndex = BitOperations.TrailingZeroCount(handlers);
             handlers &= handlers - 1;
+            if (_activeCounts[nodeIndex] == 0)
+                continue;
             _plan.Nodes[nodeIndex].Text!.Invoke(ref _state, utf8);
         }
         AppendCompletedText(utf8);
@@ -601,6 +606,8 @@ internal sealed class QueryExecution<TState>
         {
             var index = BitOperations.TrailingZeroCount(completed);
             completed &= completed - 1;
+            if (_plan.Nodes[index].CompletedTextMode == CompletedTextMode.None)
+                continue;
             captureCount = SaturatingAdd(captureCount, _completedCaptures[index]?.Count ?? 0);
         }
         return captureCount == 0 || textLength == 0 ? 0

@@ -9,6 +9,7 @@ public static class CompactQuery
 {
     public static Node Root(this CompactDocument document)
     {
+        document.ThrowIfDisposed();
         return new Node(document, 0);
     }
 
@@ -28,6 +29,7 @@ public static class CompactQuery
     /// </summary>
     public static DescendantScan Descendants(this CompactDocument document)
     {
+        document.ThrowIfDisposed();
         return new DescendantScan(document);
     }
 
@@ -39,11 +41,12 @@ public static class CompactQuery
     /// <summary>Scans elements using the name-ID column.</summary>
     public static ElementQuery Elements(this CompactDocument document, string tag)
     {
+        document.ThrowIfDisposed();
         return new ElementQuery(
             document,
             document.ResolveNameId(tag),
             0,
-            document.NodeCount,
+            document.RawNodeCount,
             false,
             default,
             null,
@@ -55,11 +58,12 @@ public static class CompactQuery
 
     public static ElementQuery Elements(this CompactDocument document, ReadOnlySpan<char> tag)
     {
+        document.ThrowIfDisposed();
         return new ElementQuery(
             document,
             document.ResolveNameId(tag),
             0,
-            document.NodeCount,
+            document.RawNodeCount,
             false,
             default,
             null,
@@ -71,7 +75,7 @@ public static class CompactQuery
 
     internal static ElementQuery Elements(this CompactDocument document, ushort tagId)
     {
-        return new ElementQuery(document, tagId, 0, document.NodeCount, false, default, null, false, default, null);
+        return new ElementQuery(document, tagId, 0, document.RawNodeCount, false, default, null, false, default, null);
     }
 
     public static ElementQuery Elements(this Node node, string tag)
@@ -107,7 +111,7 @@ public static class CompactQuery
         {
             _document = document;
             _handle = 0; // handle 0 is #document; MoveNext advances to the first real node
-            _endExclusive = document.NodeCount;
+            _endExclusive = document.RawNodeCount;
         }
 
         internal DescendantScan(Node node)
@@ -119,10 +123,18 @@ public static class CompactQuery
                 : _document.GetNode(node.Handle).SubtreeEndExclusive;
         }
 
-        public readonly Node Current => new(_document, _handle);
+        public readonly Node Current
+        {
+            get
+            {
+                _document.ThrowIfDisposed();
+                return new Node(_document, _handle);
+            }
+        }
 
         public bool MoveNext()
         {
+            _document.ThrowIfDisposed();
             var next = _handle + 1;
             while (_document.TryGetContainingTemplateContentEnd(next, out var contentEnd))
                 next = contentEnd;
@@ -132,6 +144,7 @@ public static class CompactQuery
 
         public readonly DescendantScan GetEnumerator()
         {
+            _document.ThrowIfDisposed();
             return this;
         }
     }
@@ -177,6 +190,7 @@ public static class CompactQuery
         /// <summary>Filters by a whitespace-separated class token.</summary>
         public ElementQuery WithClass(string token)
         {
+            _document.ThrowIfDisposed();
             HtmlClassToken.Validate(token, nameof(token));
             return WithClass(_document.ResolveNameId("class"), token);
         }
@@ -201,6 +215,7 @@ public static class CompactQuery
         /// <summary>Filters by attribute presence or value equality.</summary>
         public ElementQuery WithAttribute(string name, string? value = null)
         {
+            _document.ThrowIfDisposed();
             return WithAttribute(_document.ResolveNameId(name), value);
         }
 
@@ -223,6 +238,7 @@ public static class CompactQuery
 
         public Enumerator GetEnumerator()
         {
+            _document.ThrowIfDisposed();
             return new Enumerator(this);
         }
 
@@ -277,10 +293,18 @@ public static class CompactQuery
                 _current = query._start - 1;
             }
 
-            public Node Current => new(_query._document, _current);
+            public Node Current
+            {
+                get
+                {
+                    _query._document.ThrowIfDisposed();
+                    return new Node(_query._document, _current);
+                }
+            }
 
             public bool MoveNext()
             {
+                _query._document.ThrowIfDisposed();
                 if (_query._tagId == ushort.MaxValue)
                     return false;
 
