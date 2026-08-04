@@ -205,3 +205,5 @@ pip-log.txt
 /BenchmarkDotNet.Artifacts.*/
 /artifacts/benchmarks/
 /benchmarks/ProductComparison/lol-html-server/target/
+!/benchmarks/ProductComparison/lol-html-server/src/bin/
+!/benchmarks/ProductComparison/lol-html-server/src/bin/lol-html-console.rs
