@@ -8,7 +8,7 @@ namespace AngleSharp.ReadOnlyDom.Html.Model;
 internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IConstructableNodeList, IReadOnlyNodeList
 {
     private static readonly ReadOnlyNodeList EmptyChildNodes = [];
-    private static ReadOnlySpan<char> WhiteSpace => " \t\r\n".AsSpan();
+    private static ReadOnlySpan<char> WhiteSpace => " \t\r\n\f".AsSpan();
 
     protected readonly NodeFlags _flags;
     protected IConstructableNodeList? _childNodes;
@@ -181,32 +181,6 @@ internal abstract class ReadOnlyNode : IConstructableNode, IReadOnlyNode, IConst
         foreach (var node in _childNodes)
         {
             ((ReadOnlyNode)node).Print(writer);
-        }
-    }
-
-    internal int CountTagClassElements(StringOrMemory tag, string className)
-    {
-        var count = 0;
-        CountTagClassInto(tag, className, ref count);
-        return count;
-    }
-
-    private void CountTagClassInto(StringOrMemory tag, string className, ref int count)
-    {
-        if (this is ReadOnlyElement element && element.LocalName == tag && QueryHelpers.Class(element, className))
-            count++;
-
-        switch (_childNodes)
-        {
-            case null:
-                return;
-            case ReadOnlyNodeList list:
-                for (var i = 0; i < list.Length; i++)
-                    ((ReadOnlyNode)list[i]).CountTagClassInto(tag, className, ref count);
-                break;
-            case ReadOnlyNode single:
-                single.CountTagClassInto(tag, className, ref count);
-                break;
         }
     }
 

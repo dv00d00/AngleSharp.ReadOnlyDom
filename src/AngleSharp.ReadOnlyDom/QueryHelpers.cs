@@ -2,7 +2,6 @@
 using System.Text;
 using AngleSharp.Common;
 using AngleSharp.ReadOnlyDom.Html;
-using AngleSharp.ReadOnlyDom.Html.Model;
 using AngleSharp.Text;
 using Microsoft.Extensions.ObjectPool;
 
@@ -168,8 +167,17 @@ public static class QueryHelpers
     /// <summary>
     /// Counts matching descendant elements without allocating a traversal collection.
     /// </summary>
-    public static int CountTagClass(this IReadOnlyNode node, StringOrMemory tag, string className) =>
-        node is ReadOnlyNode concrete ? concrete.CountTagClassElements(tag, className) : 0;
+    public static int CountTagClass(this IReadOnlyNode node, StringOrMemory tag, string className)
+    {
+        var count = 0;
+        foreach (var descendant in node.AllDescendants())
+        {
+            if (descendant.TagClass(tag, className))
+                count++;
+        }
+
+        return count;
+    }
 
     public static bool TagClasses(
         this IReadOnlyNode node,
@@ -218,7 +226,6 @@ public static class QueryHelpers
 
     public static string GetTextContent(this IReadOnlyNode node, StringBuilder sb, TrimMode trimMode = TrimMode.None)
     {
-        int i = 0;
         foreach (var descendant in node.AllDescendants())
         {
             if (descendant is not IReadOnlyTextNode textNode)
@@ -227,24 +234,27 @@ public static class QueryHelpers
             var span = textNode.Content.Memory.Span;
             span = trimMode switch
             {
-                TrimMode.Ends => i == 0 ? span.TrimStart() : span,
                 TrimMode.TextNodes => span.Trim(),
                 _ => span,
             };
 
             sb.AppendSpan(span);
-            i++;
         }
 
         if (trimMode == TrimMode.Ends)
         {
-            int j;
-            for (j = sb.Length - 1; j > 0 && sb[j].IsWhiteSpaceCharacter(); j--) { }
+            var start = 0;
+            while (start < sb.Length && sb[start].IsWhiteSpaceCharacter())
+                start++;
 
-            if (j != sb.Length - 1)
-            {
-                sb.Remove(j + 1, sb.Length - j - 1);
-            }
+            var end = sb.Length;
+            while (end > start && sb[end - 1].IsWhiteSpaceCharacter())
+                end--;
+
+            if (end < sb.Length)
+                sb.Remove(end, sb.Length - end);
+            if (start > 0)
+                sb.Remove(0, start);
         }
 
         var tmp = sb.ToString();

@@ -177,6 +177,7 @@ public static class CompactQuery
         /// <summary>Filters by a whitespace-separated class token.</summary>
         public ElementQuery WithClass(string token)
         {
+            HtmlClassToken.Validate(token, nameof(token));
             return WithClass(_document.ResolveNameId("class"), token);
         }
 
@@ -255,7 +256,7 @@ public static class CompactQuery
             {
                 var nameId = _document.AttributeNameIdAt(a);
                 if (_hasClass && !classOk && nameId == _classId)
-                    classOk = HasToken(_document.AttributeValueSpanAt(a), _classToken);
+                    classOk = HtmlClassToken.Contains(_document.AttributeValueSpanAt(a), _classToken);
                 if (_hasAttr && !attrOk && nameId == _attrId)
                     attrOk = _attrValue is null || _document.AttributeValueSpanAt(a).SequenceEqual(_attrValue);
                 if (classOk && attrOk)
@@ -263,23 +264,6 @@ public static class CompactQuery
             }
 
             return classOk && attrOk;
-        }
-
-        private static bool HasToken(ReadOnlySpan<char> classes, ReadOnlySpan<char> wanted)
-        {
-            var i = 0;
-            while (i < classes.Length)
-            {
-                while (i < classes.Length && char.IsWhiteSpace(classes[i]))
-                    i++;
-                var start = i;
-                while (i < classes.Length && !char.IsWhiteSpace(classes[i]))
-                    i++;
-                if (i > start && classes.Slice(start, i - start).SequenceEqual(wanted))
-                    return true;
-            }
-
-            return false;
         }
 
         public struct Enumerator

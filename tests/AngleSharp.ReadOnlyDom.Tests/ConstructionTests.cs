@@ -36,6 +36,19 @@ public class ConstructionTests
     }
 
     [Test]
+    public async Task StructuralFormFeedBetweenBlockSiblingsRemainsDiscarded()
+    {
+        const string html = "<body>\f<div>one</div>\f<div>two</div>\f</body>";
+        var parser = new HtmlParser(default, ReadOnlyParser.DefaultContext);
+
+        using var document = parser.ParseReadOnlyDocument(html);
+        var body = document.QueryOne(node => node.Tag("body"))!;
+
+        await Assert.That(body.ChildNodes.Length).IsEqualTo(2);
+        await Assert.That(body.ChildNodes.All(node => node is IReadOnlyElement)).IsTrue();
+    }
+
+    [Test]
     public async Task CompactCollectionsPreserveConstructionResults()
     {
         string[] samples =

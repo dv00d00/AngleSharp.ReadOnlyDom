@@ -61,16 +61,8 @@ public sealed class CompactProjectionSelector
 
     public CompactProjectionSelector WithClass(string token)
     {
-        ArgumentException.ThrowIfNullOrEmpty(token);
-        foreach (var character in token)
-            if (IsHtmlSpace(character))
-                throw new ArgumentException("A class token cannot contain HTML whitespace.", nameof(token));
+        HtmlClassToken.Validate(token, nameof(token));
         return ReplaceLast(Last with { ClassToken = token });
-    }
-
-    internal static bool IsHtmlSpace(char value)
-    {
-        return value is '\t' or '\n' or '\f' or '\r' or ' ';
     }
 
     internal bool HasSameStepsAs(CompactProjectionSelector other)

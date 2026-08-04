@@ -104,6 +104,77 @@ internal sealed class CompactParserTests
     }
 
     [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task ClassQueriesUseAllFiveHtmlWhitespaceSeparators(CompactDocumentLayout layout)
+    {
+        foreach (var separator in new[] { '\t', '\n', '\f', '\r', ' ' })
+        {
+            using var document = CompactParser
+                .CreateParser(layout: layout)
+                .ParseCompactDocument($"<p class='alpha{separator}beta'>value</p>");
+            var paragraph = document.Elements("p").First();
+
+            await Assert.That(paragraph.HasClass("alpha")).IsTrue();
+            await Assert.That(paragraph.HasClass("beta")).IsTrue();
+            await Assert.That(document.Elements("p").WithClass("beta").First().Exists).IsTrue();
+        }
+    }
+
+    [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task ClassQueriesDoNotTreatNbspAsHtmlWhitespace(CompactDocumentLayout layout)
+    {
+        const string joinedToken = "alpha\u00a0beta";
+        using var document = CompactParser
+            .CreateParser(layout: layout)
+            .ParseCompactDocument($"<p class='{joinedToken}'>value</p>");
+        var paragraph = document.Elements("p").First();
+
+        await Assert.That(paragraph.HasClass("alpha")).IsFalse();
+        await Assert.That(paragraph.HasClass("beta")).IsFalse();
+        await Assert.That(paragraph.HasClass(joinedToken)).IsTrue();
+        await Assert.That(document.Elements("p").WithClass("alpha").First().Exists).IsFalse();
+        await Assert.That(document.Elements("p").WithClass(joinedToken).First().Exists).IsTrue();
+    }
+
+    [Test]
+    public async Task ClassQueriesRejectEmptyAndCompositeTokens()
+    {
+        using var document = CompactParser.CreateParser().ParseCompactDocument("<p class='alpha beta'>value</p>");
+        var paragraph = document.Elements("p").First();
+
+        await Assert.That(() => paragraph.HasClass((string)null!)).Throws<ArgumentNullException>();
+        await Assert.That(() => document.Elements("p").WithClass(null!)).Throws<ArgumentNullException>();
+        foreach (var token in new[] { "", "two tokens", "two\ttokens", "two\ntokens", "two\ftokens", "two\rtokens" })
+        {
+            await Assert.That(() => paragraph.HasClass(token)).Throws<ArgumentException>();
+            await Assert.That(() => document.Elements("p").WithClass(token)).Throws<ArgumentException>();
+        }
+    }
+
+    [Test]
+    [Arguments(CompactDocumentLayout.FrozenColumns)]
+    [Arguments(CompactDocumentLayout.Packed)]
+    public async Task StructuralFormFeedBetweenBlockSiblingsIsDiscarded(CompactDocumentLayout layout)
+    {
+        using var document = CompactParser
+            .CreateParser(layout: layout)
+            .ParseCompactDocument("<body>\f<div>one</div>\f<div>two</div>\f</body>");
+        var body = document.Elements("body").First();
+        var childCount = 0;
+
+        foreach (var child in body.Children())
+        {
+            await Assert.That(child.Is("div")).IsTrue();
+            childCount++;
+        }
+
+        await Assert.That(childCount).IsEqualTo(2);
+    }
+
+    [Test]
     public async Task Utf8StreamConstructsCompactDocumentThroughBoundedSource()
     {
         var source = Encoding.UTF8.GetBytes("<main data-kind=stream>café</main>");

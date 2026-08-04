@@ -111,11 +111,13 @@ public readonly struct Node
 
     public bool HasClass(string token)
     {
-        return HasClass(token.AsSpan());
+        HtmlClassToken.Validate(token, nameof(token));
+        return HasClass(_document!.ResolveNameId("class"), token);
     }
 
     public bool HasClass(ReadOnlySpan<char> token)
     {
+        HtmlClassToken.Validate(token, nameof(token));
         return HasClass(_document!.ResolveNameId("class"), token);
     }
 
@@ -124,7 +126,7 @@ public readonly struct Node
     {
         if (!TryFindAttribute(classNameId, out var classes))
             return false;
-        return ContainsToken(classes, token);
+        return HtmlClassToken.Contains(classes, token);
     }
 
     public string Text()
@@ -264,23 +266,6 @@ public readonly struct Node
                 value = document.AttributeValueSpanAt(a);
                 return true;
             }
-
-        return false;
-    }
-
-    private static bool ContainsToken(ReadOnlySpan<char> tokens, ReadOnlySpan<char> wanted)
-    {
-        var i = 0;
-        while (i < tokens.Length)
-        {
-            while (i < tokens.Length && char.IsWhiteSpace(tokens[i]))
-                i++;
-            var start = i;
-            while (i < tokens.Length && !char.IsWhiteSpace(tokens[i]))
-                i++;
-            if (i > start && tokens.Slice(start, i - start).SequenceEqual(wanted))
-                return true;
-        }
 
         return false;
     }
