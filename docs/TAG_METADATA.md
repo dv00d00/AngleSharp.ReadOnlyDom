@@ -1,6 +1,6 @@
 # Canonical tag metadata
 
-`src/AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs` is deterministic checked-in code generated from the exact AngleSharp
+`src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs` is deterministic checked-in code generated from the exact AngleSharp
 package referenced by `Directory.Packages.props`. The generator reflects AngleSharp's internal `HtmlElementFactory`, creates
 every public `TagNames` entry, and records its effective `NodeFlags`. This makes the package's runtime construction behavior
 the canonical source instead of maintaining a second handwritten table.
@@ -13,15 +13,15 @@ together.
 Regenerate after changing the AngleSharp package version:
 
 ```powershell
-dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- src/AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
+dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs
 dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --namespace AngleSharp.ReadOnlyDom.Compact src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
-csharpier format src/AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
+csharpier format src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
 ```
 
 Verify that checked-in output is current:
 
 ```powershell
-dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --check src/AngleSharp.ReadOnlyDom/GeneratedTagMetadata.g.cs
+dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --check src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs
 dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --check --namespace AngleSharp.ReadOnlyDom.Compact src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
 ```
 
