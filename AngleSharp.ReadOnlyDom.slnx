@@ -5,7 +5,6 @@
   <Folder Name="/Source/">
     <Project Path="src/AngleSharp.ReadOnlyDom/AngleSharp.ReadOnlyDom.csproj" />
     <Project Path="src/AngleSharp.ReadOnlyDom.Compact/AngleSharp.ReadOnlyDom.Compact.csproj" />
-    <Project Path="src/AngleSharp.ReadOnlyDom.Helpers/AngleSharp.ReadOnlyDom.Helpers.csproj" />
     <Project Path="src/AngleSharp.ReadOnlyDom.Streaming/AngleSharp.ReadOnlyDom.Streaming.csproj" />
   </Folder>
   <Folder Name="/Tests/">

@@ -1,5 +1,4 @@
-﻿using System.Buffers;
-using System.Text;
+﻿using System.Text;
 using AngleSharp.Common;
 using AngleSharp.ReadOnlyDom.Html;
 using AngleSharp.Text;
@@ -66,12 +65,6 @@ public static class QueryHelpers
         return false;
     }
 
-#if NETSTANDARD2_0
-    private static readonly char[] _whitespaces = "\t\n\r\f ".ToCharArray();
-#else
-    private static readonly SearchValues<char> _whitespaces = SearchValues.Create("\t\n\r\f ");
-#endif
-
     public static bool Class(this IReadOnlyNode node, ReadOnlySpan<char> className)
     {
         var element = node as IReadOnlyElement;
@@ -82,18 +75,7 @@ public static class QueryHelpers
         if (classAttr == null)
             return false;
 
-        if (classAttr.Value == className)
-            return true;
-
-#if NETSTANDARD2_0
-        foreach (var part in classAttr.Value.Memory.Span.SplitAny(_whitespaces))
-#else
-        foreach (var part in classAttr.Value.Memory.Span.Split(_whitespaces))
-#endif
-            if (part.SequenceEqual(className))
-                return true;
-
-        return false;
+        return ContainsClassToken(classAttr.Value.Memory.Span, className);
     }
 
     public static bool Classes(this IReadOnlyNode node, ReadOnlySpan<char> className1, ReadOnlySpan<char> className2)
@@ -109,12 +91,18 @@ public static class QueryHelpers
         bool found1 = false;
         bool found2 = false;
 
-#if NETSTANDARD2_0
-        foreach (var part in classAttr.Value.Memory.Span.SplitAny(_whitespaces))
-#else
-        foreach (var part in classAttr.Value.Memory.Span.Split(_whitespaces))
-#endif
+        var classes = classAttr.Value.Memory.Span;
+        var index = 0;
+        while (index < classes.Length)
         {
+            while (index < classes.Length && IsHtmlSpace(classes[index]))
+                index++;
+            var start = index;
+            while (index < classes.Length && !IsHtmlSpace(classes[index]))
+                index++;
+            if (index == start)
+                continue;
+            var part = classes.Slice(start, index - start);
             if (part.SequenceEqual(className1))
             {
                 found1 = true;
@@ -130,6 +118,25 @@ public static class QueryHelpers
 
         return found1 && found2;
     }
+
+    private static bool ContainsClassToken(ReadOnlySpan<char> classes, ReadOnlySpan<char> wanted)
+    {
+        var index = 0;
+        while (index < classes.Length)
+        {
+            while (index < classes.Length && IsHtmlSpace(classes[index]))
+                index++;
+            var start = index;
+            while (index < classes.Length && !IsHtmlSpace(classes[index]))
+                index++;
+            if (index > start && classes.Slice(start, index - start).SequenceEqual(wanted))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsHtmlSpace(char value) => value is '\t' or '\n' or '\f' or '\r' or ' ';
 
     public static bool Attr(this IReadOnlyNode node, StringOrMemory name, string? value = null)
     {

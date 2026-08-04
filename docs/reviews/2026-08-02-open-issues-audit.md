@@ -30,8 +30,5 @@ recommended issue hygiene was applied on 2026-08-03.
 
 Issue hygiene does not replace the still-valid code cleanup from the repository review:
 
-- delete the unconsumed `AngleSharp.ReadOnlyDom.Helpers` project and dependency edges;
-- remove dead core types and localize benchmark-only lexical filters;
-- fold the one-member `IPrintable` contract into `IReadOnlyNode`;
 - organize the surviving object-DOM files after deletion;
 - decide which experimental low-level tokenizer diagnostics belong in the public pre-alpha surface.
