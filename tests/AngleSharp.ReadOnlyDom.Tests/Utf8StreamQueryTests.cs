@@ -254,6 +254,88 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task PushSessionMatchesBufferedExecutionAcrossChunkSizes()
+    {
+        var root = StreamQuery
+            .For<QueryState>("p")
+            .OnText(
+                static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                    state.Text.Append(Encoding.UTF8.GetString(text))
+            );
+        var plan = root.Compile();
+        byte[] document = [.. "<p a='x'>h\u00E9llo "u8, 0xC2, .. " w\u00F6rld</p><p>tail</p>"u8];
+        var expected = plan.Execute(document, new QueryState()).Text.ToString();
+
+        foreach (var chunkSize in new[] { 1, 2, 3, 7, document.Length })
+        {
+            using var session = plan.CreateSession(new QueryState());
+            for (var offset = 0; offset < document.Length; offset += chunkSize)
+            {
+                session.Write(document.AsSpan(offset, Math.Min(chunkSize, document.Length - offset)));
+            }
+            var state = session.Complete();
+
+            await Assert.That(state.Text.ToString()).IsEqualTo(expected);
+            await Assert.That(session.Complete().Text.ToString()).IsEqualTo(expected);
+        }
+    }
+
+    [Test]
+    public async Task PushSessionHonorsTheTrustedContractAcrossSplitSequences()
+    {
+        var root = StreamQuery
+            .For<QueryState>("p")
+            .OnText(
+                static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                    state.Text.Append(Encoding.UTF8.GetString(text))
+            );
+        var plan = root.Compile();
+        var document = "<p>h\u00E9llo</p>"u8.ToArray();
+
+        using var session = plan.CreateSession(new QueryState(), Utf8InputContract.WellFormedUtf8);
+        foreach (var value in document)
+        {
+            session.Write(new ReadOnlySpan<byte>(in value));
+        }
+
+        await Assert.That(session.Complete().Text.ToString()).IsEqualTo("h\u00E9llo");
+    }
+
+    [Test]
+    public async Task PushSessionRejectsWritesAfterCompletion()
+    {
+        var plan = StreamQuery.For<QueryState>("p").Compile();
+        using var session = plan.CreateSession(new QueryState());
+        session.Write("<p>x</p>"u8);
+        session.Complete();
+
+        await Assert.That(() => session.Write("<p>y</p>"u8)).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task StreamingExecutionHonorsTheTrustedContractAcrossSplitSequences()
+    {
+        var root = StreamQuery
+            .For<QueryState>("p")
+            .OnText(
+                static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                    state.Text.Append(Encoding.UTF8.GetString(text))
+            );
+        var pipe = new Pipe(new PipeOptions(minimumSegmentSize: 1, useSynchronizationContext: false));
+        var execute = root.Compile()
+            .ExecuteAsync(pipe.Reader, new QueryState(), inputContract: Utf8InputContract.WellFormedUtf8)
+            .AsTask();
+
+        foreach (var value in "<p>h\u00E9llo</p>"u8.ToArray())
+            await pipe.Writer.WriteAsync(new byte[] { value });
+        await pipe.Writer.CompleteAsync();
+        var state = await execute;
+        await pipe.Reader.CompleteAsync();
+
+        await Assert.That(state.Text.ToString()).IsEqualTo("h\u00E9llo");
+    }
+
+    [Test]
     public async Task CompactTagIdentityMatchesNormalizedNamesAcrossChunks()
     {
         var root = StreamQuery

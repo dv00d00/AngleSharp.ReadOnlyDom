@@ -751,13 +751,16 @@ internal sealed class Utf8HtmlTokenizer
         PipeReader reader,
         IUtf8HtmlTokenSink sink,
         CancellationToken cancellationToken = default,
-        HtmlStreamingLimits? limits = null
+        HtmlStreamingLimits? limits = null,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes
     )
     {
         ArgumentNullException.ThrowIfNull(reader);
+        if (inputContract is not (Utf8InputContract.ArbitraryBytes or Utf8InputContract.WellFormedUtf8))
+            throw new ArgumentOutOfRangeException(nameof(inputContract));
         var effectiveLimits = limits ?? HtmlStreamingLimits.Default;
         var tokenizer = new Utf8HtmlTokenizer(sink, effectiveLimits);
-        var input = new Utf8HtmlTokenizerInput(tokenizer, limits: effectiveLimits);
+        var input = new Utf8HtmlTokenizerInput(tokenizer, inputContract, effectiveLimits);
         while (true)
         {
             var result = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);

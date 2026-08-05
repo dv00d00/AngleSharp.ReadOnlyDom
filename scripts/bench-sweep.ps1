@@ -19,7 +19,7 @@ param(
     [int] $Rounds = 3,
     [ValidateSet("passthrough", "match", "extract")]
     [string] $Workload = "passthrough",
-    [ValidateSet("stream", "buffer-arbitrary", "buffer-trusted")]
+    [ValidateSet("stream", "stream-trusted", "push", "buffer-arbitrary", "buffer-trusted")]
     [string] $Mode = "stream",
     [Int32] $ChunkSize = 4096,
     # Optional second .NET lane: a console DLL built from another commit.
