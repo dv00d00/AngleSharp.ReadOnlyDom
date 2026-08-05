@@ -5,11 +5,16 @@ using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Query.Execution;
 
-internal sealed class QueryExecution<TState>
-    : IUtf8HtmlTokenSink,
-        IUtf8HtmlStartTagSourceRangeSink,
+internal interface IQueryExecution<out TState> : IUtf8HtmlTokenSink, IDisposable
+{
+    TState State { get; }
+}
+
+internal class QueryExecution<TState, TResourceLimits>
+    : IUtf8HtmlStartTagSourceRangeSink,
         IUtf8HtmlStreamingCommentSink,
-        IDisposable
+        IQueryExecution<TState>
+    where TResourceLimits : struct, IResourceLimitPolicy
 {
     private readonly QueryPlan<TState> _plan;
     private readonly int[] _activeCounts;
@@ -146,14 +151,20 @@ internal sealed class QueryExecution<TState>
         _pendingAttributeIndex = -1;
         if (index < 0 || _attributeLengths[index] >= 0)
             return;
-        EnsureQueryCaptureCapacity(value.Length);
+        if (TResourceLimits.Enabled)
+        {
+            EnsureQueryCaptureCapacity(value.Length);
+        }
         EnsureAttributeCapacity(value.Length);
         _attributeStarts[index] = _attributeValueLength;
         _attributeLengths[index] = value.Length;
         _seenAttributeBits |= 1UL << index;
         value.CopyTo(_attributeValues.AsSpan(_attributeValueLength));
         _attributeValueLength += value.Length;
-        _queryCaptureBytes += value.Length;
+        if (TResourceLimits.Enabled)
+        {
+            _queryCaptureBytes += value.Length;
+        }
     }
 
     public void StartTagSourceRange(long sourceStart, long sourceEnd)
@@ -188,13 +199,16 @@ internal sealed class QueryExecution<TState>
             _pendingTagIdentityLength,
             _pendingTagNameLength
         );
-        if (!closesImmediately && _frameCount >= _maximumNestingDepth)
+        if (TResourceLimits.Enabled && !closesImmediately && _frameCount >= _maximumNestingDepth)
             throw new HtmlStreamingLimitExceededException(
                 HtmlStreamingLimit.NestingDepth,
                 _maximumNestingDepth,
                 (long)_frameCount + 1
             );
-        EnsureQueryCaptureCapacity(GetCompletedAttributeBytes(matches));
+        if (TResourceLimits.Enabled)
+        {
+            EnsureQueryCaptureCapacity(GetCompletedAttributeBytes(matches));
+        }
 
         var starts = matches;
         while (starts != 0)
@@ -267,7 +281,10 @@ internal sealed class QueryExecution<TState>
     {
         if (_plan.TextHandlerMask == 0 && _plan.CompletedHandlerMask == 0)
             return;
-        EnsureQueryCaptureCapacity(GetCompletedTextUpperBound(utf8.Length));
+        if (TResourceLimits.Enabled)
+        {
+            EnsureQueryCaptureCapacity(GetCompletedTextUpperBound(utf8.Length));
+        }
         var handlers = _plan.TextHandlerMask;
         while (handlers != 0)
         {
@@ -462,7 +479,10 @@ internal sealed class QueryExecution<TState>
                 if (length >= 0)
                 {
                     capture.SetAttribute(attribute, _attributeValues.AsSpan(_attributeStarts[attributeIndex], length));
-                    _queryCaptureBytes += length;
+                    if (TResourceLimits.Enabled)
+                    {
+                        _queryCaptureBytes += length;
+                    }
                 }
             }
             capture.BeginText();
@@ -487,7 +507,10 @@ internal sealed class QueryExecution<TState>
             {
                 var previousLength = capture.BufferedByteCount;
                 capture.Append(utf8);
-                _queryCaptureBytes += capture.BufferedByteCount - previousLength;
+                if (TResourceLimits.Enabled)
+                {
+                    _queryCaptureBytes += capture.BufferedByteCount - previousLength;
+                }
             }
         }
     }
@@ -505,7 +528,10 @@ internal sealed class QueryExecution<TState>
         captures.RemoveAt(captureIndex);
         if (node.CompletedTextMode != CompletedTextMode.None)
             _activeCompletedTextCaptures--;
-        _queryCaptureBytes -= capture.BufferedByteCount;
+        if (TResourceLimits.Enabled)
+        {
+            _queryCaptureBytes -= capture.BufferedByteCount;
+        }
         try
         {
             var element = new CompletedElement(
@@ -548,7 +574,10 @@ internal sealed class QueryExecution<TState>
 
     private void ResetAttributes()
     {
-        _queryCaptureBytes -= _attributeValueLength;
+        if (TResourceLimits.Enabled)
+        {
+            _queryCaptureBytes -= _attributeValueLength;
+        }
         _attributeValueLength = 0;
         while (_seenAttributeBits != 0)
         {
@@ -680,4 +709,16 @@ internal sealed class QueryExecution<TState>
             )
             || (nameLength == 6 && identity == HtmlVoidElements.Source)
         );
+}
+
+internal sealed class QueryExecution<TState> : QueryExecution<TState, EnforcedResourceLimits>
+{
+    internal QueryExecution(
+        QueryPlan<TState> plan,
+        TState state,
+        HtmlStreamingLimits limits,
+        RewriteHandler<TState>? rewriteHandler = null,
+        Utf8RewriteCollector? rewriteCollector = null
+    )
+        : base(plan, state, limits, rewriteHandler, rewriteCollector) { }
 }

@@ -20,7 +20,8 @@ internal static class HtmlEncodingSniffer
             ? key
             : throw new InvalidOperationException("The encoding-sniffer name has no compact identity.");
 
-    internal static Detection Detect(ReadOnlySpan<byte> source, Encoding? fallback)
+    internal static Detection Detect<TResourceLimits>(ReadOnlySpan<byte> source, Encoding? fallback)
+        where TResourceLimits : struct, IResourceLimitPolicy
     {
         if (source.Length >= 3 && source[0] == 0xef && source[1] == 0xbb && source[2] == 0xbf)
             return new Detection(Encoding.UTF8, 3);
@@ -30,8 +31,8 @@ internal static class HtmlEncodingSniffer
             return new Detection(Encoding.BigEndianUnicode, 2);
 
         var sink = new EncodingDeclarationSink();
-        var tokenizer = new Utf8HtmlTokenizer(sink);
-        var input = new Utf8HtmlTokenizerInput(tokenizer);
+        var tokenizer = new Utf8HtmlTokenizer<TResourceLimits>(sink);
+        var input = new Utf8HtmlTokenizerInput<TResourceLimits>(tokenizer);
         input.Write(source);
         input.Complete();
 

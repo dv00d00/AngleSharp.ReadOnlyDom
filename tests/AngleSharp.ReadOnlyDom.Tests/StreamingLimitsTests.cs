@@ -1,9 +1,11 @@
 #if NET10_0
+using System.Buffers;
 using System.IO.Pipelines;
 using System.Text;
 using AngleSharp.ReadOnlyDom.Streaming;
 using AngleSharp.ReadOnlyDom.Streaming.Input;
 using AngleSharp.ReadOnlyDom.Streaming.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
 using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 namespace AngleSharp.Readonly.Tests;
@@ -16,6 +18,10 @@ public sealed class StreamingLimitsTests
         maximumInputBytes: 1_000_000,
         maximumQueryCaptureBytes: 1_000_000
     );
+    private static readonly HtmlStreamingLimits DisabledPolicyProbe = new(1, 1, 1, 1)
+    {
+        EnforcesLimits = false,
+    };
 
     public static IEnumerable<string> DegenerateTokens()
     {
@@ -189,6 +195,72 @@ public sealed class StreamingLimitsTests
         await Assert.That(tokenizer.Counters.BytesConsumed).IsGreaterThan(1024);
     }
 
+    [Test]
+    public async Task UnboundedPolicyEliminatesTokenizerResourceAccounting()
+    {
+        var tokenizer = new Utf8HtmlTokenizer<UnboundedResources>(new NullSink(), DisabledPolicyProbe);
+        tokenizer.Write(Encoding.UTF8.GetBytes("<a value='" + new string('x', 1024) + "'>text</a>"));
+        tokenizer.Complete();
+
+        await Assert.That(tokenizer.Counters.BytesConsumed).IsEqualTo(0);
+        await Assert.That(tokenizer.Counters.MaximumBufferedTokenBytes).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task HighLevelUtf8EntryPointsSelectTheUnboundedPolicy()
+    {
+        var html = Encoding.UTF8.GetBytes(
+            "<div data-value='abcdef'><div>0123456789</div></div><!--" + new string('x', 32) + "-->"
+        );
+        var plan = StreamQuery
+            .For<TestState>("div")
+            .OnTextContent(static (ref TestState state, in CompletedElement _) => state.Completed++)
+            .Compile();
+
+        var buffered = plan.Execute(html, new TestState(), limits: DisabledPolicyProbe);
+
+        using var session = plan.CreateSession(new TestState(), limits: DisabledPolicyProbe);
+        for (var index = 0; index < html.Length; index++)
+            session.Write(html.AsSpan(index, 1));
+        var pushed = session.Complete();
+
+        var reader = PipeReader.Create(new MemoryStream(html));
+        var streamed = await plan.ExecuteAsync(reader, new TestState(), limits: DisabledPolicyProbe);
+        await reader.CompleteAsync();
+
+        var encodedReader = PipeReader.Create(new MemoryStream(html));
+        var encoded = await plan.ExecuteEncodedAsync(
+            encodedReader,
+            HtmlInputEncoding.Auto(Encoding.UTF8),
+            new TestState(),
+            limits: DisabledPolicyProbe
+        );
+        await encodedReader.CompleteAsync();
+
+        await Assert.That(buffered.Completed).IsEqualTo(2);
+        await Assert.That(pushed.Completed).IsEqualTo(2);
+        await Assert.That(streamed.Completed).IsEqualTo(2);
+        await Assert.That(encoded.Completed).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task RewriteSelectsTheUnboundedPolicy()
+    {
+        var plan = StreamQuery.For<TestState>("a").Compile();
+        var output = new ArrayBufferWriter<byte>();
+
+        plan.Rewrite(
+            "<a href='long value'>text</a>"u8,
+            output,
+            new TestState(),
+            static (ref TestState _, in Element _, ref StartTagEditor tag) =>
+                tag.AppendAttribute("data-value"u8, "more than one byte"u8),
+            limits: DisabledPolicyProbe
+        );
+
+        await Assert.That(Encoding.UTF8.GetString(output.WrittenSpan)).Contains("data-value");
+    }
+
     private static HtmlStreamingLimits Limits(int depth = 100, long input = 1_000_000, long capture = 1_000_000) =>
         new(
             maximumBufferedTokenBytes: 1_000_000,
@@ -223,7 +295,10 @@ public sealed class StreamingLimitsTests
         throw new InvalidOperationException("Expected a streaming limit failure.");
     }
 
-    private sealed class TestState;
+    private sealed class TestState
+    {
+        public int Completed;
+    }
 
     private sealed class NullSink : IUtf8HtmlTokenSink
     {

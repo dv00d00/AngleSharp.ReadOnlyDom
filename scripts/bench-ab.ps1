@@ -30,6 +30,8 @@ param(
     [string] $Workload = "extract",
     [ValidateSet("stream", "stream-trusted", "push", "buffer-arbitrary", "buffer-trusted")]
     [string] $Mode = "stream",
+    [switch] $Unlimited,
+    [switch] $BaselineUnlimited,
     [Int32] $ChunkSize = 4096,
     [String] $Corpus = "qq.html",
     [switch] $SkipBuild
@@ -50,21 +52,25 @@ if (-not $SkipBuild) {
 }
 
 $lanes = [ordered]@{
-    candidate = Join-Path (Split-Path $angleProject) "bin/Release/net10.0/AngleSharp.NativeConsole.dll"
-    baseline  = $BaselineDll
+    candidate = @{
+        Dll = Join-Path (Split-Path $angleProject) "bin/Release/net10.0/AngleSharp.NativeConsole.dll"
+        Unlimited = $Unlimited.IsPresent
+    }
+    baseline = @{ Dll = $BaselineDll; Unlimited = $BaselineUnlimited.IsPresent }
 }
 
-function Invoke-Lane([String] $Dll, [Int32] $CopyCount) {
+function Invoke-Lane([Hashtable] $Lane, [Int32] $CopyCount) {
     $info = [Diagnostics.ProcessStartInfo]::new("dotnet")
     $arguments = @(
-        $Dll,
+        $Lane.Dll,
         "--input", $corpusPath,
         "--seconds", $Seconds.ToString($culture),
         "--warmup", $Warmup.ToString($culture),
         "--copies", $CopyCount.ToString($culture),
         "--chunk-size", $ChunkSize.ToString($culture),
         "--workload", $Workload,
-        "--mode", $Mode
+        "--mode", $Mode,
+        "--unlimited", $Lane.Unlimited.ToString().ToLowerInvariant()
     )
     foreach ($argument in $arguments) { $info.ArgumentList.Add([String]$argument) }
     $info.RedirectStandardOutput = $true
@@ -76,7 +82,7 @@ function Invoke-Lane([String] $Dll, [Int32] $CopyCount) {
     $process.WaitForExit()
 
     $line = ($output -split "`n" | Where-Object { $_ -like "RESULT *" } | Select-Object -Last 1)
-    if ($process.ExitCode -ne 0 -or -not $line) { throw "Console run failed: $Dll" }
+    if ($process.ExitCode -ne 0 -or -not $line) { throw "Console run failed: $($Lane.Dll)" }
     $values = @{}
     foreach ($token in $line.Trim().Split(' ')) {
         $pair = $token.Split('=', 2)
@@ -97,7 +103,7 @@ function Get-Median([Double[]] $Values) {
     return ($ordered[$middle - 1] + $ordered[$middle]) / 2.0
 }
 
-Write-Host "corpus=$Corpus workload=$Workload mode=$Mode rounds=$Rounds x ${Seconds}s"
+Write-Host "corpus=$Corpus workload=$Workload mode=$Mode candidate-unlimited=$($Unlimited.IsPresent) baseline-unlimited=$($BaselineUnlimited.IsPresent) rounds=$Rounds x ${Seconds}s"
 foreach ($copyCount in $Copies) {
     $samples = @{}
     $facts = @{}

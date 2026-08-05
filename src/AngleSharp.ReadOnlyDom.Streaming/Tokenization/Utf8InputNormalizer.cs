@@ -21,7 +21,8 @@ public enum Utf8InputContract : byte
 /// Owns UTF-8 framing, validation, malformed-input replacement, and source-byte accounting before bytes reach the
 /// HTML tokenizer state machine.
 /// </summary>
-internal struct Utf8InputNormalizer
+internal struct Utf8InputNormalizer<TResourceLimits>
+    where TResourceLimits : struct, IResourceLimitPolicy
 {
     // Validation runs in windows so that bulk text between tags can reach the tokenizer through the
     // fused arbitrary-text path instead of being swallowed into a chunk-sized validated prefix. The
@@ -50,20 +51,29 @@ internal struct Utf8InputNormalizer
 
     internal readonly Int64 BytesConsumed => _bytesConsumed;
 
-    internal Int32 Write(Utf8HtmlTokenizer tokenizer, ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
+    internal Int32 Write(
+        Utf8HtmlTokenizer<TResourceLimits> tokenizer,
+        ReadOnlySpan<Byte> utf8,
+        Boolean yieldOnRequest
+    )
     {
-        var previousBytesConsumed = _bytesConsumed;
-        var observedInputBytes = SaturatingAdd(_bytesConsumed, utf8.Length);
-        if (observedInputBytes > _maximumInputBytesAllowed)
+        var previousBytesConsumed = 0L;
+        if (TResourceLimits.Enabled)
         {
-            throw new HtmlStreamingLimitExceededException(
-                HtmlStreamingLimit.InputBytes,
-                _maximumInputBytesAllowed,
-                observedInputBytes
-            );
+            previousBytesConsumed = _bytesConsumed;
+            var observedInputBytes = SaturatingAdd(previousBytesConsumed, utf8.Length);
+            if (observedInputBytes > _maximumInputBytesAllowed)
+            {
+                throw new HtmlStreamingLimitExceededException(
+                    HtmlStreamingLimit.InputBytes,
+                    _maximumInputBytesAllowed,
+                    observedInputBytes
+                );
+            }
+
+            _bytesConsumed = observedInputBytes;
         }
 
-        _bytesConsumed = observedInputBytes;
         var index = 0;
         if (_carryLength != 0)
         {
@@ -75,13 +85,13 @@ internal struct Utf8InputNormalizer
             {
                 if (yieldOnRequest && tokenizer.IsYieldRequested)
                 {
-                    _bytesConsumed = SaturatingAdd(previousBytesConsumed, index);
+                    RecordBytesConsumed(previousBytesConsumed, index);
                 }
                 return index;
             }
             if (yieldOnRequest && tokenizer.IsYieldRequested)
             {
-                _bytesConsumed = SaturatingAdd(previousBytesConsumed, index);
+                RecordBytesConsumed(previousBytesConsumed, index);
                 return index;
             }
         }
@@ -107,12 +117,12 @@ internal struct Utf8InputNormalizer
                 index += consumed;
                 if (consumed != available)
                 {
-                    _bytesConsumed = SaturatingAdd(previousBytesConsumed, index);
+                    RecordBytesConsumed(previousBytesConsumed, index);
                     return index;
                 }
                 if (yieldOnRequest && tokenizer.IsYieldRequested)
                 {
-                    _bytesConsumed = SaturatingAdd(previousBytesConsumed, index);
+                    RecordBytesConsumed(previousBytesConsumed, index);
                     return index;
                 }
                 continue;
@@ -130,7 +140,7 @@ internal struct Utf8InputNormalizer
                     }
                     if (yieldOnRequest && tokenizer.IsYieldRequested)
                     {
-                        _bytesConsumed = SaturatingAdd(previousBytesConsumed, index);
+                        RecordBytesConsumed(previousBytesConsumed, index);
                         return index;
                     }
                     continue;
@@ -169,7 +179,7 @@ internal struct Utf8InputNormalizer
                 index += malformedConsumed;
                 if (malformedConsumed != completeLength || (yieldOnRequest && tokenizer.IsYieldRequested))
                 {
-                    _bytesConsumed = SaturatingAdd(previousBytesConsumed, index);
+                    RecordBytesConsumed(previousBytesConsumed, index);
                     return index;
                 }
 
@@ -206,7 +216,11 @@ internal struct Utf8InputNormalizer
         return complete > 0 ? remaining[..complete] : remaining;
     }
 
-    private Int32 DrainWellFormedCarry(Utf8HtmlTokenizer tokenizer, ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
+    private Int32 DrainWellFormedCarry(
+        Utf8HtmlTokenizer<TResourceLimits> tokenizer,
+        ReadOnlySpan<Byte> utf8,
+        Boolean yieldOnRequest
+    )
     {
         var expectedLength = Utf8SequenceLength((Byte)_carry);
         var index = 0;
@@ -226,7 +240,11 @@ internal struct Utf8InputNormalizer
         return index;
     }
 
-    private Int32 DrainCarry(Utf8HtmlTokenizer tokenizer, ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
+    private Int32 DrainCarry(
+        Utf8HtmlTokenizer<TResourceLimits> tokenizer,
+        ReadOnlySpan<Byte> utf8,
+        Boolean yieldOnRequest
+    )
     {
         Span<Byte> candidate = stackalloc Byte[4];
         var index = 0;
@@ -261,7 +279,7 @@ internal struct Utf8InputNormalizer
         return index;
     }
 
-    internal void Complete(Utf8HtmlTokenizer tokenizer)
+    internal void Complete(Utf8HtmlTokenizer<TResourceLimits> tokenizer)
     {
         // The carry is replaced per maximal-subpart rules, exactly as DrainCarry would have done
         // had more input arrived: a genuinely incomplete sequence (E4 B8 at end of stream) is one
@@ -291,7 +309,7 @@ internal struct Utf8InputNormalizer
     }
 
     private Int32 WriteWellFormed(
-        Utf8HtmlTokenizer tokenizer,
+        Utf8HtmlTokenizer<TResourceLimits> tokenizer,
         ReadOnlySpan<Byte> utf8,
         Int32 index,
         Int64 previousBytesConsumed,
@@ -306,7 +324,7 @@ internal struct Utf8InputNormalizer
             index += consumed;
             if (consumed != completeLength)
             {
-                _bytesConsumed = SaturatingAdd(previousBytesConsumed, index);
+                RecordBytesConsumed(previousBytesConsumed, index);
                 return index;
             }
         }
@@ -321,7 +339,7 @@ internal struct Utf8InputNormalizer
     }
 
     private static Int32 WriteMalformedUtf8(
-        Utf8HtmlTokenizer tokenizer,
+        Utf8HtmlTokenizer<TResourceLimits> tokenizer,
         ReadOnlySpan<Byte> utf8,
         Boolean yieldOnRequest
     )
@@ -433,4 +451,12 @@ internal struct Utf8InputNormalizer
 
     private static Int64 SaturatingAdd(Int64 left, Int64 right) =>
         left > Int64.MaxValue - right ? Int64.MaxValue : left + right;
+
+    private void RecordBytesConsumed(Int64 previousBytesConsumed, Int32 consumed)
+    {
+        if (TResourceLimits.Enabled)
+        {
+            _bytesConsumed = SaturatingAdd(previousBytesConsumed, consumed);
+        }
+    }
 }

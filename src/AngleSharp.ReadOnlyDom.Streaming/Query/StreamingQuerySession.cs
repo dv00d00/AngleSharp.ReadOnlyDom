@@ -12,8 +12,8 @@ namespace AngleSharp.ReadOnlyDom.Streaming.Query;
 /// </summary>
 public sealed class StreamingQuerySession<TState> : IDisposable
 {
-    private readonly QueryExecution<TState> _execution;
-    private readonly Utf8HtmlTokenizerInput _input;
+    private readonly IQueryExecution<TState> _execution;
+    private readonly IUtf8HtmlTokenizerInput _input;
     private bool _completed;
     private bool _disposed;
 
@@ -27,16 +27,35 @@ public sealed class StreamingQuerySession<TState> : IDisposable
         if (inputContract is not (Utf8InputContract.ArbitraryBytes or Utf8InputContract.WellFormedUtf8))
             throw new ArgumentOutOfRangeException(nameof(inputContract));
 
-        _execution = plan.CreateExecution(state, limits);
-        try
+        if (limits.EnforcesLimits)
         {
-            var tokenizer = new Utf8HtmlTokenizer(_execution, limits);
-            _input = new Utf8HtmlTokenizerInput(tokenizer, inputContract, limits);
+            var execution = plan.CreateExecution<EnforcedResourceLimits>(state, limits);
+            _execution = execution;
+            try
+            {
+                var tokenizer = new Utf8HtmlTokenizer<EnforcedResourceLimits>(execution, limits);
+                _input = new Utf8HtmlTokenizerInput<EnforcedResourceLimits>(tokenizer, inputContract, limits);
+            }
+            catch
+            {
+                execution.Dispose();
+                throw;
+            }
         }
-        catch
+        else
         {
-            _execution.Dispose();
-            throw;
+            var execution = plan.CreateExecution<UnboundedResources>(state, limits);
+            _execution = execution;
+            try
+            {
+                var tokenizer = new Utf8HtmlTokenizer<UnboundedResources>(execution, limits);
+                _input = new Utf8HtmlTokenizerInput<UnboundedResources>(tokenizer, inputContract, limits);
+            }
+            catch
+            {
+                execution.Dispose();
+                throw;
+            }
         }
     }
 
@@ -76,7 +95,7 @@ public sealed class StreamingQuerySession<TState> : IDisposable
             _input.Complete();
             _completed = true;
         }
-        return _execution.State;
+        return State;
     }
 
     /// <summary>Releases pooled buffers. Completing first is not required.</summary>

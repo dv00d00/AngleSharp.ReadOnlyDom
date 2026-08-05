@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO.Pipelines;
 using System.Text;
+using AngleSharp.ReadOnlyDom.Streaming;
 using AngleSharp.ReadOnlyDom.Streaming.Query;
 using AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
 using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
@@ -61,10 +62,11 @@ static async ValueTask<BenchmarkResult> Parse(
     Options options
 )
 {
+    var limits = options.Unlimited ? HtmlStreamingLimits.Unlimited : null;
     if (options.Workload == "rewrite")
-        return RewriteBuffered(rewriteQuery, input);
+        return RewriteBuffered(rewriteQuery, input, limits);
     if (options.Workload == "rewrite-sink")
-        return RewriteSink(rewriteQuery, input);
+        return RewriteSink(rewriteQuery, input, limits);
 
     if (options.Workload == "extract")
     {
@@ -72,16 +74,18 @@ static async ValueTask<BenchmarkResult> Parse(
         {
             "stream" => await urlQuery.ExecuteAsync(
                 new ChunkedMemoryPipeReader(input, options.ChunkSize),
-                new UrlState()
+                new UrlState(),
+                limits: limits
             ),
             "stream-trusted" => await urlQuery.ExecuteAsync(
                 new ChunkedMemoryPipeReader(input, options.ChunkSize),
                 new UrlState(),
+                limits: limits,
                 inputContract: Utf8InputContract.WellFormedUtf8
             ),
-            "push" => PushParse(urlQuery, input, options.ChunkSize),
-            "buffer-arbitrary" => urlQuery.Execute(input, new UrlState(), Utf8InputContract.ArbitraryBytes),
-            "buffer-trusted" => urlQuery.Execute(input, new UrlState(), Utf8InputContract.WellFormedUtf8),
+            "push" => PushParse(urlQuery, input, options.ChunkSize, limits),
+            "buffer-arbitrary" => urlQuery.Execute(input, new UrlState(), Utf8InputContract.ArbitraryBytes, limits),
+            "buffer-trusted" => urlQuery.Execute(input, new UrlState(), Utf8InputContract.WellFormedUtf8, limits),
             _ => throw new ArgumentException($"Unknown mode: {options.Mode}"),
         };
         long checksum = 17;
@@ -96,16 +100,18 @@ static async ValueTask<BenchmarkResult> Parse(
     {
         "stream" => await query.ExecuteAsync(
             new ChunkedMemoryPipeReader(input, options.ChunkSize),
-            new CountState()
+            new CountState(),
+            limits: limits
         ),
         "stream-trusted" => await query.ExecuteAsync(
             new ChunkedMemoryPipeReader(input, options.ChunkSize),
             new CountState(),
+            limits: limits,
             inputContract: Utf8InputContract.WellFormedUtf8
         ),
-        "push" => PushParse(query, input, options.ChunkSize),
-        "buffer-arbitrary" => query.Execute(input, new CountState(), Utf8InputContract.ArbitraryBytes),
-        "buffer-trusted" => query.Execute(input, new CountState(), Utf8InputContract.WellFormedUtf8),
+        "push" => PushParse(query, input, options.ChunkSize, limits),
+        "buffer-arbitrary" => query.Execute(input, new CountState(), Utf8InputContract.ArbitraryBytes, limits),
+        "buffer-trusted" => query.Execute(input, new CountState(), Utf8InputContract.WellFormedUtf8, limits),
         _ => throw new ArgumentException($"Unknown mode: {options.Mode}"),
     };
     return new BenchmarkResult(count.Count, count.Count);
@@ -114,7 +120,7 @@ static async ValueTask<BenchmarkResult> Parse(
 // The rewritten document checksum is deterministic per corpus, so it is computed once (during
 // warmup) and skipped in the hot loop - a full-output checksum pass would otherwise rival the
 // rewrite itself and mask the publish cost the workload exists to measure.
-static BenchmarkResult RewriteBuffered(QueryPlan<CountState> plan, byte[] input)
+static BenchmarkResult RewriteBuffered(QueryPlan<CountState> plan, byte[] input, HtmlStreamingLimits? limits)
 {
     RewriteScratch.Output ??= new ArrayBufferWriter<byte>(input.Length + 4096);
     var output = RewriteScratch.Output;
@@ -128,13 +134,14 @@ static BenchmarkResult RewriteBuffered(QueryPlan<CountState> plan, byte[] input)
             state.Count++;
             tag.AppendAttribute("data-q"u8, "1"u8);
         },
-        Utf8InputContract.WellFormedUtf8
+        Utf8InputContract.WellFormedUtf8,
+        limits
     );
     RewriteScratch.Checksum ??= Fnv(output.WrittenSpan);
     return new BenchmarkResult(state.Count, RewriteScratch.Checksum.Value);
 }
 
-static BenchmarkResult RewriteSink(QueryPlan<CountState> plan, byte[] input)
+static BenchmarkResult RewriteSink(QueryPlan<CountState> plan, byte[] input, HtmlStreamingLimits? limits)
 {
     var checksumThisPass = RewriteScratch.Checksum is null;
     var state = plan.Rewrite(
@@ -149,7 +156,8 @@ static BenchmarkResult RewriteSink(QueryPlan<CountState> plan, byte[] input)
             ? static (ref CountState _, ReadOnlySpan<byte> segment) =>
                 RewriteScratch.Accumulator = Fnv(segment, RewriteScratch.Accumulator)
             : static (ref CountState _, ReadOnlySpan<byte> _) => { },
-        Utf8InputContract.WellFormedUtf8
+        Utf8InputContract.WellFormedUtf8,
+        limits
     );
     if (checksumThisPass)
         RewriteScratch.Checksum = RewriteScratch.Accumulator;
@@ -163,10 +171,10 @@ static long Fnv(ReadOnlySpan<byte> value, long checksum = 17)
     return checksum;
 }
 
-static TState PushParse<TState>(QueryPlan<TState> plan, byte[] input, int chunkSize)
+static TState PushParse<TState>(QueryPlan<TState> plan, byte[] input, int chunkSize, HtmlStreamingLimits? limits)
     where TState : new()
 {
-    using var session = plan.CreateSession(new TState());
+    using var session = plan.CreateSession(new TState(), limits: limits);
     for (var offset = 0; offset < input.Length; offset += chunkSize)
     {
         session.Write(input.AsSpan(offset, Math.Min(chunkSize, input.Length - offset)));
@@ -292,7 +300,8 @@ sealed record Options(
     int Copies,
     int ChunkSize,
     string Mode,
-    string Workload
+    string Workload,
+    bool Unlimited
 )
 {
     public static Options Parse(string[] args)
@@ -308,7 +317,8 @@ sealed record Options(
             int.Parse(values.GetValueOrDefault("--copies", "1"), CultureInfo.InvariantCulture),
             int.Parse(values.GetValueOrDefault("--chunk-size", "4096"), CultureInfo.InvariantCulture),
             values.GetValueOrDefault("--mode", "stream"),
-            workload
+            workload,
+            bool.Parse(values.GetValueOrDefault("--unlimited", "false"))
         );
     }
 }

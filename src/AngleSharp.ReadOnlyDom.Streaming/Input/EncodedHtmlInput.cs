@@ -7,7 +7,7 @@ namespace AngleSharp.ReadOnlyDom.Streaming.Input;
 
 internal static class EncodedHtmlInput
 {
-    internal static async ValueTask<Utf8HtmlTokenizerCounters> TokenizeAsync(
+    internal static ValueTask<Utf8HtmlTokenizerCounters> TokenizeAsync(
         PipeReader reader,
         HtmlInputEncoding inputEncoding,
         IUtf8HtmlTokenSink sink,
@@ -16,6 +16,39 @@ internal static class EncodedHtmlInput
         Func<ValueTask>? afterInputSlice = null,
         HtmlStreamingLimits? limits = null
     )
+    {
+        limits ??= HtmlStreamingLimits.Default;
+        return limits.EnforcesLimits
+            ? TokenizeAsync<EnforcedResourceLimits>(
+                reader,
+                inputEncoding,
+                sink,
+                cancellationToken,
+                inputSliceSize,
+                afterInputSlice,
+                limits
+            )
+            : TokenizeAsync<UnboundedResources>(
+                reader,
+                inputEncoding,
+                sink,
+                cancellationToken,
+                inputSliceSize,
+                afterInputSlice,
+                limits
+            );
+    }
+
+    internal static async ValueTask<Utf8HtmlTokenizerCounters> TokenizeAsync<TResourceLimits>(
+        PipeReader reader,
+        HtmlInputEncoding inputEncoding,
+        IUtf8HtmlTokenSink sink,
+        CancellationToken cancellationToken,
+        int inputSliceSize = int.MaxValue,
+        Func<ValueTask>? afterInputSlice = null,
+        HtmlStreamingLimits? limits = null
+    )
+        where TResourceLimits : struct, IResourceLimitPolicy
     {
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(sink);
@@ -30,7 +63,7 @@ internal static class EncodedHtmlInput
         limits ??= HtmlStreamingLimits.Default;
         if (inputEncoding.Detect)
         {
-            return await TokenizeDetectedAsync(
+            return await TokenizeDetectedAsync<TResourceLimits>(
                     reader,
                     sink,
                     inputEncoding.Fallback,
@@ -43,10 +76,15 @@ internal static class EncodedHtmlInput
         }
 
         var sourceEncoding = inputEncoding.Encoding!;
-        var tokenizer = new Utf8HtmlTokenizer(sink, stateMetrics: null, limits, countInputBytes: false);
+        var tokenizer = new Utf8HtmlTokenizer<TResourceLimits>(
+            sink,
+            stateMetrics: null,
+            limits,
+            countInputBytes: false
+        );
         if (sourceEncoding.CodePage == Encoding.UTF8.CodePage)
         {
-            var input = new Utf8HtmlTokenizerInput(tokenizer, limits: limits);
+            var input = new Utf8HtmlTokenizerInput<TResourceLimits>(tokenizer, limits: limits);
             await PumpUtf8Async(
                     reader,
                     input,
@@ -62,7 +100,7 @@ internal static class EncodedHtmlInput
         }
 
         using var transcoder = new Transcoder(sourceEncoding, tokenizer);
-        await PumpEncodedAsync(
+        await PumpEncodedAsync<TResourceLimits>(
                 reader,
                 transcoder,
                 cancellationToken,
@@ -78,7 +116,7 @@ internal static class EncodedHtmlInput
         return tokenizer.Counters;
     }
 
-    private static async ValueTask<Utf8HtmlTokenizerCounters> TokenizeDetectedAsync(
+    private static async ValueTask<Utf8HtmlTokenizerCounters> TokenizeDetectedAsync<TResourceLimits>(
         PipeReader reader,
         IUtf8HtmlTokenSink sink,
         Encoding? fallback,
@@ -87,18 +125,29 @@ internal static class EncodedHtmlInput
         Func<ValueTask>? afterInputSlice,
         HtmlStreamingLimits limits
     )
+        where TResourceLimits : struct, IResourceLimitPolicy
     {
         var prefix = ArrayPool<byte>.Shared.Rent(HtmlEncodingSniffer.PrefixSize);
         try
         {
-            var count = await ReadPrefixAsync(reader, prefix, cancellationToken, limits.MaximumInputBytes)
+            var count = await ReadPrefixAsync<TResourceLimits>(
+                    reader,
+                    prefix,
+                    cancellationToken,
+                    limits.MaximumInputBytes
+                )
                 .ConfigureAwait(false);
-            var detection = HtmlEncodingSniffer.Detect(prefix.AsSpan(0, count), fallback);
-            var tokenizer = new Utf8HtmlTokenizer(sink, stateMetrics: null, limits, countInputBytes: false);
+            var detection = HtmlEncodingSniffer.Detect<TResourceLimits>(prefix.AsSpan(0, count), fallback);
+            var tokenizer = new Utf8HtmlTokenizer<TResourceLimits>(
+                sink,
+                stateMetrics: null,
+                limits,
+                countInputBytes: false
+            );
 
             if (detection.Encoding.CodePage == Encoding.UTF8.CodePage)
             {
-                var input = new Utf8HtmlTokenizerInput(tokenizer, limits: limits);
+                var input = new Utf8HtmlTokenizerInput<TResourceLimits>(tokenizer, limits: limits);
                 input.Write(prefix.AsSpan(detection.PreambleLength, count - detection.PreambleLength));
                 if (afterInputSlice is not null)
                     await afterInputSlice().ConfigureAwait(false);
@@ -120,7 +169,7 @@ internal static class EncodedHtmlInput
             transcoder.Write(prefix.AsSpan(detection.PreambleLength, count - detection.PreambleLength));
             if (afterInputSlice is not null)
                 await afterInputSlice().ConfigureAwait(false);
-            await PumpEncodedAsync(
+            await PumpEncodedAsync<TResourceLimits>(
                     reader,
                     transcoder,
                     cancellationToken,
@@ -140,12 +189,13 @@ internal static class EncodedHtmlInput
         }
     }
 
-    private static async ValueTask<int> ReadPrefixAsync(
+    private static async ValueTask<int> ReadPrefixAsync<TResourceLimits>(
         PipeReader reader,
         byte[] destination,
         CancellationToken cancellationToken,
         long maximumInputBytes
     )
+        where TResourceLimits : struct, IResourceLimitPolicy
     {
         var written = 0;
         while (written < HtmlEncodingSniffer.PrefixSize)
@@ -164,7 +214,7 @@ internal static class EncodedHtmlInput
                 var advanced = false;
                 try
                 {
-                    EnsureInputBudget(written, length, maximumInputBytes);
+                    EnsureInputBudget<TResourceLimits>(written, length, maximumInputBytes);
                     buffer.Slice(0, length).CopyTo(destination.AsSpan(written));
                     var consumed = buffer.GetPosition(length);
                     reader.AdvanceTo(consumed, consumed);
@@ -190,15 +240,16 @@ internal static class EncodedHtmlInput
         return written;
     }
 
-    private static async ValueTask PumpUtf8Async(
+    private static async ValueTask PumpUtf8Async<TResourceLimits>(
         PipeReader reader,
-        Utf8HtmlTokenizerInput input,
+        Utf8HtmlTokenizerInput<TResourceLimits> input,
         CancellationToken cancellationToken,
         int inputSliceSize,
         Func<ValueTask>? afterInputSlice,
         long inputBytesConsumed,
         long maximumInputBytes
     )
+        where TResourceLimits : struct, IResourceLimitPolicy
     {
         while (true)
         {
@@ -217,7 +268,11 @@ internal static class EncodedHtmlInput
                     for (var offset = 0; offset < segment.Length; offset += inputSliceSize)
                     {
                         var length = Math.Min(inputSliceSize, segment.Length - offset);
-                        inputBytesConsumed = EnsureInputBudget(inputBytesConsumed, length, maximumInputBytes);
+                        inputBytesConsumed = EnsureInputBudget<TResourceLimits>(
+                            inputBytesConsumed,
+                            length,
+                            maximumInputBytes
+                        );
                         input.Write(segment.Span.Slice(offset, length));
                         if (afterInputSlice is not null)
                             await afterInputSlice().ConfigureAwait(false);
@@ -234,7 +289,7 @@ internal static class EncodedHtmlInput
         }
     }
 
-    private static async ValueTask PumpEncodedAsync(
+    private static async ValueTask PumpEncodedAsync<TResourceLimits>(
         PipeReader reader,
         Transcoder transcoder,
         CancellationToken cancellationToken,
@@ -243,6 +298,7 @@ internal static class EncodedHtmlInput
         long inputBytesConsumed,
         long maximumInputBytes
     )
+        where TResourceLimits : struct, IResourceLimitPolicy
     {
         while (true)
         {
@@ -261,7 +317,11 @@ internal static class EncodedHtmlInput
                     for (var offset = 0; offset < segment.Length; offset += inputSliceSize)
                     {
                         var length = Math.Min(inputSliceSize, segment.Length - offset);
-                        inputBytesConsumed = EnsureInputBudget(inputBytesConsumed, length, maximumInputBytes);
+                        inputBytesConsumed = EnsureInputBudget<TResourceLimits>(
+                            inputBytesConsumed,
+                            length,
+                            maximumInputBytes
+                        );
                         transcoder.Write(segment.Span.Slice(offset, length));
                         if (afterInputSlice is not null)
                             await afterInputSlice().ConfigureAwait(false);
@@ -278,8 +338,12 @@ internal static class EncodedHtmlInput
         }
     }
 
-    private static long EnsureInputBudget(long consumed, int additional, long maximum)
+    private static long EnsureInputBudget<TResourceLimits>(long consumed, int additional, long maximum)
+        where TResourceLimits : struct, IResourceLimitPolicy
     {
+        if (!TResourceLimits.Enabled)
+            return 0;
+
         var observed = consumed > long.MaxValue - additional ? long.MaxValue : consumed + additional;
         if (observed > maximum)
             throw new HtmlStreamingLimitExceededException(HtmlStreamingLimit.InputBytes, maximum, observed);
@@ -292,11 +356,11 @@ internal static class EncodedHtmlInput
 
         private readonly Decoder _decoder;
         private readonly Encoder _encoder;
-        private readonly Utf8HtmlTokenizer _tokenizer;
+        private readonly IUtf8HtmlTokenizer _tokenizer;
         private readonly char[] _characters;
         private readonly byte[] _utf8;
 
-        internal Transcoder(Encoding sourceEncoding, Utf8HtmlTokenizer tokenizer)
+        internal Transcoder(Encoding sourceEncoding, IUtf8HtmlTokenizer tokenizer)
         {
             _decoder = sourceEncoding.GetDecoder();
             _encoder = Encoding.UTF8.GetEncoder();

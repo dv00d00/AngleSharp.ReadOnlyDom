@@ -54,6 +54,17 @@ public sealed class QueryPlan<TState>
     internal QueryExecution<TState> CreateExecution(TState state, HtmlStreamingLimits? limits = null) =>
         new(this, state, limits ?? HtmlStreamingLimits.Default);
 
+    internal QueryExecution<TState, TResourceLimits> CreateExecution<TResourceLimits>(
+        TState state,
+        HtmlStreamingLimits limits
+    )
+        where TResourceLimits : struct, IResourceLimitPolicy => new(this, state, limits);
+
+    internal IQueryExecution<TState> CreateResourceAwareExecution(TState state, HtmlStreamingLimits limits) =>
+        limits.EnforcesLimits
+            ? new QueryExecution<TState>(this, state, limits)
+            : new QueryExecution<TState, UnboundedResources>(this, state, limits);
+
     /// <summary>
     /// Begins a push-style streaming execution: call <see cref="StreamingQuerySession{TState}.Write"/> per input
     /// chunk and <see cref="StreamingQuerySession{TState}.Complete"/> at end of input. Select
@@ -84,16 +95,16 @@ public sealed class QueryPlan<TState>
             throw new ArgumentOutOfRangeException(nameof(inputContract));
 
         limits ??= HtmlStreamingLimits.Default;
-        using var execution = CreateExecution(state, limits);
-        var tokenizer = new Utf8HtmlTokenizer(execution, limits);
+        using var execution = CreateResourceAwareExecution(state, limits);
         if (inputContract == Utf8InputContract.WellFormedUtf8)
         {
+            var tokenizer = Utf8HtmlTokenizerPipeline.CreateTokenizer(execution, limits);
             tokenizer.Write(utf8);
             tokenizer.Complete();
         }
         else
         {
-            var input = new Utf8HtmlTokenizerInput(tokenizer, limits: limits);
+            var input = Utf8HtmlTokenizerPipeline.CreateInput(execution, inputContract, limits);
             input.Write(utf8);
             input.Complete();
         }
@@ -141,7 +152,7 @@ public sealed class QueryPlan<TState>
         return finalState;
     }
 
-    private QueryExecution<TState> RewriteCore(
+    private IQueryExecution<TState> RewriteCore(
         ReadOnlySpan<byte> utf8,
         TState state,
         RewriteHandler<TState> handler,
@@ -158,10 +169,12 @@ public sealed class QueryPlan<TState>
 
         limits ??= HtmlStreamingLimits.Default;
         collector = new Utf8RewriteCollector();
-        var execution = new QueryExecution<TState>(this, state, limits, handler, collector);
+        IQueryExecution<TState> execution = limits.EnforcesLimits
+            ? new QueryExecution<TState>(this, state, limits, handler, collector)
+            : new QueryExecution<TState, UnboundedResources>(this, state, limits, handler, collector);
         try
         {
-            var tokenizer = new Utf8HtmlTokenizer(execution, limits);
+            var tokenizer = Utf8HtmlTokenizerPipeline.CreateTokenizer(execution, limits);
             tokenizer.Write(utf8);
             tokenizer.Complete();
         }
@@ -186,8 +199,8 @@ public sealed class QueryPlan<TState>
     )
     {
         limits ??= HtmlStreamingLimits.Default;
-        using var execution = CreateExecution(state, limits);
-        await Utf8HtmlTokenizer
+        using var execution = CreateResourceAwareExecution(state, limits);
+        await Utf8HtmlTokenizerPipeline
             .TokenizeAsync(reader, execution, cancellationToken, limits, inputContract)
             .ConfigureAwait(false);
         return execution.State;
@@ -213,9 +226,8 @@ public sealed class QueryPlan<TState>
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(inputSliceSize);
 
         limits ??= HtmlStreamingLimits.Default;
-        using var execution = CreateExecution(state, limits);
-        var tokenizer = new Utf8HtmlTokenizer(execution, limits);
-        var input = new Utf8HtmlTokenizerInput(tokenizer, limits: limits);
+        using var execution = CreateResourceAwareExecution(state, limits);
+        var input = Utf8HtmlTokenizerPipeline.CreateInput(execution, Utf8InputContract.ArbitraryBytes, limits);
 
         while (true)
         {
@@ -262,7 +274,7 @@ public sealed class QueryPlan<TState>
     )
     {
         limits ??= HtmlStreamingLimits.Default;
-        using var execution = CreateExecution(state, limits);
+        using var execution = CreateResourceAwareExecution(state, limits);
         await EncodedHtmlInput
             .TokenizeAsync(reader, inputEncoding, execution, cancellationToken, limits: limits)
             .ConfigureAwait(false);
@@ -290,7 +302,7 @@ public sealed class QueryPlan<TState>
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(inputSliceSize);
 
         limits ??= HtmlStreamingLimits.Default;
-        using var execution = CreateExecution(state, limits);
+        using var execution = CreateResourceAwareExecution(state, limits);
         await EncodedHtmlInput
             .TokenizeAsync(
                 reader,
