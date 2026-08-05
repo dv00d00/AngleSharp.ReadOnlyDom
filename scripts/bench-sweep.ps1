@@ -25,6 +25,9 @@ param(
     [Int32] $ChunkSize = 4096,
     # Optional second .NET lane: a console DLL built from another commit.
     [string] $BaselineDll,
+    # Optional third .NET lane: the same candidate DLL driven through the push session,
+    # the structural equivalent of lol-html's write() shape.
+    [switch] $IncludePush,
     # Optional Rust lane; build with bench-native-console.ps1 or cargo first.
     [switch] $IncludeLolHtml,
     [String[]] $Corpora = @(
@@ -55,6 +58,7 @@ if ($IncludeLolHtml -and -not (Test-Path $lolExecutable)) {
 
 $lanes = [ordered]@{ candidate = @{ Executable = "dotnet"; Prefix = @($candidateDll) } }
 if ($BaselineDll) { $lanes["baseline"] = @{ Executable = "dotnet"; Prefix = @($BaselineDll) } }
+if ($IncludePush) { $lanes["push"] = @{ Executable = "dotnet"; Prefix = @($candidateDll); Mode = "push" } }
 if ($IncludeLolHtml) { $lanes["lol-html"] = @{ Executable = $lolExecutable; Prefix = @() } }
 
 function Invoke-Lane([Hashtable] $Lane, [String] $CorpusPath, [Int32] $Warmup, [Int64] $Bytes) {
@@ -71,7 +75,8 @@ function Invoke-Lane([Hashtable] $Lane, [String] $CorpusPath, [Int32] $Warmup, [
     )
     # Only the managed console understands --mode; the Rust lane always streams.
     if ($Lane.Executable -eq "dotnet") {
-        if ($Mode -ne "stream") { $arguments += @("--mode", $Mode) }
+        $laneMode = if ($Lane.Contains("Mode")) { $Lane.Mode } else { $Mode }
+        if ($laneMode -ne "stream") { $arguments += @("--mode", $laneMode) }
         $arguments += @("--unlimited", $Unlimited.IsPresent.ToString().ToLowerInvariant())
     }
     foreach ($argument in $arguments) { $info.ArgumentList.Add([String]$argument) }
