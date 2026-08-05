@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO.Pipelines;
 using System.Text;
 using AngleSharp.ReadOnlyDom.Streaming.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
 using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 var options = Options.Parse(args);
@@ -12,10 +13,11 @@ var input = RepeatBody(source, options.Copies);
 var urlQuery = CreateUrlQuery();
 var matchQuery = CreateMatchQuery();
 var passThroughQuery = StreamQuery.For<CountState>("zz").Compile();
+var rewriteQuery = CreateRewriteQuery();
 
 BenchmarkResult last = default;
 for (var index = 0; index < options.Warmup; index++)
-    last = await Parse(urlQuery, matchQuery, passThroughQuery, input, options);
+    last = await Parse(urlQuery, matchQuery, passThroughQuery, rewriteQuery, input, options);
 
 GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
 GC.WaitForPendingFinalizers();
@@ -32,7 +34,7 @@ long requests = 0;
 long checksum = 0;
 do
 {
-    last = await Parse(urlQuery, matchQuery, passThroughQuery, input, options);
+    last = await Parse(urlQuery, matchQuery, passThroughQuery, rewriteQuery, input, options);
     checksum = unchecked(checksum + last.Checksum);
     requests++;
 } while (Stopwatch.GetTimestamp() < deadline);
@@ -54,10 +56,16 @@ static async ValueTask<BenchmarkResult> Parse(
     QueryPlan<UrlState> urlQuery,
     QueryPlan<CountState> matchQuery,
     QueryPlan<CountState> passThroughQuery,
+    QueryPlan<CountState> rewriteQuery,
     byte[] input,
     Options options
 )
 {
+    if (options.Workload == "rewrite")
+        return RewriteBuffered(rewriteQuery, input);
+    if (options.Workload == "rewrite-sink")
+        return RewriteSink(rewriteQuery, input);
+
     if (options.Workload == "extract")
     {
         var state = options.Mode switch
@@ -103,6 +111,58 @@ static async ValueTask<BenchmarkResult> Parse(
     return new BenchmarkResult(count.Count, count.Count);
 }
 
+// The rewritten document checksum is deterministic per corpus, so it is computed once (during
+// warmup) and skipped in the hot loop - a full-output checksum pass would otherwise rival the
+// rewrite itself and mask the publish cost the workload exists to measure.
+static BenchmarkResult RewriteBuffered(QueryPlan<CountState> plan, byte[] input)
+{
+    RewriteScratch.Output ??= new ArrayBufferWriter<byte>(input.Length + 4096);
+    var output = RewriteScratch.Output;
+    output.ResetWrittenCount();
+    var state = plan.Rewrite(
+        input,
+        output,
+        new CountState(),
+        static (ref CountState state, in Element _, ref StartTagEditor tag) =>
+        {
+            state.Count++;
+            tag.AppendAttribute("data-q"u8, "1"u8);
+        },
+        Utf8InputContract.WellFormedUtf8
+    );
+    RewriteScratch.Checksum ??= Fnv(output.WrittenSpan);
+    return new BenchmarkResult(state.Count, RewriteScratch.Checksum.Value);
+}
+
+static BenchmarkResult RewriteSink(QueryPlan<CountState> plan, byte[] input)
+{
+    var checksumThisPass = RewriteScratch.Checksum is null;
+    var state = plan.Rewrite(
+        input,
+        new CountState(),
+        static (ref CountState state, in Element _, ref StartTagEditor tag) =>
+        {
+            state.Count++;
+            tag.AppendAttribute("data-q"u8, "1"u8);
+        },
+        checksumThisPass
+            ? static (ref CountState _, ReadOnlySpan<byte> segment) =>
+                RewriteScratch.Accumulator = Fnv(segment, RewriteScratch.Accumulator)
+            : static (ref CountState _, ReadOnlySpan<byte> _) => { },
+        Utf8InputContract.WellFormedUtf8
+    );
+    if (checksumThisPass)
+        RewriteScratch.Checksum = RewriteScratch.Accumulator;
+    return new BenchmarkResult(state.Count, RewriteScratch.Checksum!.Value);
+}
+
+static long Fnv(ReadOnlySpan<byte> value, long checksum = 17)
+{
+    foreach (var item in value)
+        checksum = unchecked(checksum * 31 + item);
+    return checksum;
+}
+
 static TState PushParse<TState>(QueryPlan<TState> plan, byte[] input, int chunkSize)
     where TState : new()
 {
@@ -131,6 +191,15 @@ static QueryPlan<CountState> CreateMatchQuery()
     card.Descendant("a")
         .Attribute("href")
         .OnStart(static (ref state, in _) => state.Count++);
+    return list.Compile();
+}
+
+static QueryPlan<CountState> CreateRewriteQuery()
+{
+    // No OnStart handler: the rewrite handler itself counts, matching the lol-html lane.
+    var list = StreamQuery.For<CountState>("ul").Class("news-list");
+    var card = list.Descendant("li").Attribute("dt-eid", "em_item_article");
+    card.Descendant("a").Attribute("href");
     return list.Compile();
 }
 
@@ -169,6 +238,13 @@ sealed class UrlState
 sealed class CountState
 {
     public int Count;
+}
+
+static class RewriteScratch
+{
+    public static ArrayBufferWriter<byte>? Output;
+    public static long? Checksum;
+    public static long Accumulator = 17;
 }
 
 sealed class ChunkedMemoryPipeReader(byte[] source, int chunkSize) : PipeReader
@@ -223,7 +299,7 @@ sealed record Options(
     {
         var values = args.Chunk(2).ToDictionary(pair => pair[0], pair => pair[1]);
         var workload = values.GetValueOrDefault("--workload", "extract");
-        if (workload is not ("passthrough" or "match" or "extract"))
+        if (workload is not ("passthrough" or "match" or "extract" or "rewrite" or "rewrite-sink"))
             throw new ArgumentException($"Unknown workload: {workload}");
         return new Options(
             values["--input"],

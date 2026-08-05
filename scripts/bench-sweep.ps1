@@ -17,7 +17,7 @@
 param(
     [double] $Seconds = 2,
     [int] $Rounds = 3,
-    [ValidateSet("passthrough", "match", "extract")]
+    [ValidateSet("passthrough", "match", "extract", "rewrite", "rewrite-sink")]
     [string] $Workload = "passthrough",
     [ValidateSet("stream", "stream-trusted", "push", "buffer-arbitrary", "buffer-trusted")]
     [string] $Mode = "stream",
@@ -58,13 +58,15 @@ if ($IncludeLolHtml) { $lanes["lol-html"] = @{ Executable = $lolExecutable; Pref
 
 function Invoke-Lane([Hashtable] $Lane, [String] $CorpusPath, [Int32] $Warmup, [Int64] $Bytes) {
     $info = [Diagnostics.ProcessStartInfo]::new($Lane.Executable)
+    # The Rust lane implements one rewrite workload; the sink shape is a managed-side choice.
+    $laneWorkload = if ($Lane.Executable -ne "dotnet" -and $Workload -eq "rewrite-sink") { "rewrite" } else { $Workload }
     $arguments = @($Lane.Prefix) + @(
         "--input", $CorpusPath,
         "--seconds", $Seconds.ToString($culture),
         "--warmup", $Warmup.ToString($culture),
         "--copies", "1",
         "--chunk-size", $ChunkSize.ToString($culture),
-        "--workload", $Workload
+        "--workload", $laneWorkload
     )
     # Only the managed console understands --mode; the Rust lane always streams.
     if ($Lane.Executable -eq "dotnet" -and $Mode -ne "stream") { $arguments += @("--mode", $Mode) }
@@ -124,7 +126,7 @@ foreach ($corpus in $Corpora) {
     # The checksum covers concatenated bytes without value boundaries, so the URL count is
     # compared as well. The Rust lane only implements the match/extract value semantics.
     foreach ($lane in @($lanes.Keys) | Where-Object { $_ -ne "candidate" }) {
-        if ($lane -eq "lol-html" -and $Workload -notin @("match", "extract")) { continue }
+        if ($lane -eq "lol-html" -and $Workload -notin @("match", "extract", "rewrite", "rewrite-sink")) { continue }
         if ($facts[$lane].Checksum -ne $facts["candidate"].Checksum -or $facts[$lane].Urls -ne $facts["candidate"].Urls) {
             throw (
                 "Correctness mismatch on ${corpus}: $lane disagrees with candidate " +
