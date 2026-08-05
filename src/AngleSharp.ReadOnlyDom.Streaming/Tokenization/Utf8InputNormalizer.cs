@@ -89,6 +89,12 @@ internal struct Utf8InputNormalizer
             return WriteWellFormed(tokenizer, utf8, index, previousBytesConsumed, yieldOnRequest);
         }
 
+        // The ASCII fast path lets the tokenizer's own state machine consume unvalidated input and
+        // stop exactly at the first non-ASCII byte, so validation runs only over non-ASCII runs.
+        // It cannot be used while start-tag source ranges are observed, because a partially
+        // consumed span would be observed again on re-entry.
+        var asciiFastPath = !tokenizer.TracksStartTagSourceRanges;
+
         while (index < utf8.Length)
         {
             if (_validatedPrefixLength != 0)
@@ -110,13 +116,13 @@ internal struct Utf8InputNormalizer
                 continue;
             }
 
-            if (tokenizer.CanTakeArbitraryBulkText)
+            if (asciiFastPath)
             {
-                var bulkRun = tokenizer.WriteArbitraryBulkText(utf8[index..]);
-                if (bulkRun > 0)
+                var consumed = tokenizer.WriteArbitraryAscii(utf8[index..], yieldOnRequest);
+                if (consumed > 0)
                 {
-                    index += bulkRun;
-                    if (bulkRun >= FusedRunWindowReset)
+                    index += consumed;
+                    if (consumed >= FusedRunWindowReset)
                     {
                         _validationWindow = 0;
                     }
@@ -127,6 +133,7 @@ internal struct Utf8InputNormalizer
                     }
                     continue;
                 }
+                // Zero bytes consumed: the cursor is a non-ASCII byte for the window below.
             }
 
             var remainingUtf8 = NextValidationWindow(utf8[index..]);
