@@ -120,7 +120,25 @@ internal sealed class Utf8HtmlTokenizer
     );
     private static readonly SearchValues<Byte> EscapedScriptTextTerminators = SearchValues.Create("<-\0\r"u8);
     private static readonly SearchValues<Byte> CommentTerminators = SearchValues.Create("<-\0\r"u8);
+
+    // Bulk-text stop sets for input that skipped UTF-8 validation: the usual terminators plus every
+    // non-ASCII byte, so a single scan both finds the next terminator and proves the run is plain
+    // ASCII (trivially valid UTF-8).
+    private static readonly SearchValues<Byte> DataTextArbitraryStops = CreateArbitraryStops("<&\0\r"u8);
+    private static readonly SearchValues<Byte> RawTextArbitraryStops = CreateArbitraryStops("<\0\r"u8);
+    private static readonly SearchValues<Byte> PlaintextArbitraryStops = CreateArbitraryStops("\0\r"u8);
     private static readonly String[] StateNames = Enum.GetNames<State>();
+
+    private static SearchValues<Byte> CreateArbitraryStops(ReadOnlySpan<Byte> terminators)
+    {
+        Span<Byte> stops = stackalloc Byte[terminators.Length + 128];
+        terminators.CopyTo(stops);
+        for (var value = 0x80; value <= 0xFF; value++)
+        {
+            stops[terminators.Length + value - 0x80] = (Byte)value;
+        }
+        return SearchValues.Create(stops);
+    }
 
     private readonly Utf8HtmlTokenizerStateMetrics? _stateMetrics;
     private readonly Utf8TokenBuffer _name = new(32);
@@ -352,6 +370,61 @@ internal sealed class Utf8HtmlTokenizer
         _stateMetrics is null
             ? WriteTrustedUtf8<MetricsOff>(utf8, yieldOnRequest)
             : WriteTrustedUtf8<MetricsOn>(utf8, yieldOnRequest);
+
+    /// <summary>
+    /// Whether <see cref="WriteArbitraryBulkText"/> may consume input that skipped UTF-8 validation.
+    /// Captured runs stop before the first non-ASCII byte, so emitted text stays well formed;
+    /// discarded runs may swallow arbitrary bytes because nothing observes them.
+    /// </summary>
+    internal Boolean CanTakeArbitraryBulkText =>
+        _state is State.Data or State.RawText or State.ScriptData or State.Plaintext
+        && !_pendingCarriageReturn
+        && _textUtf8CarryLength == 0
+        && _startTagSourceRangeSink is null;
+
+    internal Int32 WriteArbitraryBulkText(ReadOnlySpan<Byte> utf8) =>
+        _stateMetrics is null
+            ? WriteArbitraryBulkText<MetricsOff>(utf8)
+            : WriteArbitraryBulkText<MetricsOn>(utf8);
+
+    private Int32 WriteArbitraryBulkText<TMetrics>(ReadOnlySpan<Byte> utf8)
+        where TMetrics : struct, IStateMetricsPolicy
+    {
+        Int32 run;
+        if (!_captureText)
+        {
+            run = _state == State.Plaintext ? utf8.Length : utf8.IndexOf((Byte)'<');
+            if (run < 0)
+            {
+                run = utf8.Length;
+            }
+        }
+        else
+        {
+            var stops = _state == State.Plaintext
+                ? PlaintextArbitraryStops
+                : _state == State.Data || IsRcData()
+                    ? DataTextArbitraryStops
+                    : RawTextArbitraryStops;
+            run = utf8.IndexOfAny(stops);
+            if (run < 0)
+            {
+                run = utf8.Length;
+            }
+            if (run > 0)
+            {
+                RecordState<TMetrics>((Int32)_state, run);
+                EmitText(utf8[..run]);
+                return run;
+            }
+        }
+
+        if (run > 0)
+        {
+            RecordState<TMetrics>((Int32)_state, run);
+        }
+        return run;
+    }
 
     private Int32 WriteTrustedUtf8<TMetrics>(ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
         where TMetrics : struct, IStateMetricsPolicy

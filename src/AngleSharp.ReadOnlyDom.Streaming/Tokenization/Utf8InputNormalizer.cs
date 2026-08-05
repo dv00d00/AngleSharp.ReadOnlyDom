@@ -23,11 +23,21 @@ public enum Utf8InputContract : byte
 /// </summary>
 internal struct Utf8InputNormalizer
 {
+    // Validation runs in windows so that bulk text between tags can reach the tokenizer through the
+    // fused arbitrary-text path instead of being swallowed into a chunk-sized validated prefix. The
+    // window doubles while the tokenizer stays in markup (converging to whole-chunk validation on
+    // markup-dense documents) and resets whenever a long fused text run shows validation is being
+    // skipped profitably.
+    private const Int32 MinimumValidationWindow = 128;
+    private const Int32 MaximumValidationWindow = 4096;
+    private const Int32 FusedRunWindowReset = 128;
+
     private readonly Int64 _maximumInputBytesAllowed;
     private readonly Utf8InputContract _contract;
     private UInt32 _carry;
     private Int64 _bytesConsumed;
     private Int32 _validatedPrefixLength;
+    private Int32 _validationWindow;
     private Byte _carryLength;
 
     internal Utf8InputNormalizer(Int64 maximumInputBytesAllowed, Utf8InputContract contract)
@@ -100,11 +110,31 @@ internal struct Utf8InputNormalizer
                 continue;
             }
 
-            var remaining = utf8[index..];
-            var nonAscii = remaining.IndexOfAnyExceptInRange((Byte)0x00, (Byte)0x7F);
+            if (tokenizer.CanTakeArbitraryBulkText)
+            {
+                var bulkRun = tokenizer.WriteArbitraryBulkText(utf8[index..]);
+                if (bulkRun > 0)
+                {
+                    index += bulkRun;
+                    if (bulkRun >= FusedRunWindowReset)
+                    {
+                        _validationWindow = 0;
+                    }
+                    if (yieldOnRequest && tokenizer.IsYieldRequested)
+                    {
+                        _bytesConsumed = SaturatingAdd(previousBytesConsumed, index);
+                        return index;
+                    }
+                    continue;
+                }
+            }
+
+            var remainingUtf8 = NextValidationWindow(utf8[index..]);
+            var windowEndsChunk = remainingUtf8.Length == utf8.Length - index;
+            var nonAscii = remainingUtf8.IndexOfAnyExceptInRange((Byte)0x00, (Byte)0x7F);
             if (nonAscii < 0)
             {
-                nonAscii = remaining.Length;
+                nonAscii = remainingUtf8.Length;
             }
             if (nonAscii != 0)
             {
@@ -112,8 +142,12 @@ internal struct Utf8InputNormalizer
                 continue;
             }
 
-            var remainingUtf8 = utf8[index..];
-            var completeLength = CompleteUtf8PrefixLength(remainingUtf8);
+            // A truncated-looking tail means "wait for the next chunk" only at a true chunk end.
+            // A mid-chunk window was already cut on a boundary that cannot split a valid sequence,
+            // so any such tail is guaranteed malformed and must be replaced in stream order now
+            // (the malformed writer's need-more-data branch does exactly that) instead of being
+            // carried past the bytes that follow it.
+            var completeLength = windowEndsChunk ? CompleteUtf8PrefixLength(remainingUtf8) : remainingUtf8.Length;
             if (completeLength != 0 && System.Text.Unicode.Utf8.IsValid(remainingUtf8[..completeLength]))
             {
                 _validatedPrefixLength = completeLength;
@@ -133,16 +167,34 @@ internal struct Utf8InputNormalizer
                 if (completeLength != remainingUtf8.Length)
                 {
                     SaveCarry(remainingUtf8[completeLength..]);
-                    index = utf8.Length;
+                    index += remainingUtf8.Length - completeLength;
                 }
                 continue;
             }
 
             SaveCarry(remainingUtf8);
-            index = utf8.Length;
+            index += remainingUtf8.Length;
         }
 
         return index;
+    }
+
+    private ReadOnlySpan<Byte> NextValidationWindow(ReadOnlySpan<Byte> remaining)
+    {
+        var window = _validationWindow == 0 ? MinimumValidationWindow : _validationWindow;
+        _validationWindow = Math.Min(window * 2, MaximumValidationWindow);
+        if (window >= remaining.Length)
+        {
+            return remaining;
+        }
+
+        // Never let a mid-chunk window split a possibly-valid UTF-8 sequence: shrink to the last
+        // complete boundary (the tail rejoins the same chunk on the next iteration). One trim can
+        // expose a new truncated-looking tail, but that tail is then guaranteed malformed because
+        // the byte after the cut is a lead rather than a continuation — the write loop replaces it
+        // in place rather than treating it as a chunk-end carry.
+        var complete = CompleteUtf8PrefixLength(remaining[..window]);
+        return complete > 0 ? remaining[..complete] : remaining;
     }
 
     private Int32 DrainWellFormedCarry(Utf8HtmlTokenizer tokenizer, ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
