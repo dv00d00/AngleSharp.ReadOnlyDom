@@ -89,6 +89,7 @@ function Invoke-Lane([Hashtable] $Lane, [String] $CorpusPath, [Int32] $Warmup, [
     [pscustomobject]@{
         MbPerSecond = ($requests * $Bytes) / ($elapsed / 1000.0) / 1MB
         Checksum    = $values.value_checksum
+        Urls        = $values.urls
     }
 }
 
@@ -108,14 +109,28 @@ foreach ($corpus in $Corpora) {
     $warmup = [Int32][Math]::Max(8, [Math]::Min(400, 40MB / $bytes))
 
     $samples = @{}
-    $checksums = @{}
+    $facts = @{}
     foreach ($lane in $lanes.Keys) { $samples[$lane] = [Collections.Generic.List[Double]]::new() }
     for ($round = 1; $round -le $Rounds; $round++) {
         $order = if ($round % 2 -eq 1) { @($lanes.Keys) } else { @($lanes.Keys)[($lanes.Count - 1)..0] }
         foreach ($lane in $order) {
             $result = Invoke-Lane $lanes[$lane] $corpusPath $warmup $bytes
             $samples[$lane].Add($result.MbPerSecond)
-            $checksums[$lane] = $result.Checksum
+            $facts[$lane] = $result
+        }
+    }
+
+    # Every comparable lane must agree on the extracted values before its throughput counts.
+    # The checksum covers concatenated bytes without value boundaries, so the URL count is
+    # compared as well. The Rust lane only implements the match/extract value semantics.
+    foreach ($lane in @($lanes.Keys) | Where-Object { $_ -ne "candidate" }) {
+        if ($lane -eq "lol-html" -and $Workload -notin @("match", "extract")) { continue }
+        if ($facts[$lane].Checksum -ne $facts["candidate"].Checksum -or $facts[$lane].Urls -ne $facts["candidate"].Urls) {
+            throw (
+                "Correctness mismatch on ${corpus}: $lane disagrees with candidate " +
+                "(checksum $($facts[$lane].Checksum) vs $($facts['candidate'].Checksum), " +
+                "urls $($facts[$lane].Urls) vs $($facts['candidate'].Urls))."
+            )
         }
     }
 
@@ -123,9 +138,6 @@ foreach ($corpus in $Corpora) {
     foreach ($lane in $lanes.Keys) { $row[$lane] = Get-Median $samples[$lane].ToArray() }
     if ($BaselineDll) {
         $row["Delta"] = 100.0 * ($row["candidate"] / $row["baseline"] - 1.0)
-        if ($checksums["candidate"] -ne $checksums["baseline"]) {
-            throw "Checksum mismatch on $corpus between candidate and baseline."
-        }
     }
     $entry = [pscustomobject]$row
     $rows.Add($entry)

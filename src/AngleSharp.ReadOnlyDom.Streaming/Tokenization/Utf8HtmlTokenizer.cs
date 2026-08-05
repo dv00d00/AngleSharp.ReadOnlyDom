@@ -2472,7 +2472,7 @@ internal sealed class Utf8HtmlTokenizer
             // In HTML, the trailing solidus does not make a non-void element self-closing.
             // Tree construction controls the mode in the DOM path; the standalone path must
             // therefore still infer text modes for e.g. <textarea/> and <plaintext/>.
-            if (!IsModeControlledExternally && CouldBeRawTextTag(_name.WrittenSpan))
+            if (!IsModeControlledExternally)
             {
                 var name = CurrentTagName();
                 if (name.TryGetCompactKey(out var key))
@@ -2521,25 +2521,6 @@ internal sealed class Utf8HtmlTokenizer
     }
 
     // Every start tag used to pay for a compact-key computation just to discover it is not
-    // one of the nine raw-text elements. Those names are 3..9 bytes and begin with i, n, p,
-    // s, t, or x, so a length test plus a 32-bit letter mask rejects div/a/li/span/img and
-    // friends before the key is ever built. Case folding matches TryGetCompactKey's ASCII
-    // semantics; a non-letter first byte cannot survive the mask.
-    private const UInt32 RawTextFirstLetters =
-        (1U << ('i' - 'a')) | (1U << ('n' - 'a')) | (1U << ('p' - 'a')) | (1U << ('s' - 'a')) | (1U << ('t' - 'a')) | (1U << ('x' - 'a'));
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Boolean CouldBeRawTextTag(ReadOnlySpan<Byte> name)
-    {
-        if ((UInt32)(name.Length - 3) > 6)
-        {
-            return false;
-        }
-
-        var letter = (UInt32)((name[0] | 0x20) - 'a');
-        return letter <= 'z' - 'a' && (RawTextFirstLetters & (1U << (Int32)letter)) != 0;
-    }
-
     private Boolean RawCandidateMatches()
     {
         if (_rawEndTag is null)
