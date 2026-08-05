@@ -182,6 +182,80 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         where TTrust : struct, IInputTrustPolicy =>
         TTrust.StopAtNonAscii ? utf8.IndexOfAnyExcept(arbitraryAllowed) : utf8.IndexOfAny(terminators);
 
+    private static Int32 IndexOfDiscardedRawTextStop(ReadOnlySpan<Byte> utf8)
+    {
+        // Single-byte IndexOf keeps the memchr-speed kernel; the follower check resolves
+        // lone '<' bytes locally instead of surfacing each one to the dispatch loop.
+        var offset = 0;
+        while (true)
+        {
+            var found = utf8[offset..].IndexOf((Byte)'<');
+            if (found < 0)
+            {
+                return -1;
+            }
+            var position = offset + found;
+            if (position + 1 == utf8.Length)
+            {
+                // A trailing '<' may complete "</" in the next chunk; the per-byte machine holds it.
+                return position;
+            }
+            if (utf8[position + 1] == (Byte)'/')
+            {
+                return position;
+            }
+            offset = position + 1;
+        }
+    }
+
+    private static Int32 IndexOfDiscardedScriptDataStop(ReadOnlySpan<Byte> utf8)
+    {
+        var offset = 0;
+        while (true)
+        {
+            var found = utf8[offset..].IndexOf((Byte)'<');
+            if (found < 0)
+            {
+                return -1;
+            }
+            var position = offset + found;
+            if (position + 1 == utf8.Length)
+            {
+                return position;
+            }
+            var next = utf8[position + 1];
+            if (next == (Byte)'/')
+            {
+                return position;
+            }
+            if (next != (Byte)'!')
+            {
+                offset = position + 1;
+                continue;
+            }
+            // "<!" only matters when it completes "<!--"; a split candidate defers to the
+            // per-byte machine, which can wait for the next chunk.
+            if (position + 2 == utf8.Length)
+            {
+                return position;
+            }
+            if (utf8[position + 2] != (Byte)'-')
+            {
+                offset = position + 2;
+                continue;
+            }
+            if (position + 3 == utf8.Length)
+            {
+                return position;
+            }
+            if (utf8[position + 3] == (Byte)'-')
+            {
+                return position;
+            }
+            offset = position + 3;
+        }
+    }
+
     private readonly Utf8HtmlTokenizerStateMetrics? _stateMetrics;
     private readonly Utf8TokenBuffer _name = new(32);
     private readonly Utf8TokenBuffer _attributeName = new(32);
@@ -538,7 +612,16 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                     if (!_captureText)
                     {
                         // Discarded text may swallow arbitrary bytes raw - nothing observes it.
-                        run = _state == State.Plaintext ? remaining.Length : remaining.IndexOf((Byte)'<');
+                        // Raw text and script data can also swallow lone '<' bytes: only the
+                        // substrings "</" (an end-tag candidate) and, in script data, "<!--"
+                        // (the escape start) can change the tokenizer state.
+                        run = _state switch
+                        {
+                            State.Plaintext => remaining.Length,
+                            State.ScriptData => IndexOfDiscardedScriptDataStop(remaining),
+                            State.RawText => IndexOfDiscardedRawTextStop(remaining),
+                            _ => remaining.IndexOf((Byte)'<'),
+                        };
                     }
                     else
                     {
