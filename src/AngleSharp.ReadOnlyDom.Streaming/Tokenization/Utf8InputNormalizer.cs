@@ -32,12 +32,14 @@ internal struct Utf8InputNormalizer
     private const Int32 MaximumValidationWindow = 4096;
     private const Int32 FusedRunWindowReset = 128;
 
+    // Field order and the UInt16 window keep the struct at 32 bytes; the per-execution wrapper
+    // embeds it, so every extra slot here is heap growth per document.
     private readonly Int64 _maximumInputBytesAllowed;
-    private readonly Utf8InputContract _contract;
-    private UInt32 _carry;
     private Int64 _bytesConsumed;
+    private UInt32 _carry;
     private Int32 _validatedPrefixLength;
-    private Int32 _validationWindow;
+    private UInt16 _validationWindow;
+    private readonly Utf8InputContract _contract;
     private Byte _carryLength;
 
     internal Utf8InputNormalizer(Int64 maximumInputBytesAllowed, Utf8InputContract contract)
@@ -188,8 +190,8 @@ internal struct Utf8InputNormalizer
 
     private ReadOnlySpan<Byte> NextValidationWindow(ReadOnlySpan<Byte> remaining)
     {
-        var window = _validationWindow == 0 ? MinimumValidationWindow : _validationWindow;
-        _validationWindow = Math.Min(window * 2, MaximumValidationWindow);
+        Int32 window = _validationWindow == 0 ? MinimumValidationWindow : _validationWindow;
+        _validationWindow = (UInt16)Math.Min(window * 2, MaximumValidationWindow);
         if (window >= remaining.Length)
         {
             return remaining;
@@ -261,13 +263,31 @@ internal struct Utf8InputNormalizer
 
     internal void Complete(Utf8HtmlTokenizer tokenizer)
     {
-        if (_carryLength == 0)
+        // The carry is replaced per maximal-subpart rules, exactly as DrainCarry would have done
+        // had more input arrived: a genuinely incomplete sequence (E4 B8 at end of stream) is one
+        // error, but a carried pair that is already malformed (E0 87 - the second byte is outside
+        // the lead's valid continuation range) is two. Collapsing the whole carry into a single
+        // replacement made the output depend on input chunking.
+        Span<Byte> candidate = stackalloc Byte[4];
+        while (_carryLength != 0)
         {
-            return;
-        }
+            CopyCarryTo(candidate);
+            var status = Rune.DecodeFromUtf8(candidate[.._carryLength], out _, out var consumed);
+            if (status == OperationStatus.Done)
+            {
+                tokenizer.WriteTrustedUtf8(candidate[..consumed], yieldOnRequest: false);
+                ShiftCarry(consumed);
+                continue;
+            }
 
-        tokenizer.WriteTrustedUtf8("\uFFFD"u8, yieldOnRequest: false);
-        ClearCarry();
+            tokenizer.WriteTrustedUtf8("\uFFFD"u8, yieldOnRequest: false);
+            if (status == OperationStatus.NeedMoreData)
+            {
+                ClearCarry();
+                break;
+            }
+            ShiftCarry(Math.Max(consumed, 1));
+        }
     }
 
     private Int32 WriteWellFormed(
