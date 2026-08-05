@@ -275,6 +275,34 @@ public sealed class Utf8HtmlTokenizerTests
     }
 
     [Test]
+    public async Task DanglingMalformedCarryMatchesEveryChunking()
+    {
+        // Fuzz-found (seed 214748): a carried pair like E0 87 is already malformed - 87 is
+        // outside E0's valid continuation range - and end-of-stream replacement must produce two
+        // U+FFFD, exactly as if more input had arrived. Collapsing the whole carry into a single
+        // replacement made the token stream depend on input chunking.
+        byte[][] cases =
+        [
+            [0xE0, 0x87],
+            [0x61, 0xE0, 0x87],
+            [0xF5, 0x8F],
+            [0xE4, 0xB8],
+            [0xF4, 0x8F],
+            [0xF0, 0x9F, 0x98],
+        ];
+
+        foreach (var utf8 in cases)
+        {
+            var expected = TokenizeWithAngleSharp(Encoding.UTF8.GetString(utf8));
+            foreach (var segmentSize in new[] { 1, 2, 3, utf8.Length })
+            {
+                var actual = Tokenize(utf8, segmentSize).Events;
+                await Assert.That(actual).IsEquivalentTo(expected);
+            }
+        }
+    }
+
+    [Test]
     [Arguments(1)]
     [Arguments(7)]
     public async Task CDataDeclarationRequiresForeignContentSignal(int segmentSize)
