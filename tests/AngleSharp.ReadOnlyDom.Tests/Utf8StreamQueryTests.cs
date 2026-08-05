@@ -313,6 +313,45 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task DiscardedScriptAndRawTextScansSurviveEveryChunkBoundary()
+    {
+        // Discarded raw text and script data swallow lone '<' bytes in bulk; every
+        // state-changing substring ("</", "<!--") must still be honored no matter where a
+        // chunk boundary cuts it, including double-escaped script data.
+        var root = StreamQuery
+            .For<QueryState>("div")
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("div"));
+        var plan = root.Compile();
+        var document = (
+            "<div id=a></div>"
+            + "<script>var a = 1 < 2, b = a <b, c = \"</div>\", d = \"<!\";</script>"
+            + "<div id=b></div>"
+            + "<script><!-- document.write(\"<script>x = 1 < 3;</script>\"); --> tail</script>"
+            + "<div id=c></div>"
+            + "<style>a<b { } s = \"</p>\"</style>"
+            + "<div id=d></div>"
+            + "<textarea>1 < 2 </note> more</textarea>"
+            + "<div id=e></div>"
+            + "<script>tricky < ! \"<!-\" ends e<</SCRIPT >"
+            + "<div id=f></div>"
+        );
+        var utf8 = Encoding.UTF8.GetBytes(document);
+        var expected = plan.Execute(utf8, new QueryState()).Events.Count;
+        await Assert.That(expected).IsEqualTo(6);
+
+        foreach (var chunkSize in Enumerable.Range(1, 16).Append(utf8.Length))
+        {
+            using var session = plan.CreateSession(new QueryState());
+            for (var offset = 0; offset < utf8.Length; offset += chunkSize)
+            {
+                session.Write(utf8.AsSpan(offset, Math.Min(chunkSize, utf8.Length - offset)));
+            }
+
+            await Assert.That(session.Complete().Events.Count).IsEqualTo(expected);
+        }
+    }
+
+    [Test]
     public async Task PushSessionAcceptsByteArraysWithoutOverloadAmbiguity()
     {
         var root = StreamQuery
