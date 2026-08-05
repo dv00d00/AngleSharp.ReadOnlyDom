@@ -90,6 +90,61 @@ fn parse(input: &[u8], chunk_size: usize, workload: &str) -> (usize, i64) {
         return (count, count as i64);
     }
 
+    if workload == "rewrite" {
+        // The rewritten-output checksum is deterministic per corpus: compute it on the first
+        // pass only so the hot loop measures rewriting and publishing, not checksumming.
+        thread_local! {
+            static REWRITE_CHECKSUM: RefCell<Option<i64>> = const { RefCell::new(None) };
+        }
+        struct ChecksumOutput {
+            active: bool,
+            checksum: Rc<RefCell<i64>>,
+        }
+        impl OutputSink for ChecksumOutput {
+            fn handle_chunk(&mut self, chunk: &[u8]) {
+                if self.active {
+                    let mut checksum = self.checksum.borrow_mut();
+                    for value in chunk {
+                        *checksum = checksum.wrapping_mul(31).wrapping_add(i64::from(*value));
+                    }
+                }
+            }
+        }
+
+        let matches = Rc::new(RefCell::new(0usize));
+        let handler_matches = Rc::clone(&matches);
+        let settings = Settings::default().append_element_content_handler(element!(
+            "ul.news-list li[dt-eid='em_item_article'] a[href]",
+            move |element| {
+                *handler_matches.borrow_mut() += 1;
+                element.set_attribute("data-q", "1")?;
+                Ok(())
+            }
+        ));
+        let first_pass = REWRITE_CHECKSUM.with(|cache| cache.borrow().is_none());
+        let accumulator = Rc::new(RefCell::new(17i64));
+        let mut rewriter = HtmlRewriter::new(
+            settings,
+            ChecksumOutput {
+                active: first_pass,
+                checksum: Rc::clone(&accumulator),
+            },
+        );
+        for chunk in input.chunks(chunk_size) {
+            rewriter.write(chunk).expect("lol-html parse failed");
+        }
+        rewriter.end().expect("lol-html completion failed");
+        let checksum = REWRITE_CHECKSUM.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if first_pass {
+                *cache = Some(*accumulator.borrow());
+            }
+            cache.expect("rewrite checksum cached")
+        });
+        let count = *matches.borrow();
+        return (count, checksum);
+    }
+
     let urls = Rc::new(RefCell::new(Vec::<String>::new()));
     let handler_urls = Rc::clone(&urls);
     let settings = Settings::default().append_element_content_handler(element!(
@@ -163,7 +218,7 @@ fn parse_options() -> Options {
     }
     assert!(matches!(
         workload.as_str(),
-        "passthrough" | "match" | "extract"
+        "passthrough" | "match" | "extract" | "rewrite"
     ));
     Options {
         input: input.expect("--input is required"),

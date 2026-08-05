@@ -115,6 +115,41 @@ public sealed class QueryPlan<TState>
     )
     {
         ArgumentNullException.ThrowIfNull(output);
+        using var execution = RewriteCore(utf8, state, handler, inputContract, limits, out var collector);
+        collector.WriteTo(utf8, output);
+        return execution.State;
+    }
+
+    /// <summary>
+    /// Rewrites like <see cref="Rewrite(ReadOnlySpan{byte}, IBufferWriter{byte}, TState, RewriteHandler{TState}, Utf8InputContract, HtmlStreamingLimits?)"/>
+    /// but publishes the result as borrowed segments instead of copying it: every untouched run of
+    /// source bytes reaches <paramref name="sink"/> as a slice of <paramref name="utf8"/>.
+    /// </summary>
+    public TState Rewrite(
+        ReadOnlySpan<byte> utf8,
+        TState state,
+        RewriteHandler<TState> handler,
+        RewriteSegmentSink<TState> sink,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes,
+        HtmlStreamingLimits? limits = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(sink);
+        using var execution = RewriteCore(utf8, state, handler, inputContract, limits, out var collector);
+        var finalState = execution.State;
+        collector.WriteTo(utf8, ref finalState, sink);
+        return finalState;
+    }
+
+    private QueryExecution<TState> RewriteCore(
+        ReadOnlySpan<byte> utf8,
+        TState state,
+        RewriteHandler<TState> handler,
+        Utf8InputContract inputContract,
+        HtmlStreamingLimits? limits,
+        out Utf8RewriteCollector collector
+    )
+    {
         ArgumentNullException.ThrowIfNull(handler);
         if (inputContract == Utf8InputContract.ArbitraryBytes && !System.Text.Unicode.Utf8.IsValid(utf8))
             throw new DecoderFallbackException("Query rewriting requires well-formed UTF-8 input.");
@@ -122,13 +157,20 @@ public sealed class QueryPlan<TState>
             throw new ArgumentOutOfRangeException(nameof(inputContract));
 
         limits ??= HtmlStreamingLimits.Default;
-        var collector = new Utf8RewriteCollector();
-        using var execution = new QueryExecution<TState>(this, state, limits, handler, collector);
-        var tokenizer = new Utf8HtmlTokenizer(execution, limits);
-        tokenizer.Write(utf8);
-        tokenizer.Complete();
-        collector.WriteTo(utf8, output);
-        return execution.State;
+        collector = new Utf8RewriteCollector();
+        var execution = new QueryExecution<TState>(this, state, limits, handler, collector);
+        try
+        {
+            var tokenizer = new Utf8HtmlTokenizer(execution, limits);
+            tokenizer.Write(utf8);
+            tokenizer.Complete();
+        }
+        catch
+        {
+            execution.Dispose();
+            throw;
+        }
+        return execution;
     }
 
     /// <summary>
