@@ -28,7 +28,7 @@ param(
     [Int32[]] $Copies = @(1),
     [ValidateSet("passthrough", "match", "extract")]
     [string] $Workload = "extract",
-    [ValidateSet("stream", "buffer-arbitrary", "buffer-trusted")]
+    [ValidateSet("stream", "stream-trusted", "push", "buffer-arbitrary", "buffer-trusted")]
     [string] $Mode = "stream",
     [Int32] $ChunkSize = 4096,
     [String] $Corpus = "qq.html",
@@ -71,7 +71,7 @@ function Invoke-Lane([String] $Dll, [Int32] $CopyCount) {
     $info.UseShellExecute = $false
     $info.Environment["DOTNET_gcServer"] = "0"
     $process = [Diagnostics.Process]::Start($info)
-    $process.PriorityClass = "High"
+    if ($IsWindows) { $process.PriorityClass = "High" }
     $output = $process.StandardOutput.ReadToEnd()
     $process.WaitForExit()
 

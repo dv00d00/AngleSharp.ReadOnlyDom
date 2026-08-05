@@ -313,6 +313,42 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task PushSessionAcceptsByteArraysWithoutOverloadAmbiguity()
+    {
+        var root = StreamQuery
+            .For<QueryState>("p")
+            .OnText(
+                static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                    state.Text.Append(Encoding.UTF8.GetString(text))
+            );
+        var session = root.Compile().CreateSession(new QueryState());
+        byte[] document = "<p>array</p>"u8.ToArray();
+
+        using (session)
+        {
+            await Assert.That(() => session.Write((byte[])null!)).Throws<ArgumentNullException>();
+            session.Write(document);
+            await Assert.That(session.Complete().Text.ToString()).IsEqualTo("array");
+        }
+    }
+
+    [Test]
+    public async Task PushSessionRejectsParsingAfterDisposalAndDisposesIdempotently()
+    {
+        var state = new QueryState();
+        var session = StreamQuery.For<QueryState>("p").Compile().CreateSession(state);
+        session.Write("<p>open"u8);
+        session.Dispose();
+        session.Dispose();
+
+        await Assert.That(session.State).IsSameReferenceAs(state);
+        await Assert.That(() => session.Write("tail"u8)).Throws<ObjectDisposedException>();
+        await Assert.That(() => session.Write("tail"u8.ToArray())).Throws<ObjectDisposedException>();
+        await Assert.That(() => session.Write("tail"u8.ToArray().AsMemory())).Throws<ObjectDisposedException>();
+        await Assert.That(() => session.Complete()).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
     public async Task StreamingExecutionHonorsTheTrustedContractAcrossSplitSequences()
     {
         var root = StreamQuery
