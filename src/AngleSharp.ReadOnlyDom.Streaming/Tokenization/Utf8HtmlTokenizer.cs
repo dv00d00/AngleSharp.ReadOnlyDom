@@ -2837,226 +2837,248 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     private Int32 ScanDiscardedTagTail<TMetrics>(ReadOnlySpan<Byte> utf8, Int64 sourceOffset, Boolean trackSourceRanges)
         where TMetrics : struct, IStateMetricsPolicy
     {
+        // Threaded form of the tag-tail states: the entry state dispatches once, control then
+        // transfers directly between the labelled constructs, and the current state lives in
+        // the program counter instead of the _state field until the span runs out or the tag
+        // finishes. Discarded tails dominate dense markup, so the per-transition dispatch and
+        // field traffic this removes is multiplied by the attribute count of the whole input.
         var index = 0;
-        while (index < utf8.Length && IsTagTailState(_state))
+        Byte value;
+        switch (_state)
         {
-            var state = _state;
-            var remaining = utf8[index..];
-            Int32 run;
-            switch (state)
-            {
-                case State.AttributeName:
-                    run = remaining.IndexOfAny(DiscardedAttributeNameTerminators);
-                    run = run < 0 ? remaining.Length : run;
-                    if (run > 0)
-                    {
-                        RecordState<TMetrics>((Int32)state, run);
-                        index += run;
-                        if (index < utf8.Length)
-                        {
-                            var terminator = utf8[index];
-                            RecordState<TMetrics>((Int32)state, 1);
-                            if (terminator == (Byte)'=')
-                            {
-                                index++;
-                                _state = State.BeforeAttributeValue;
-                                if (index < utf8.Length)
-                                {
-                                    var valueStart = utf8[index];
-                                    if (valueStart is (Byte)'"' or (Byte)'\'')
-                                    {
-                                        RecordState<TMetrics>((Int32)State.BeforeAttributeValue, 1);
-                                        index++;
-                                        _state =
-                                            valueStart == (Byte)'"'
-                                                ? State.AttributeValueDoubleQuoted
-                                                : State.AttributeValueSingleQuoted;
-                                    }
-                                }
-                            }
-                            else if (IsSpace(terminator))
-                            {
-                                index++;
-                                _state = State.AfterAttributeName;
-                            }
-                            else
-                            {
-                                _state = State.BeforeAttributeName;
-                            }
-                        }
-                        continue;
-                    }
-                    break;
-                case State.AttributeValueDoubleQuoted:
-                case State.AttributeValueSingleQuoted:
-                    var quote = state == State.AttributeValueDoubleQuoted ? (Byte)'"' : (Byte)'\'';
-                    run = remaining.IndexOf(quote);
-                    run = run < 0 ? remaining.Length : run;
-                    if (run > 0)
-                    {
-                        RecordState<TMetrics>((Int32)state, run);
-                        index += run;
-                        if (index < utf8.Length)
-                        {
-                            RecordState<TMetrics>((Int32)state, 1);
-                            index++;
-                            _state = State.AfterAttributeValueQuoted;
-                        }
-                        continue;
-                    }
-                    break;
-                case State.AttributeValueUnquoted:
-                    run = FindDiscardedUnquotedAttributeValueTerminator(remaining);
-                    if (run > 0)
-                    {
-                        RecordState<TMetrics>((Int32)state, run);
-                        index += run;
-                        if (index < utf8.Length)
-                        {
-                            var terminator = utf8[index];
-                            RecordState<TMetrics>((Int32)state, 1);
-                            if (terminator == (Byte)'>')
-                            {
-                                FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
-                            }
-                            else
-                            {
-                                index++;
-                                _state = State.BeforeAttributeName;
-                            }
-                        }
-                        continue;
-                    }
-                    break;
-            }
-
-            var value = utf8[index];
-            RecordState<TMetrics>((Int32)state, 1);
-            switch (state)
-            {
-                case State.BeforeAttributeName:
-                    if (IsSpace(value))
-                    {
-                        index++;
-                    }
-                    else if (value == (Byte)'/')
-                    {
-                        index++;
-                        _state = State.SelfClosingStartTag;
-                    }
-                    else if (value == (Byte)'>')
-                    {
-                        FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
-                    }
-                    else
-                    {
-                        _state = State.AttributeName;
-                    }
-                    break;
-                case State.AttributeName:
-                    if (IsSpace(value))
-                    {
-                        index++;
-                        _state = State.AfterAttributeName;
-                    }
-                    else if (value == (Byte)'=')
-                    {
-                        index++;
-                        _state = State.BeforeAttributeValue;
-                    }
-                    else
-                    {
-                        _state = State.BeforeAttributeName;
-                    }
-                    break;
-                case State.AfterAttributeName:
-                    if (IsSpace(value))
-                    {
-                        index++;
-                    }
-                    else if (value == (Byte)'=')
-                    {
-                        index++;
-                        _state = State.BeforeAttributeValue;
-                    }
-                    else
-                    {
-                        _state = State.BeforeAttributeName;
-                    }
-                    break;
-                case State.BeforeAttributeValue:
-                    if (IsSpace(value))
-                    {
-                        index++;
-                    }
-                    else if (value == (Byte)'"')
-                    {
-                        index++;
-                        _state = State.AttributeValueDoubleQuoted;
-                    }
-                    else if (value == (Byte)'\'')
-                    {
-                        index++;
-                        _state = State.AttributeValueSingleQuoted;
-                    }
-                    else if (value == (Byte)'>')
-                    {
-                        FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
-                    }
-                    else
-                    {
-                        _state = State.AttributeValueUnquoted;
-                    }
-                    break;
-                case State.AttributeValueDoubleQuoted:
-                case State.AttributeValueSingleQuoted:
-                    index++;
-                    _state = State.AfterAttributeValueQuoted;
-                    break;
-                case State.AttributeValueUnquoted:
-                    if (value == (Byte)'>')
-                    {
-                        FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
-                    }
-                    else
-                    {
-                        index++;
-                        _state = State.BeforeAttributeName;
-                    }
-                    break;
-                case State.AfterAttributeValueQuoted:
-                    if (IsSpace(value))
-                    {
-                        index++;
-                        _state = State.BeforeAttributeName;
-                    }
-                    else if (value == (Byte)'/')
-                    {
-                        index++;
-                        _state = State.SelfClosingStartTag;
-                    }
-                    else if (value == (Byte)'>')
-                    {
-                        FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
-                    }
-                    else
-                    {
-                        _state = State.BeforeAttributeName;
-                    }
-                    break;
-                case State.SelfClosingStartTag:
-                    if (value == (Byte)'>')
-                    {
-                        FinishScannedTag(ref index, selfClosing: true, sourceOffset, trackSourceRanges);
-                    }
-                    else
-                    {
-                        _state = State.BeforeAttributeName;
-                    }
-                    break;
-            }
+            case State.BeforeAttributeName:
+                goto BeforeAttributeName;
+            case State.AttributeName:
+                goto AttributeName;
+            case State.AfterAttributeName:
+                goto AfterAttributeName;
+            case State.BeforeAttributeValue:
+                goto BeforeAttributeValue;
+            case State.AttributeValueDoubleQuoted:
+                goto AttributeValueDoubleQuoted;
+            case State.AttributeValueSingleQuoted:
+                goto AttributeValueSingleQuoted;
+            case State.AttributeValueUnquoted:
+                goto AttributeValueUnquoted;
+            case State.AfterAttributeValueQuoted:
+                goto AfterAttributeValueQuoted;
+            case State.SelfClosingStartTag:
+                goto SelfClosingStartTag;
+            default:
+                return 0;
         }
-        return index;
+
+        BeforeAttributeName:
+        while (true)
+        {
+            if ((UInt32)index >= (UInt32)utf8.Length)
+            {
+                _state = State.BeforeAttributeName;
+                return index;
+            }
+            value = utf8[index];
+            RecordState<TMetrics>((Int32)State.BeforeAttributeName, 1);
+            if (IsSpace(value))
+            {
+                index++;
+                continue;
+            }
+            if (value == (Byte)'>')
+            {
+                _state = State.BeforeAttributeName;
+                FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
+                return index;
+            }
+            if (value == (Byte)'/')
+            {
+                index++;
+                goto SelfClosingStartTag;
+            }
+            goto AttributeName;
+        }
+
+        AttributeName:
+        {
+            var remaining = utf8[index..];
+            var run = remaining.IndexOfAny(DiscardedAttributeNameTerminators);
+            if (run < 0)
+            {
+                RecordState<TMetrics>((Int32)State.AttributeName, remaining.Length);
+                _state = State.AttributeName;
+                return utf8.Length;
+            }
+            RecordState<TMetrics>((Int32)State.AttributeName, run + 1);
+            index += run;
+            value = utf8[index];
+            if (value == (Byte)'=')
+            {
+                index++;
+                goto BeforeAttributeValue;
+            }
+            if (IsSpace(value))
+            {
+                index++;
+                goto AfterAttributeName;
+            }
+            // '/' or '>': reconsumed by the attribute-start handler, as in the general machine.
+            goto BeforeAttributeName;
+        }
+
+        AfterAttributeName:
+        while (true)
+        {
+            if ((UInt32)index >= (UInt32)utf8.Length)
+            {
+                _state = State.AfterAttributeName;
+                return index;
+            }
+            value = utf8[index];
+            RecordState<TMetrics>((Int32)State.AfterAttributeName, 1);
+            if (IsSpace(value))
+            {
+                index++;
+                continue;
+            }
+            if (value == (Byte)'=')
+            {
+                index++;
+                goto BeforeAttributeValue;
+            }
+            goto BeforeAttributeName;
+        }
+
+        BeforeAttributeValue:
+        while (true)
+        {
+            if ((UInt32)index >= (UInt32)utf8.Length)
+            {
+                _state = State.BeforeAttributeValue;
+                return index;
+            }
+            value = utf8[index];
+            RecordState<TMetrics>((Int32)State.BeforeAttributeValue, 1);
+            if (IsSpace(value))
+            {
+                index++;
+                continue;
+            }
+            if (value == (Byte)'"')
+            {
+                index++;
+                goto AttributeValueDoubleQuoted;
+            }
+            if (value == (Byte)'\'')
+            {
+                index++;
+                goto AttributeValueSingleQuoted;
+            }
+            if (value == (Byte)'>')
+            {
+                _state = State.BeforeAttributeValue;
+                FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
+                return index;
+            }
+            goto AttributeValueUnquoted;
+        }
+
+        AttributeValueDoubleQuoted:
+        {
+            var remaining = utf8[index..];
+            var run = remaining.IndexOf((Byte)'"');
+            if (run < 0)
+            {
+                RecordState<TMetrics>((Int32)State.AttributeValueDoubleQuoted, remaining.Length);
+                _state = State.AttributeValueDoubleQuoted;
+                return utf8.Length;
+            }
+            RecordState<TMetrics>((Int32)State.AttributeValueDoubleQuoted, run + 1);
+            index += run + 1;
+            goto AfterAttributeValueQuoted;
+        }
+
+        AttributeValueSingleQuoted:
+        {
+            var remaining = utf8[index..];
+            var run = remaining.IndexOf((Byte)'\'');
+            if (run < 0)
+            {
+                RecordState<TMetrics>((Int32)State.AttributeValueSingleQuoted, remaining.Length);
+                _state = State.AttributeValueSingleQuoted;
+                return utf8.Length;
+            }
+            RecordState<TMetrics>((Int32)State.AttributeValueSingleQuoted, run + 1);
+            index += run + 1;
+            goto AfterAttributeValueQuoted;
+        }
+
+        AttributeValueUnquoted:
+        {
+            var remaining = utf8[index..];
+            var run = remaining.IndexOfAny(DiscardedUnquotedAttributeValueTerminators);
+            if (run < 0)
+            {
+                RecordState<TMetrics>((Int32)State.AttributeValueUnquoted, remaining.Length);
+                _state = State.AttributeValueUnquoted;
+                return utf8.Length;
+            }
+            RecordState<TMetrics>((Int32)State.AttributeValueUnquoted, run + 1);
+            index += run;
+            value = utf8[index];
+            if (value == (Byte)'>')
+            {
+                _state = State.AttributeValueUnquoted;
+                FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
+                return index;
+            }
+            index++;
+            goto BeforeAttributeName;
+        }
+
+        AfterAttributeValueQuoted:
+        {
+            if ((UInt32)index >= (UInt32)utf8.Length)
+            {
+                _state = State.AfterAttributeValueQuoted;
+                return index;
+            }
+            value = utf8[index];
+            RecordState<TMetrics>((Int32)State.AfterAttributeValueQuoted, 1);
+            if (IsSpace(value))
+            {
+                index++;
+                goto BeforeAttributeName;
+            }
+            if (value == (Byte)'/')
+            {
+                index++;
+                goto SelfClosingStartTag;
+            }
+            if (value == (Byte)'>')
+            {
+                _state = State.AfterAttributeValueQuoted;
+                FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
+                return index;
+            }
+            goto BeforeAttributeName;
+        }
+
+        SelfClosingStartTag:
+        {
+            if ((UInt32)index >= (UInt32)utf8.Length)
+            {
+                _state = State.SelfClosingStartTag;
+                return index;
+            }
+            value = utf8[index];
+            RecordState<TMetrics>((Int32)State.SelfClosingStartTag, 1);
+            if (value == (Byte)'>')
+            {
+                _state = State.SelfClosingStartTag;
+                FinishScannedTag(ref index, selfClosing: true, sourceOffset, trackSourceRanges);
+                return index;
+            }
+            goto BeforeAttributeName;
+        }
     }
 
     private void FinishScannedTag(ref Int32 index, Boolean selfClosing, Int64 sourceOffset, Boolean trackSourceRanges)
