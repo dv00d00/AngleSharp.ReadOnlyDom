@@ -2,6 +2,7 @@
 
 using System.Buffers;
 using System.IO.Pipelines;
+using System.Runtime.CompilerServices;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
@@ -122,13 +123,13 @@ internal sealed class Utf8HtmlTokenizer
     private static readonly String[] StateNames = Enum.GetNames<State>();
 
     private readonly Utf8HtmlTokenizerStateMetrics? _stateMetrics;
-    private readonly ArrayBufferWriter<Byte> _name = new(32);
-    private readonly ArrayBufferWriter<Byte> _attributeName = new(32);
-    private ArrayBufferWriter<Byte>? _attributeValue;
-    private ArrayBufferWriter<Byte>? _seenAttributeNames;
-    private readonly ArrayBufferWriter<Byte> _candidate = new(64);
-    private ArrayBufferWriter<Byte>? _doctypePublic;
-    private ArrayBufferWriter<Byte>? _doctypeSystem;
+    private readonly Utf8TokenBuffer _name = new(32);
+    private readonly Utf8TokenBuffer _attributeName = new(32);
+    private Utf8TokenBuffer? _attributeValue;
+    private Utf8TokenBuffer? _seenAttributeNames;
+    private readonly Utf8TokenBuffer _candidate = new(64);
+    private Utf8TokenBuffer? _doctypePublic;
+    private Utf8TokenBuffer? _doctypeSystem;
     private State _state;
     private State _returnState;
     private Boolean _isEndTag;
@@ -168,11 +169,11 @@ internal sealed class Utf8HtmlTokenizer
     private Int64 _lastLessThanSourceOffset;
     private Int64 _currentTagSourceOffset;
 
-    private ArrayBufferWriter<Byte> AttributeValue => _attributeValue ??= new(128);
+    private Utf8TokenBuffer AttributeValue => _attributeValue ??= new(128);
 
-    private ArrayBufferWriter<Byte> DoctypePublic => _doctypePublic ??= new(64);
+    private Utf8TokenBuffer DoctypePublic => _doctypePublic ??= new(64);
 
-    private ArrayBufferWriter<Byte> DoctypeSystem => _doctypeSystem ??= new(64);
+    private Utf8TokenBuffer DoctypeSystem => _doctypeSystem ??= new(64);
 
     public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink)
         : this(sink, null, HtmlStreamingLimits.Default, countInputBytes: true) { }
@@ -205,6 +206,42 @@ internal sealed class Utf8HtmlTokenizer
     public static Int32 StateCount => StateNames.Length;
 
     public IReadOnlyList<Utf8HtmlTokenizerStateMetric> GetStateMetrics() => _stateMetrics?.Snapshot(StateNames) ?? [];
+
+    // Per-run state accounting is diagnostics-only, but its probes are threaded through the two
+    // bulk-scan methods, where they survived as real calls in the tier-1 body and inflated the
+    // code the JIT had to allocate registers for. The scan loop is therefore instantiated over a
+    // policy struct: TMetrics.Enabled is a compile-time constant per instantiation, so the
+    // metrics-off body drops the probes entirely while the metrics-on body keeps recording.
+    private interface IStateMetricsPolicy
+    {
+        static abstract Boolean Enabled { get; }
+    }
+
+    private readonly struct MetricsOff : IStateMetricsPolicy
+    {
+        public static Boolean Enabled => false;
+    }
+
+    private readonly struct MetricsOn : IStateMetricsPolicy
+    {
+        public static Boolean Enabled => true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void RecordState<TMetrics>(Int32 state, Int32 count)
+        where TMetrics : struct, IStateMetricsPolicy
+    {
+        if (!TMetrics.Enabled)
+        {
+            return;
+        }
+
+        _stateMetrics!.Record(state, count);
+    }
+
+    // Cold paths keep the ordinary null check; only one probe each, so specialising them buys
+    // nothing and would double the code for the per-byte state machine.
+    private void RecordState(Int32 state, Int32 count) => _stateMetrics?.Record(state, count);
 
     public Utf8HtmlTokenizerCounters Counters => GetCounters(_inputBytesConsumed);
 
@@ -311,7 +348,13 @@ internal sealed class Utf8HtmlTokenizer
 
     internal Boolean IsYieldRequested => _yieldRequested;
 
-    internal Int32 WriteTrustedUtf8(ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
+    internal Int32 WriteTrustedUtf8(ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest) =>
+        _stateMetrics is null
+            ? WriteTrustedUtf8<MetricsOff>(utf8, yieldOnRequest)
+            : WriteTrustedUtf8<MetricsOn>(utf8, yieldOnRequest);
+
+    private Int32 WriteTrustedUtf8<TMetrics>(ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
+        where TMetrics : struct, IStateMetricsPolicy
     {
         var trackSourceRanges = _startTagSourceRangeSink is not null;
         var sourceBase = trackSourceRanges ? _normalizedBytesConsumed : 0;
@@ -330,7 +373,7 @@ internal sealed class Utf8HtmlTokenizer
                     && IsTagTailState(_state)
                 )
                 {
-                    var consumed = ScanDiscardedTagTail(
+                    var consumed = ScanDiscardedTagTail<TMetrics>(
                         utf8[index..],
                         trackSourceRanges ? sourceBase + index : 0,
                         trackSourceRanges
@@ -353,7 +396,7 @@ internal sealed class Utf8HtmlTokenizer
 
                     if (run > 0)
                     {
-                        _stateMetrics?.Record((Int32)_state, run);
+                        RecordState<TMetrics>((Int32)_state, run);
                         AppendTagName(remaining[..run]);
                         index += run;
                         continue;
@@ -367,7 +410,7 @@ internal sealed class Utf8HtmlTokenizer
 
                     if (run > 0)
                     {
-                        _stateMetrics?.Record((Int32)_state, run);
+                        RecordState<TMetrics>((Int32)_state, run);
                         if (_captureStartTagAttributes)
                         {
                             Append(_attributeName, remaining[..run]);
@@ -396,7 +439,7 @@ internal sealed class Utf8HtmlTokenizer
                     }
                     if (run > 0)
                     {
-                        _stateMetrics?.Record((Int32)_state, run);
+                        RecordState<TMetrics>((Int32)_state, run);
                         if (_captureText)
                         {
                             EmitText(utf8.Slice(index, run));
@@ -418,7 +461,7 @@ internal sealed class Utf8HtmlTokenizer
                             : FindDiscardedQuotedAttributeValueTerminator(remaining, quote);
                     if (run > 0)
                     {
-                        _stateMetrics?.Record((Int32)_state, run);
+                        RecordState<TMetrics>((Int32)_state, run);
                         if (_attributeCapture == AttributeCapture.Capture)
                         {
                             Append(AttributeValue, remaining[..run]);
@@ -437,7 +480,7 @@ internal sealed class Utf8HtmlTokenizer
                             : FindDiscardedUnquotedAttributeValueTerminator(remaining);
                     if (run > 0)
                     {
-                        _stateMetrics?.Record((Int32)_state, run);
+                        RecordState<TMetrics>((Int32)_state, run);
                         if (_attributeCapture == AttributeCapture.Capture)
                         {
                             Append(AttributeValue, remaining.Slice(0, run));
@@ -453,7 +496,7 @@ internal sealed class Utf8HtmlTokenizer
                     var run = FindCommentTerminator(remaining);
                     if (run > 0)
                     {
-                        _stateMetrics?.Record((Int32)_state, run);
+                        RecordState<TMetrics>((Int32)_state, run);
                         AppendComment(remaining.Slice(0, run));
                         index += run;
                         continue;
@@ -620,7 +663,7 @@ internal sealed class Utf8HtmlTokenizer
         while (reconsume)
         {
             reconsume = false;
-            _stateMetrics?.Record((Int32)_state, 1);
+            RecordState((Int32)_state, 1);
             switch (_state)
             {
                 case State.Data:
@@ -1586,7 +1629,7 @@ internal sealed class Utf8HtmlTokenizer
             return false;
         }
 
-        var seenNames = _seenAttributeNames ??= new ArrayBufferWriter<Byte>(128);
+        var seenNames = _seenAttributeNames ??= new Utf8TokenBuffer(128);
         var nameOffset = seenNames.WrittenCount;
         Append(seenNames, name.Verbatim);
         Append(seenNames, (Byte)0);
@@ -1906,7 +1949,7 @@ internal sealed class Utf8HtmlTokenizer
         Clear(_doctypeSystem);
     }
 
-    private void AppendReplacedNull(ArrayBufferWriter<Byte> destination, Byte value, Boolean lowerAscii)
+    private void AppendReplacedNull(Utf8TokenBuffer destination, Byte value, Boolean lowerAscii)
     {
         if (value == 0)
         {
@@ -1932,7 +1975,7 @@ internal sealed class Utf8HtmlTokenizer
         return true;
     }
 
-    private void AppendReplacement(ArrayBufferWriter<Byte> destination) => Append(destination, "\uFFFD"u8);
+    private void AppendReplacement(Utf8TokenBuffer destination) => Append(destination, "\uFFFD"u8);
 
     private void ProcessScript(Byte value, ref Boolean reconsume)
     {
@@ -2181,7 +2224,7 @@ internal sealed class Utf8HtmlTokenizer
         while (reconsume)
         {
             reconsume = false;
-            _stateMetrics?.Record((Int32)_state, 1);
+            RecordState((Int32)_state, 1);
             ProcessScript(value, ref reconsume);
         }
 
@@ -2207,7 +2250,7 @@ internal sealed class Utf8HtmlTokenizer
             return;
         }
 
-        _stateMetrics?.Record((Int32)_state, run);
+        RecordState((Int32)_state, run);
         if (_captureText)
         {
             EmitText(remaining[..run]);
@@ -2312,7 +2355,7 @@ internal sealed class Utf8HtmlTokenizer
             // In HTML, the trailing solidus does not make a non-void element self-closing.
             // Tree construction controls the mode in the DOM path; the standalone path must
             // therefore still infer text modes for e.g. <textarea/> and <plaintext/>.
-            if (!IsModeControlledExternally)
+            if (!IsModeControlledExternally && CouldBeRawTextTag(_name.WrittenSpan))
             {
                 var name = CurrentTagName();
                 if (name.TryGetCompactKey(out var key))
@@ -2358,6 +2401,26 @@ internal sealed class Utf8HtmlTokenizer
         {
             _state = _rawEndTag is null ? State.Data : State.RawText;
         }
+    }
+
+    // Every start tag used to pay for a compact-key computation just to discover it is not
+    // one of the nine raw-text elements. Those names are 3..9 bytes and begin with i, n, p,
+    // s, t, or x, so a length test plus a 32-bit letter mask rejects div/a/li/span/img and
+    // friends before the key is ever built. Case folding matches TryGetCompactKey's ASCII
+    // semantics; a non-letter first byte cannot survive the mask.
+    private const UInt32 RawTextFirstLetters =
+        (1U << ('i' - 'a')) | (1U << ('n' - 'a')) | (1U << ('p' - 'a')) | (1U << ('s' - 'a')) | (1U << ('t' - 'a')) | (1U << ('x' - 'a'));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Boolean CouldBeRawTextTag(ReadOnlySpan<Byte> name)
+    {
+        if ((UInt32)(name.Length - 3) > 6)
+        {
+            return false;
+        }
+
+        var letter = (UInt32)((name[0] | 0x20) - 'a');
+        return letter <= 'z' - 'a' && (RawTextFirstLetters & (1U << (Int32)letter)) != 0;
     }
 
     private Boolean RawCandidateMatches()
@@ -2460,18 +2523,17 @@ internal sealed class Utf8HtmlTokenizer
         _reconsumes++;
     }
 
-    private void Append(ArrayBufferWriter<Byte> buffer, Byte value)
+    private void Append(Utf8TokenBuffer buffer, Byte value)
     {
         EnsureBufferedTokenCapacity(1);
-        buffer.GetSpan(1)[0] = value;
-        buffer.Advance(1);
+        buffer.Append(value);
         ObserveBufferAppend(1);
     }
 
-    private void Append(ArrayBufferWriter<Byte> buffer, ReadOnlySpan<Byte> value)
+    private void Append(Utf8TokenBuffer buffer, ReadOnlySpan<Byte> value)
     {
         EnsureBufferedTokenCapacity(value.Length);
-        buffer.Write(value);
+        buffer.Append(value);
         ObserveBufferAppend(value.Length);
     }
 
@@ -2493,10 +2555,10 @@ internal sealed class Utf8HtmlTokenizer
         }
     }
 
-    private static ReadOnlySpan<Byte> WrittenSpan(ArrayBufferWriter<Byte>? buffer) =>
+    private static ReadOnlySpan<Byte> WrittenSpan(Utf8TokenBuffer? buffer) =>
         buffer is null ? ReadOnlySpan<Byte>.Empty : buffer.WrittenSpan;
 
-    private void Clear(ArrayBufferWriter<Byte>? buffer)
+    private void Clear(Utf8TokenBuffer? buffer)
     {
         if (buffer is null)
         {
@@ -2593,7 +2655,8 @@ internal sealed class Utf8HtmlTokenizer
                 or State.AfterAttributeValueQuoted
                 or State.SelfClosingStartTag;
 
-    private Int32 ScanDiscardedTagTail(ReadOnlySpan<Byte> utf8, Int64 sourceOffset, Boolean trackSourceRanges)
+    private Int32 ScanDiscardedTagTail<TMetrics>(ReadOnlySpan<Byte> utf8, Int64 sourceOffset, Boolean trackSourceRanges)
+        where TMetrics : struct, IStateMetricsPolicy
     {
         var index = 0;
         while (index < utf8.Length && IsTagTailState(_state))
@@ -2608,12 +2671,12 @@ internal sealed class Utf8HtmlTokenizer
                     run = run < 0 ? remaining.Length : run;
                     if (run > 0)
                     {
-                        _stateMetrics?.Record((Int32)state, run);
+                        RecordState<TMetrics>((Int32)state, run);
                         index += run;
                         if (index < utf8.Length)
                         {
                             var terminator = utf8[index];
-                            _stateMetrics?.Record((Int32)state, 1);
+                            RecordState<TMetrics>((Int32)state, 1);
                             if (terminator == (Byte)'=')
                             {
                                 index++;
@@ -2623,7 +2686,7 @@ internal sealed class Utf8HtmlTokenizer
                                     var valueStart = utf8[index];
                                     if (valueStart is (Byte)'"' or (Byte)'\'')
                                     {
-                                        _stateMetrics?.Record((Int32)State.BeforeAttributeValue, 1);
+                                        RecordState<TMetrics>((Int32)State.BeforeAttributeValue, 1);
                                         index++;
                                         _state =
                                             valueStart == (Byte)'"'
@@ -2652,11 +2715,11 @@ internal sealed class Utf8HtmlTokenizer
                     run = run < 0 ? remaining.Length : run;
                     if (run > 0)
                     {
-                        _stateMetrics?.Record((Int32)state, run);
+                        RecordState<TMetrics>((Int32)state, run);
                         index += run;
                         if (index < utf8.Length)
                         {
-                            _stateMetrics?.Record((Int32)state, 1);
+                            RecordState<TMetrics>((Int32)state, 1);
                             index++;
                             _state = State.AfterAttributeValueQuoted;
                         }
@@ -2667,12 +2730,12 @@ internal sealed class Utf8HtmlTokenizer
                     run = FindDiscardedUnquotedAttributeValueTerminator(remaining);
                     if (run > 0)
                     {
-                        _stateMetrics?.Record((Int32)state, run);
+                        RecordState<TMetrics>((Int32)state, run);
                         index += run;
                         if (index < utf8.Length)
                         {
                             var terminator = utf8[index];
-                            _stateMetrics?.Record((Int32)state, 1);
+                            RecordState<TMetrics>((Int32)state, 1);
                             if (terminator == (Byte)'>')
                             {
                                 FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
@@ -2689,7 +2752,7 @@ internal sealed class Utf8HtmlTokenizer
             }
 
             var value = utf8[index];
-            _stateMetrics?.Record((Int32)state, 1);
+            RecordState<TMetrics>((Int32)state, 1);
             switch (state)
             {
                 case State.BeforeAttributeName:
