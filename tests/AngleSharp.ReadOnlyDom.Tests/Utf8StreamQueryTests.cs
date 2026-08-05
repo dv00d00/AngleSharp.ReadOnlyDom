@@ -694,6 +694,58 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task RewriteSegmentSinkEmitsTheSameBytesAsTheBufferWriter()
+    {
+        var root = StreamQuery.For<SegmentState>("main");
+        root.Descendant("a").Attribute("href");
+        var plan = root.Compile();
+        // Edits at the start, back to back, self-closing, already-spaced, and none at the tail.
+        var source = "<main><a href='x'>t</a><a href=y /><a href=z >u</a><b>rest</b>é</main>"u8;
+
+        var buffered = new ArrayBufferWriter<byte>();
+        plan.Rewrite(
+            source,
+            buffered,
+            new SegmentState(),
+            static (ref SegmentState state, in Element _, ref StartTagEditor tag) =>
+            {
+                state.Matches++;
+                tag.AppendAttribute("data-q"u8, "1"u8);
+            },
+            Utf8InputContract.WellFormedUtf8
+        );
+
+        var sunk = plan.Rewrite(
+            source,
+            new SegmentState(),
+            static (ref SegmentState state, in Element _, ref StartTagEditor tag) =>
+            {
+                state.Matches++;
+                tag.AppendAttribute("data-q"u8, "1"u8);
+            },
+            static (ref SegmentState state, ReadOnlySpan<byte> segment) =>
+            {
+                state.Segments++;
+                state.Output.AddRange(segment);
+            },
+            Utf8InputContract.WellFormedUtf8
+        );
+
+        await Assert.That(sunk.Matches).IsEqualTo(3);
+        await Assert.That(sunk.Segments).IsGreaterThan(3);
+        await Assert
+            .That(Encoding.UTF8.GetString([.. sunk.Output]))
+            .IsEqualTo(Encoding.UTF8.GetString(buffered.WrittenSpan));
+    }
+
+    private sealed class SegmentState
+    {
+        public int Matches;
+        public int Segments;
+        public List<byte> Output { get; } = [];
+    }
+
+    [Test]
     public async Task RewriteDoesNotMaterializeDiscardedCommentPayloads()
     {
         var comment = new string('x', 4096);
