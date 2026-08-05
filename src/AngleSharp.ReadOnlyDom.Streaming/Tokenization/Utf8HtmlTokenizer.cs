@@ -2822,6 +2822,24 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         return terminator < 0 ? value.Length : terminator;
     }
 
+    // Keep the multi-space loop out of the hot state dispatcher: compact one-space tags retain
+    // its original JIT layout, while indented tag tails skip the repeated dispatcher round-trips.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private Int32 ScanDiscardedWhitespace<TMetrics>(ReadOnlySpan<Byte> value, Int32 index)
+        where TMetrics : struct, IStateMetricsPolicy
+    {
+        var whitespaceStart = ++index;
+        while (index < value.Length && IsSpace(value[index]))
+        {
+            index++;
+        }
+        if (index != whitespaceStart)
+        {
+            RecordState<TMetrics>((Int32)State.BeforeAttributeName, index - whitespaceStart);
+        }
+        return index;
+    }
+
     private static Boolean IsTagTailState(State state) =>
         state
             is State.BeforeAttributeName
@@ -2937,7 +2955,7 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 case State.BeforeAttributeName:
                     if (IsSpace(value))
                     {
-                        index++;
+                        index = ScanDiscardedWhitespace<TMetrics>(utf8, index);
                     }
                     else if (value == (Byte)'/')
                     {
