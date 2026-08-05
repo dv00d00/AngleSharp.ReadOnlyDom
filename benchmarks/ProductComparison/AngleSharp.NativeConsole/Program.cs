@@ -66,6 +66,12 @@ static async ValueTask<BenchmarkResult> Parse(
                 new ChunkedMemoryPipeReader(input, options.ChunkSize),
                 new UrlState()
             ),
+            "stream-trusted" => await urlQuery.ExecuteAsync(
+                new ChunkedMemoryPipeReader(input, options.ChunkSize),
+                new UrlState(),
+                inputContract: Utf8InputContract.WellFormedUtf8
+            ),
+            "push" => PushParse(urlQuery, input, options.ChunkSize),
             "buffer-arbitrary" => urlQuery.Execute(input, new UrlState(), Utf8InputContract.ArbitraryBytes),
             "buffer-trusted" => urlQuery.Execute(input, new UrlState(), Utf8InputContract.WellFormedUtf8),
             _ => throw new ArgumentException($"Unknown mode: {options.Mode}"),
@@ -84,11 +90,28 @@ static async ValueTask<BenchmarkResult> Parse(
             new ChunkedMemoryPipeReader(input, options.ChunkSize),
             new CountState()
         ),
+        "stream-trusted" => await query.ExecuteAsync(
+            new ChunkedMemoryPipeReader(input, options.ChunkSize),
+            new CountState(),
+            inputContract: Utf8InputContract.WellFormedUtf8
+        ),
+        "push" => PushParse(query, input, options.ChunkSize),
         "buffer-arbitrary" => query.Execute(input, new CountState(), Utf8InputContract.ArbitraryBytes),
         "buffer-trusted" => query.Execute(input, new CountState(), Utf8InputContract.WellFormedUtf8),
         _ => throw new ArgumentException($"Unknown mode: {options.Mode}"),
     };
     return new BenchmarkResult(count.Count, count.Count);
+}
+
+static TState PushParse<TState>(QueryPlan<TState> plan, byte[] input, int chunkSize)
+    where TState : new()
+{
+    using var session = plan.CreateSession(new TState());
+    for (var offset = 0; offset < input.Length; offset += chunkSize)
+    {
+        session.Write(input.AsSpan(offset, Math.Min(chunkSize, input.Length - offset)));
+    }
+    return session.Complete();
 }
 
 static QueryPlan<UrlState> CreateUrlQuery()

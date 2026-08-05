@@ -54,6 +54,17 @@ public sealed class QueryPlan<TState>
     internal QueryExecution<TState> CreateExecution(TState state, HtmlStreamingLimits? limits = null) =>
         new(this, state, limits ?? HtmlStreamingLimits.Default);
 
+    /// <summary>
+    /// Begins a push-style streaming execution: call <see cref="StreamingQuerySession{TState}.Write"/> per input
+    /// chunk and <see cref="StreamingQuerySession{TState}.Complete"/> at end of input. Select
+    /// <see cref="Utf8InputContract.WellFormedUtf8"/> only when the complete input is guaranteed valid UTF-8.
+    /// </summary>
+    public StreamingQuerySession<TState> CreateSession(
+        TState state,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes,
+        HtmlStreamingLimits? limits = null
+    ) => new(this, state, inputContract, limits ?? HtmlStreamingLimits.Default);
+
     /// <summary>Executes the plan over UTF-8, replacing malformed input with U+FFFD.</summary>
     public TState Execute(ReadOnlySpan<byte> utf8, TState state, HtmlStreamingLimits? limits = null) =>
         Execute(utf8, state, Utf8InputContract.ArbitraryBytes, limits);
@@ -120,16 +131,23 @@ public sealed class QueryPlan<TState>
         return execution.State;
     }
 
+    /// <summary>
+    /// Executes the plan over streamed UTF-8. Select <see cref="Utf8InputContract.WellFormedUtf8"/> only when the
+    /// complete input is guaranteed to be valid UTF-8; the default validates and repairs arbitrary bytes.
+    /// </summary>
     public async ValueTask<TState> ExecuteAsync(
         PipeReader reader,
         TState state,
         CancellationToken cancellationToken = default,
-        HtmlStreamingLimits? limits = null
+        HtmlStreamingLimits? limits = null,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes
     )
     {
         limits ??= HtmlStreamingLimits.Default;
         using var execution = CreateExecution(state, limits);
-        await Utf8HtmlTokenizer.TokenizeAsync(reader, execution, cancellationToken, limits).ConfigureAwait(false);
+        await Utf8HtmlTokenizer
+            .TokenizeAsync(reader, execution, cancellationToken, limits, inputContract)
+            .ConfigureAwait(false);
         return execution.State;
     }
 
