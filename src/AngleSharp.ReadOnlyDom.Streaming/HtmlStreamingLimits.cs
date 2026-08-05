@@ -6,7 +6,7 @@ namespace AngleSharp.ReadOnlyDom.Streaming;
 public sealed class HtmlStreamingLimits
 {
     public const Int32 DefaultMaximumBufferedTokenBytes = 1024 * 1024;
-    public const Int32 DefaultMaximumNestingDepth = 4096;
+    public const Int32 DefaultMaximumNestingDepth = 16 * 1024;
     public const Int64 DefaultMaximumInputBytes = 128L * 1024 * 1024;
     public const Int64 DefaultMaximumQueryCaptureBytes = 64L * 1024 * 1024;
 
