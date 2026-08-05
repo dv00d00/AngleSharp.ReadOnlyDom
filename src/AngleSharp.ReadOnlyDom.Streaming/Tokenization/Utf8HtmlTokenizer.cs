@@ -6,7 +6,19 @@ using System.Runtime.CompilerServices;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-internal sealed class Utf8HtmlTokenizer
+internal interface IUtf8HtmlTokenizer
+{
+    Utf8HtmlTokenizerCounters Counters { get; }
+
+    void Write(ReadOnlyMemory<Byte> utf8);
+
+    void Write(ReadOnlySpan<Byte> utf8);
+
+    void Complete();
+}
+
+internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
+    where TResourceLimits : struct, IResourceLimitPolicy
 {
     private const Int32 AttributeIndexPromotionThreshold = 16;
     private const UInt64 IframeKey = 0x000000001CBB9A4AUL;
@@ -399,19 +411,26 @@ internal sealed class Utf8HtmlTokenizer
     private Int32 WriteCore(ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
     {
         ThrowIfCompleted();
-        var previousBytesConsumed = _inputBytesConsumed;
-        var observedInputBytes = SaturatingAdd(previousBytesConsumed, utf8.Length);
-        if (observedInputBytes > _maximumInputBytesAllowed)
+        var previousBytesConsumed = 0L;
+        if (TResourceLimits.Enabled)
         {
-            throw new HtmlStreamingLimitExceededException(
-                HtmlStreamingLimit.InputBytes,
-                _maximumInputBytesAllowed,
-                observedInputBytes
-            );
+            previousBytesConsumed = _inputBytesConsumed;
+            var observedInputBytes = SaturatingAdd(previousBytesConsumed, utf8.Length);
+            if (observedInputBytes > _maximumInputBytesAllowed)
+            {
+                throw new HtmlStreamingLimitExceededException(
+                    HtmlStreamingLimit.InputBytes,
+                    _maximumInputBytesAllowed,
+                    observedInputBytes
+                );
+            }
         }
 
         var consumed = WriteTrustedUtf8(utf8, yieldOnRequest);
-        _inputBytesConsumed = SaturatingAdd(previousBytesConsumed, consumed);
+        if (TResourceLimits.Enabled)
+        {
+            _inputBytesConsumed = SaturatingAdd(previousBytesConsumed, consumed);
+        }
         return consumed;
     }
 
@@ -745,49 +764,6 @@ internal sealed class Utf8HtmlTokenizer
 
         _sink.EndOfFile();
         _completed = true;
-    }
-
-    public static async ValueTask<Utf8HtmlTokenizerCounters> TokenizeAsync(
-        PipeReader reader,
-        IUtf8HtmlTokenSink sink,
-        CancellationToken cancellationToken = default,
-        HtmlStreamingLimits? limits = null,
-        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes
-    )
-    {
-        ArgumentNullException.ThrowIfNull(reader);
-        if (inputContract is not (Utf8InputContract.ArbitraryBytes or Utf8InputContract.WellFormedUtf8))
-            throw new ArgumentOutOfRangeException(nameof(inputContract));
-        var effectiveLimits = limits ?? HtmlStreamingLimits.Default;
-        var tokenizer = new Utf8HtmlTokenizer(sink, effectiveLimits);
-        var input = new Utf8HtmlTokenizerInput(tokenizer, inputContract, effectiveLimits);
-        while (true)
-        {
-            var result = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-            var buffer = result.Buffer;
-            if (result.IsCanceled)
-            {
-                reader.AdvanceTo(buffer.Start, buffer.End);
-                throw new OperationCanceledException(cancellationToken);
-            }
-            try
-            {
-                foreach (var segment in buffer)
-                {
-                    input.Write(segment);
-                }
-            }
-            finally
-            {
-                reader.AdvanceTo(buffer.End);
-            }
-            if (result.IsCompleted)
-            {
-                break;
-            }
-        }
-        input.Complete();
-        return input.Counters;
     }
 
     private void Process(Byte value)
@@ -2640,16 +2616,28 @@ internal sealed class Utf8HtmlTokenizer
 
     private void Append(Utf8TokenBuffer buffer, Byte value)
     {
-        EnsureBufferedTokenCapacity(1);
+        if (TResourceLimits.Enabled)
+        {
+            EnsureBufferedTokenCapacity(1);
+        }
         buffer.Append(value);
-        ObserveBufferAppend(1);
+        if (TResourceLimits.Enabled)
+        {
+            ObserveBufferAppend(1);
+        }
     }
 
     private void Append(Utf8TokenBuffer buffer, ReadOnlySpan<Byte> value)
     {
-        EnsureBufferedTokenCapacity(value.Length);
+        if (TResourceLimits.Enabled)
+        {
+            EnsureBufferedTokenCapacity(value.Length);
+        }
         buffer.Append(value);
-        ObserveBufferAppend(value.Length);
+        if (TResourceLimits.Enabled)
+        {
+            ObserveBufferAppend(value.Length);
+        }
     }
 
     private void ObserveBufferAppend(Int32 count)
@@ -2680,7 +2668,10 @@ internal sealed class Utf8HtmlTokenizer
             return;
         }
 
-        _bufferedTokenBytes -= buffer.WrittenCount;
+        if (TResourceLimits.Enabled)
+        {
+            _bufferedTokenBytes -= buffer.WrittenCount;
+        }
         buffer.ResetWrittenCount();
     }
 
@@ -3016,4 +3007,36 @@ internal sealed class Utf8HtmlTokenizer
             throw new InvalidOperationException("The tokenizer is already complete.");
         }
     }
+}
+
+internal sealed class Utf8HtmlTokenizer : Utf8HtmlTokenizer<EnforcedResourceLimits>
+{
+    public static ValueTask<Utf8HtmlTokenizerCounters> TokenizeAsync(
+        PipeReader reader,
+        IUtf8HtmlTokenSink sink,
+        CancellationToken cancellationToken = default,
+        HtmlStreamingLimits? limits = null,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes
+    )
+    {
+        limits ??= HtmlStreamingLimits.Default;
+        return Utf8HtmlTokenizerPipeline.TokenizeAsync(reader, sink, cancellationToken, limits, inputContract);
+    }
+
+    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink)
+        : base(sink) { }
+
+    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink, HtmlStreamingLimits limits)
+        : base(sink, limits) { }
+
+    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink, Utf8HtmlTokenizerStateMetrics? stateMetrics)
+        : base(sink, stateMetrics) { }
+
+    public Utf8HtmlTokenizer(
+        IUtf8HtmlTokenSink sink,
+        Utf8HtmlTokenizerStateMetrics? stateMetrics,
+        HtmlStreamingLimits limits,
+        Boolean countInputBytes
+    )
+        : base(sink, stateMetrics, limits, countInputBytes) { }
 }

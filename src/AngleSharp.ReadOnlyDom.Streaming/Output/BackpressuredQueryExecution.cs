@@ -27,7 +27,7 @@ public static class BackpressuredQueryExecution
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(inputSliceSize);
 
         limits ??= HtmlStreamingLimits.Default;
-        using var execution = plan.CreateExecution(state, limits);
+        using var execution = plan.CreateResourceAwareExecution(state, limits);
         await EncodedHtmlInput
             .TokenizeAsync(
                 reader,
@@ -67,9 +67,12 @@ public static class BackpressuredQueryExecution
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(inputSliceSize);
 
         limits ??= HtmlStreamingLimits.Default;
-        using var execution = plan.CreateExecution(state, limits);
-        var tokenizer = new Utf8HtmlTokenizer(execution, limits);
-        var input = new Utf8HtmlTokenizerInput(tokenizer, limits: limits);
+        using var execution = plan.CreateResourceAwareExecution(state, limits);
+        var input = Utf8HtmlTokenizerPipeline.CreateInput(
+            execution,
+            Utf8InputContract.ArbitraryBytes,
+            limits
+        );
 
         while (true)
         {

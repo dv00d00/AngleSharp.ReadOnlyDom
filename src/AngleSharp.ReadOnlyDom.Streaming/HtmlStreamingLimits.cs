@@ -13,7 +13,7 @@ public sealed class HtmlStreamingLimits
     public static HtmlStreamingLimits Default { get; } = new();
 
     public static HtmlStreamingLimits Unlimited { get; } =
-        new(Int32.MaxValue, Int32.MaxValue, Int64.MaxValue, Int64.MaxValue);
+        new(Int32.MaxValue, Int32.MaxValue, Int64.MaxValue, Int64.MaxValue) { EnforcesLimits = false };
 
     public HtmlStreamingLimits(
         Int32 maximumBufferedTokenBytes = DefaultMaximumBufferedTokenBytes,
@@ -39,4 +39,6 @@ public sealed class HtmlStreamingLimits
     public Int64 MaximumInputBytes { get; }
 
     public Int64 MaximumQueryCaptureBytes { get; }
+
+    internal Boolean EnforcesLimits { get; init; } = true;
 }

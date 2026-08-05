@@ -11,10 +11,17 @@ namespace AngleSharp.Readonly.Tests;
 
 public sealed class BackpressuredQueryTests
 {
+    private static readonly HtmlStreamingLimits DisabledPolicyProbe = new(1, 1, 1, 1)
+    {
+        EnforcesLimits = false,
+    };
+
     [Test]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task DirectPipeWriterOutputPreservesBackpressure(bool encoded)
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task DirectPipeWriterOutputPreservesBackpressure(bool encoded, bool unbounded)
     {
         var input = new Pipe(new PipeOptions(useSynchronizationContext: false));
         var output = new Pipe(
@@ -34,6 +41,7 @@ public sealed class BackpressuredQueryTests
         var expected = string.Concat(Enumerable.Repeat("abcdef café—uvwxyz012345", 128));
         var sourceEncoding = encoded ? Encoding.GetEncoding(1252) : Encoding.UTF8;
         var html = sourceEncoding.GetBytes($"<html><body><p>{expected}</p></body></html>");
+        var limits = unbounded ? DisabledPolicyProbe : null;
         var execution = ExecuteAndCompleteOutputAsync();
 
         await input.Writer.WriteAsync(html);
@@ -71,14 +79,16 @@ public sealed class BackpressuredQueryTests
                         HtmlInputEncoding.Known(sourceEncoding),
                         state,
                         flushThreshold: 32,
-                        inputSliceSize: 16
+                        inputSliceSize: 16,
+                        limits: limits
                     )
                     : await plan.ExecuteAsync(
                         input.Reader,
                         output.Writer,
                         state,
                         flushThreshold: 32,
-                        inputSliceSize: 16
+                        inputSliceSize: 16,
+                        limits: limits
                     );
             }
             finally
@@ -89,9 +99,11 @@ public sealed class BackpressuredQueryTests
     }
 
     [Test]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task SlowOutputStopsInputDrainAndResumesWithoutChangingBytes(bool encoded)
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task SlowOutputStopsInputDrainAndResumesWithoutChangingBytes(bool encoded, bool unbounded)
     {
         var root = StreamQuery.For<TestOutput>("html").OnText(static (ref output, text) => output.Append(text));
         var plan = root.Compile();
@@ -109,6 +121,7 @@ public sealed class BackpressuredQueryTests
         var expected = string.Concat(Enumerable.Repeat("abcdef café—uvwxyz012345", 128));
         var sourceEncoding = encoded ? Encoding.GetEncoding(1252) : Encoding.UTF8;
         var html = sourceEncoding.GetBytes($"<html><body><p>{expected}</p></body></html>");
+        var limits = unbounded ? DisabledPolicyProbe : null;
         var execution = ExecuteAndCompleteOutputAsync();
 
         await input.Writer.WriteAsync(html);
@@ -148,14 +161,16 @@ public sealed class BackpressuredQueryTests
                         HtmlInputEncoding.Known(sourceEncoding),
                         state,
                         flushThreshold: 32,
-                        inputSliceSize: 16
+                        inputSliceSize: 16,
+                        limits: limits
                     )
                     : await plan.ExecuteBackpressuredAsync(
                         input.Reader,
                         output.Writer,
                         state,
                         flushThreshold: 32,
-                        inputSliceSize: 16
+                        inputSliceSize: 16,
+                        limits: limits
                     );
             }
             finally

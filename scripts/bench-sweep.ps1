@@ -21,6 +21,7 @@ param(
     [string] $Workload = "passthrough",
     [ValidateSet("stream", "stream-trusted", "push", "buffer-arbitrary", "buffer-trusted")]
     [string] $Mode = "stream",
+    [switch] $Unlimited,
     [Int32] $ChunkSize = 4096,
     # Optional second .NET lane: a console DLL built from another commit.
     [string] $BaselineDll,
@@ -69,7 +70,10 @@ function Invoke-Lane([Hashtable] $Lane, [String] $CorpusPath, [Int32] $Warmup, [
         "--workload", $laneWorkload
     )
     # Only the managed console understands --mode; the Rust lane always streams.
-    if ($Lane.Executable -eq "dotnet" -and $Mode -ne "stream") { $arguments += @("--mode", $Mode) }
+    if ($Lane.Executable -eq "dotnet") {
+        if ($Mode -ne "stream") { $arguments += @("--mode", $Mode) }
+        $arguments += @("--unlimited", $Unlimited.IsPresent.ToString().ToLowerInvariant())
+    }
     foreach ($argument in $arguments) { $info.ArgumentList.Add([String]$argument) }
     $info.RedirectStandardOutput = $true
     $info.UseShellExecute = $false
