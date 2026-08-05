@@ -8,15 +8,26 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks.Support;
 // Property fuzz for the input normalizer and the unvalidated-input tokenizer paths. Per random
 // HTML document (seeded, half salted with malformed UTF-8):
 //   1. Arbitrary-contract output is invariant to input chunking (1..4096-byte chunks vs whole).
-//   2. On valid UTF-8, arbitrary-contract output equals trusted-contract output.
-// Both with a text-capturing sink and a discard-everything sink. Chunking invariance is the
-// property that catches replacement-ordering bugs: a U+FFFD emitted from a carry drains at the
-// wrong stream position long before any unit test notices.
+//   2. Arbitrary-contract output equals an independent oracle: the document normalized by
+//      System.Text.Encoding.UTF8 (the reference maximal-subpart decoder, sharing no code with
+//      the normalizer) and fed through the trusted contract.
+// Both across three sink modes: text-capturing, attributes-only, and discard-everything - the
+// last one returns no captures at all, which is what routes tag tails through the raw
+// ScanDiscardedTagTail path that skips validation entirely. Chunking invariance is the property
+// that catches replacement-ordering bugs: a U+FFFD emitted from a carry drains at the wrong
+// stream position long before any unit test notices.
 //
 //   dotnet AngleSharp.ReadOnlyDom.Benchmarks.dll --utf8-normalizer-fuzz [iterations] [seed]
 internal static class Utf8NormalizerFuzzRunner
 {
     private static readonly int[] ChunkSizes = [1, 2, 3, 7, 13, 64, 127, 129, 1000, 4096];
+
+    private enum SinkMode
+    {
+        CaptureTextAndAttributes,
+        CaptureAttributesOnly,
+        DiscardEverything,
+    }
 
     public static int Run(string[] args)
     {
@@ -29,29 +40,33 @@ internal static class Utf8NormalizerFuzzRunner
         {
             var onlyValidUtf8 = iteration % 2 == 0;
             var document = BuildDocument(random, onlyValidUtf8);
-            foreach (var captureText in new[] { true, false })
+
+            // Independent oracle: .NET's reference decoder performs the same maximal-subpart
+            // U+FFFD replacement the arbitrary contract promises, so the normalized bytes fed
+            // through the trusted contract must produce the identical token stream.
+            var normalized = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(document));
+
+            foreach (var mode in new[] { SinkMode.CaptureTextAndAttributes, SinkMode.CaptureAttributesOnly, SinkMode.DiscardEverything })
             {
-                var reference = Fingerprint(document, Utf8InputContract.ArbitraryBytes, captureText, [document.Length]);
+                var reference = Fingerprint(document, Utf8InputContract.ArbitraryBytes, mode, [document.Length]);
+
+                var oracle = Fingerprint(normalized, Utf8InputContract.WellFormedUtf8, mode, [normalized.Length]);
+                if (oracle != reference)
+                {
+                    failures++;
+                    Console.WriteLine($"ORACLE MISMATCH iter={iteration} mode={mode} bytes={document.Length}");
+                    DumpRepro(document, iteration);
+                }
+
                 foreach (var chunkSize in ChunkSizes)
                 {
-                    var chunked = Fingerprint(document, Utf8InputContract.ArbitraryBytes, captureText, Chunks(document.Length, chunkSize, random));
+                    var chunked = Fingerprint(document, Utf8InputContract.ArbitraryBytes, mode, Chunks(document.Length, chunkSize, random));
                     if (chunked != reference)
                     {
                         failures++;
-                        Console.WriteLine($"CHUNKING MISMATCH iter={iteration} capture={captureText} chunk={chunkSize} bytes={document.Length}");
+                        Console.WriteLine($"CHUNKING MISMATCH iter={iteration} mode={mode} chunk={chunkSize} bytes={document.Length}");
                         DumpRepro(document, iteration);
                         break;
-                    }
-                }
-
-                if (onlyValidUtf8)
-                {
-                    var trusted = Fingerprint(document, Utf8InputContract.WellFormedUtf8, captureText, [document.Length]);
-                    if (trusted != reference)
-                    {
-                        failures++;
-                        Console.WriteLine($"CONTRACT MISMATCH iter={iteration} capture={captureText} bytes={document.Length}");
-                        DumpRepro(document, iteration);
                     }
                 }
             }
@@ -73,9 +88,9 @@ internal static class Utf8NormalizerFuzzRunner
         }
     }
 
-    private static ulong Fingerprint(byte[] document, Utf8InputContract contract, bool captureText, IEnumerable<int> chunkSizes)
+    private static ulong Fingerprint(byte[] document, Utf8InputContract contract, SinkMode mode, IEnumerable<int> chunkSizes)
     {
-        var sink = new FuzzSink(captureText);
+        var sink = new FuzzSink(mode);
         var tokenizer = new Utf8HtmlTokenizer(sink);
         var input = new Utf8HtmlTokenizerInput(tokenizer, contract);
         var offset = 0;
@@ -98,7 +113,7 @@ internal static class Utf8NormalizerFuzzRunner
         var parts = random.Next(4, 60);
         for (var part = 0; part < parts; part++)
         {
-            switch (random.Next(12))
+            switch (random.Next(13))
             {
                 case 0:
                     builder.AddRange(Encoding.UTF8.GetBytes($"<div class=\"a{random.Next(100)}\" data-x='v{random.Next(100)}'>"));
@@ -143,6 +158,22 @@ internal static class Utf8NormalizerFuzzRunner
                     AddText(builder, random, onlyValidUtf8, random.Next(1, 200));
                     builder.AddRange(Encoding.UTF8.GetBytes("</textarea>"));
                     break;
+                case 11:
+                    // Arbitrary bytes inside a tag tail: quoted and unquoted attribute values and
+                    // an attribute name. With a discarding sink these travel the raw scan paths.
+                    builder.AddRange(Encoding.UTF8.GetBytes("<span junk=\""));
+                    AddText(builder, random, onlyValidUtf8, random.Next(1, 60));
+                    builder.AddRange(Encoding.UTF8.GetBytes("' x"));
+                    AddText(builder, random, onlyValidUtf8, random.Next(1, 8));
+                    builder.AddRange(Encoding.UTF8.GetBytes("\" u="));
+                    AddText(builder, random, onlyValidUtf8, random.Next(1, 30));
+                    builder.AddRange(Encoding.UTF8.GetBytes(random.Next(2) == 0 ? ">" : " q='"));
+                    if (builder[^1] == (byte)'\'')
+                    {
+                        AddText(builder, random, onlyValidUtf8, random.Next(1, 30));
+                        builder.AddRange(Encoding.UTF8.GetBytes("'>"));
+                    }
+                    break;
                 default:
                     AddText(builder, random, onlyValidUtf8, random.Next(1, 50));
                     break;
@@ -150,10 +181,10 @@ internal static class Utf8NormalizerFuzzRunner
         }
         if (random.Next(4) == 0 && !onlyValidUtf8)
         {
-            // Dangling incomplete sequence at end of stream.
-            builder.Add(0xE4);
+            // Dangling tail at end of stream: incomplete (E4 / E4 B8) or already malformed (E0 87).
+            builder.Add(random.Next(3) == 0 ? (byte)0xE0 : (byte)0xE4);
             if (random.Next(2) == 0)
-                builder.Add(0xB8);
+                builder.Add(random.Next(3) == 0 ? (byte)0x87 : (byte)0xB8);
         }
         return [.. builder];
     }
@@ -180,7 +211,7 @@ internal static class Utf8NormalizerFuzzRunner
                     });
                     break;
                 case 4:
-                    // Malformed: lone continuation, bare lead, or truncated sequence.
+                    // Malformed: lone continuation, bare lead, or an invalid byte.
                     builder.Add(random.Next(3) switch
                     {
                         0 => (byte)random.Next(0x80, 0xC0),
@@ -204,17 +235,23 @@ internal static class Utf8NormalizerFuzzRunner
         Console.WriteLine($"  repro: {path}");
     }
 
-    private sealed class FuzzSink(bool captureText) : IUtf8HtmlTokenSink
+    private sealed class FuzzSink(Utf8NormalizerFuzzRunner.SinkMode mode) : IUtf8HtmlTokenSink
     {
         public Utf8TokenizerBaselineBenchmark.FingerprintSink Inner { get; } = new();
 
-        public Utf8HtmlTokenCapture Capture => captureText ? Utf8HtmlTokenCapture.Text : Utf8HtmlTokenCapture.None;
+        public Utf8HtmlTokenCapture Capture =>
+            mode == SinkMode.CaptureTextAndAttributes ? Utf8HtmlTokenCapture.Text : Utf8HtmlTokenCapture.None;
 
         public void Text(ReadOnlySpan<byte> utf8) => Inner.Text(utf8);
 
-        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name) => Inner.StartTag(name);
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
+        {
+            var capture = Inner.StartTag(name);
+            return mode == SinkMode.DiscardEverything ? Utf8HtmlStartTagCapture.None : capture;
+        }
 
-        public bool WantsAttribute(Utf8HtmlName name) => Inner.WantsAttribute(name);
+        public bool WantsAttribute(Utf8HtmlName name) =>
+            mode != SinkMode.DiscardEverything && Inner.WantsAttribute(name);
 
         public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) => Inner.Attribute(name, value);
 
