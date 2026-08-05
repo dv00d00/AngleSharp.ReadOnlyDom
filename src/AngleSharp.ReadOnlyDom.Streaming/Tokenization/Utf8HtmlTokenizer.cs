@@ -562,6 +562,22 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         index += run;
                         continue;
                     }
+                    // A lone '<' in raw text or script data only opens a tag when '/' (or '!'
+                    // in script data) follows; emitting it here keeps the scan in the bulk loop
+                    // instead of bouncing through the per-byte candidate machinery.
+                    if (
+                        _state is State.RawText or State.ScriptData
+                        && remaining.Length >= 2
+                        && remaining[0] == (Byte)'<'
+                        && remaining[1] != (Byte)'/'
+                        && (_state == State.RawText || remaining[1] != (Byte)'!')
+                    )
+                    {
+                        RecordState<TMetrics>((Int32)_state, 1);
+                        EmitText("<"u8);
+                        index++;
+                        continue;
+                    }
                 }
                 else if (
                     _state is State.AttributeValueDoubleQuoted or State.AttributeValueSingleQuoted
