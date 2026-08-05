@@ -121,12 +121,26 @@ internal sealed class Utf8HtmlTokenizer
     private static readonly SearchValues<Byte> EscapedScriptTextTerminators = SearchValues.Create("<-\0\r"u8);
     private static readonly SearchValues<Byte> CommentTerminators = SearchValues.Create("<-\0\r"u8);
 
-    // Bulk-text stop sets for input that skipped UTF-8 validation: the usual terminators plus every
-    // non-ASCII byte, so a single scan both finds the next terminator and proves the run is plain
-    // ASCII (trivially valid UTF-8).
+    // Stop sets for input that skipped UTF-8 validation: the usual terminators plus every non-ASCII
+    // byte, so a single scan both finds the next terminator and proves the skipped run is plain
+    // ASCII (trivially valid UTF-8). Only scans that capture bytes need these; discarded runs may
+    // swallow arbitrary bytes because nothing observes them.
     private static readonly SearchValues<Byte> DataTextArbitraryStops = CreateArbitraryStops("<&\0\r"u8);
     private static readonly SearchValues<Byte> RawTextArbitraryStops = CreateArbitraryStops("<\0\r"u8);
     private static readonly SearchValues<Byte> PlaintextArbitraryStops = CreateArbitraryStops("\0\r"u8);
+    private static readonly SearchValues<Byte> TagNameArbitraryStops = CreateArbitraryStops("\0\t\n\f\r />"u8);
+    private static readonly SearchValues<Byte> AttributeNameArbitraryStops = CreateArbitraryStops("\0\t\n\f\r /=>"u8);
+    private static readonly SearchValues<Byte> DoubleQuotedAttributeValueArbitraryStops = CreateArbitraryStops(
+        "\"&\0\r"u8
+    );
+    private static readonly SearchValues<Byte> SingleQuotedAttributeValueArbitraryStops = CreateArbitraryStops(
+        "'&\0\r"u8
+    );
+    private static readonly SearchValues<Byte> UnquotedAttributeValueArbitraryStops = CreateArbitraryStops(
+        "\0&>\t\n\f\r "u8
+    );
+    private static readonly SearchValues<Byte> CommentArbitraryStops = CreateArbitraryStops("<-\0\r"u8);
+    private static readonly SearchValues<Byte> EscapedScriptTextArbitraryStops = CreateArbitraryStops("<-\0\r"u8);
     private static readonly String[] StateNames = Enum.GetNames<State>();
 
     private static SearchValues<Byte> CreateArbitraryStops(ReadOnlySpan<Byte> terminators)
@@ -243,6 +257,27 @@ internal sealed class Utf8HtmlTokenizer
     private readonly struct MetricsOn : IStateMetricsPolicy
     {
         public static Boolean Enabled => true;
+    }
+
+    // Same struct-generic trick for the input contract. The trusted instantiation compiles to
+    // exactly the previous body; the arbitrary-ASCII instantiation runs the identical state
+    // machine over unvalidated input by stopping before any non-ASCII byte on the per-byte path
+    // and adding every non-ASCII byte to the capturing bulk-scan stop sets, so a single scan both
+    // finds the terminator and proves the skipped run valid. Non-ASCII runs bounce back to the
+    // caller, which validates them and re-feeds them through the trusted entry point.
+    private interface IInputTrustPolicy
+    {
+        static abstract Boolean StopAtNonAscii { get; }
+    }
+
+    private readonly struct TrustedInput : IInputTrustPolicy
+    {
+        public static Boolean StopAtNonAscii => false;
+    }
+
+    private readonly struct ArbitraryAsciiInput : IInputTrustPolicy
+    {
+        public static Boolean StopAtNonAscii => true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -368,66 +403,27 @@ internal sealed class Utf8HtmlTokenizer
 
     internal Int32 WriteTrustedUtf8(ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest) =>
         _stateMetrics is null
-            ? WriteTrustedUtf8<MetricsOff>(utf8, yieldOnRequest)
-            : WriteTrustedUtf8<MetricsOn>(utf8, yieldOnRequest);
+            ? WriteUtf8<MetricsOff, TrustedInput>(utf8, yieldOnRequest)
+            : WriteUtf8<MetricsOn, TrustedInput>(utf8, yieldOnRequest);
+
+    internal Boolean TracksStartTagSourceRanges => _startTagSourceRangeSink is not null;
 
     /// <summary>
-    /// Whether <see cref="WriteArbitraryBulkText"/> may consume input that skipped UTF-8 validation.
-    /// Captured runs stop before the first non-ASCII byte, so emitted text stays well formed;
-    /// discarded runs may swallow arbitrary bytes because nothing observes them.
+    /// Consumes input that skipped UTF-8 validation, stopping before the first byte that would
+    /// need it. Returns the number of bytes consumed; the byte at that position, if any, is
+    /// non-ASCII and must be validated by the caller before re-entry via
+    /// <see cref="WriteTrustedUtf8"/>. Must not be used while
+    /// <see cref="TracksStartTagSourceRanges"/> is set, because partial consumption would
+    /// double-observe the unconsumed tail.
     /// </summary>
-    internal Boolean CanTakeArbitraryBulkText =>
-        _state is State.Data or State.RawText or State.ScriptData or State.Plaintext
-        && !_pendingCarriageReturn
-        && _textUtf8CarryLength == 0
-        && _startTagSourceRangeSink is null;
-
-    internal Int32 WriteArbitraryBulkText(ReadOnlySpan<Byte> utf8) =>
+    internal Int32 WriteArbitraryAscii(ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest) =>
         _stateMetrics is null
-            ? WriteArbitraryBulkText<MetricsOff>(utf8)
-            : WriteArbitraryBulkText<MetricsOn>(utf8);
+            ? WriteUtf8<MetricsOff, ArbitraryAsciiInput>(utf8, yieldOnRequest)
+            : WriteUtf8<MetricsOn, ArbitraryAsciiInput>(utf8, yieldOnRequest);
 
-    private Int32 WriteArbitraryBulkText<TMetrics>(ReadOnlySpan<Byte> utf8)
+    private Int32 WriteUtf8<TMetrics, TTrust>(ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
         where TMetrics : struct, IStateMetricsPolicy
-    {
-        Int32 run;
-        if (!_captureText)
-        {
-            run = _state == State.Plaintext ? utf8.Length : utf8.IndexOf((Byte)'<');
-            if (run < 0)
-            {
-                run = utf8.Length;
-            }
-        }
-        else
-        {
-            var stops = _state == State.Plaintext
-                ? PlaintextArbitraryStops
-                : _state == State.Data || IsRcData()
-                    ? DataTextArbitraryStops
-                    : RawTextArbitraryStops;
-            run = utf8.IndexOfAny(stops);
-            if (run < 0)
-            {
-                run = utf8.Length;
-            }
-            if (run > 0)
-            {
-                RecordState<TMetrics>((Int32)_state, run);
-                EmitText(utf8[..run]);
-                return run;
-            }
-        }
-
-        if (run > 0)
-        {
-            RecordState<TMetrics>((Int32)_state, run);
-        }
-        return run;
-    }
-
-    private Int32 WriteTrustedUtf8<TMetrics>(ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
-        where TMetrics : struct, IStateMetricsPolicy
+        where TTrust : struct, IInputTrustPolicy
     {
         var trackSourceRanges = _startTagSourceRangeSink is not null;
         var sourceBase = trackSourceRanges ? _normalizedBytesConsumed : 0;
@@ -464,7 +460,9 @@ internal sealed class Utf8HtmlTokenizer
                 else if (_state == State.TagName)
                 {
                     var remaining = utf8.Slice(index);
-                    var run = remaining.IndexOfAny(TagNameTerminators);
+                    var run = remaining.IndexOfAny(
+                        TTrust.StopAtNonAscii ? TagNameArbitraryStops : TagNameTerminators
+                    );
                     run = run < 0 ? remaining.Length : run;
 
                     if (run > 0)
@@ -478,7 +476,9 @@ internal sealed class Utf8HtmlTokenizer
                 else if (_state == State.AttributeName)
                 {
                     var remaining = utf8.Slice(index);
-                    var run = remaining.IndexOfAny(AttributeNameTerminators);
+                    var run = remaining.IndexOfAny(
+                        TTrust.StopAtNonAscii ? AttributeNameArbitraryStops : AttributeNameTerminators
+                    );
                     run = run < 0 ? remaining.Length : run;
 
                     if (run > 0)
@@ -499,13 +499,21 @@ internal sealed class Utf8HtmlTokenizer
                 )
                 {
                     var remaining = utf8.Slice(index);
-                    var run = !_captureText
-                        ? _state == State.Plaintext
-                            ? remaining.Length
-                            : remaining.IndexOf((Byte)'<')
-                        : _state == State.Plaintext
-                            ? FindPlaintextTerminator(remaining)
-                            : FindTextTerminator(remaining, _state == State.Data || IsRcData());
+                    Int32 run;
+                    if (!_captureText)
+                    {
+                        // Discarded text may swallow arbitrary bytes raw - nothing observes it.
+                        run = _state == State.Plaintext ? remaining.Length : remaining.IndexOf((Byte)'<');
+                    }
+                    else
+                    {
+                        var stops = _state == State.Plaintext
+                            ? TTrust.StopAtNonAscii ? PlaintextArbitraryStops : PlaintextTerminators
+                            : _state == State.Data || IsRcData()
+                                ? TTrust.StopAtNonAscii ? DataTextArbitraryStops : DataTextTerminators
+                                : TTrust.StopAtNonAscii ? RawTextArbitraryStops : RawTextTerminators;
+                        run = remaining.IndexOfAny(stops);
+                    }
                     if (run < 0)
                     {
                         run = remaining.Length;
@@ -528,10 +536,23 @@ internal sealed class Utf8HtmlTokenizer
                 {
                     var remaining = utf8.Slice(index);
                     var quote = _state == State.AttributeValueDoubleQuoted ? (Byte)'"' : (Byte)'\'';
-                    var run =
-                        _attributeCapture == AttributeCapture.Capture
-                            ? FindQuotedAttributeValueTerminator(remaining, quote)
-                            : FindDiscardedQuotedAttributeValueTerminator(remaining, quote);
+                    Int32 run;
+                    if (_attributeCapture == AttributeCapture.Capture)
+                    {
+                        var stops = _state == State.AttributeValueDoubleQuoted
+                            ? TTrust.StopAtNonAscii
+                                ? DoubleQuotedAttributeValueArbitraryStops
+                                : DoubleQuotedAttributeValueTerminators
+                            : TTrust.StopAtNonAscii
+                                ? SingleQuotedAttributeValueArbitraryStops
+                                : SingleQuotedAttributeValueTerminators;
+                        run = remaining.IndexOfAny(stops);
+                        run = run < 0 ? remaining.Length : run;
+                    }
+                    else
+                    {
+                        run = FindDiscardedQuotedAttributeValueTerminator(remaining, quote);
+                    }
                     if (run > 0)
                     {
                         RecordState<TMetrics>((Int32)_state, run);
@@ -547,10 +568,20 @@ internal sealed class Utf8HtmlTokenizer
                 else if (_state == State.AttributeValueUnquoted && !_pendingCarriageReturn)
                 {
                     var remaining = utf8.Slice(index);
-                    var run =
-                        _attributeCapture == AttributeCapture.Capture
-                            ? FindUnquotedAttributeValueTerminator(remaining)
-                            : FindDiscardedUnquotedAttributeValueTerminator(remaining);
+                    Int32 run;
+                    if (_attributeCapture == AttributeCapture.Capture)
+                    {
+                        run = remaining.IndexOfAny(
+                            TTrust.StopAtNonAscii
+                                ? UnquotedAttributeValueArbitraryStops
+                                : UnquotedAttributeValueTerminators
+                        );
+                        run = run < 0 ? remaining.Length : run;
+                    }
+                    else
+                    {
+                        run = FindDiscardedUnquotedAttributeValueTerminator(remaining);
+                    }
                     if (run > 0)
                     {
                         RecordState<TMetrics>((Int32)_state, run);
@@ -566,7 +597,10 @@ internal sealed class Utf8HtmlTokenizer
                 else if (_state == State.Comment && !_pendingCarriageReturn)
                 {
                     var remaining = utf8.Slice(index);
-                    var run = FindCommentTerminator(remaining);
+                    var run = remaining.IndexOfAny(
+                        TTrust.StopAtNonAscii ? CommentArbitraryStops : CommentTerminators
+                    );
+                    run = run < 0 ? remaining.Length : run;
                     if (run > 0)
                     {
                         RecordState<TMetrics>((Int32)_state, run);
@@ -575,7 +609,14 @@ internal sealed class Utf8HtmlTokenizer
                         continue;
                     }
                 }
-                var value = utf8[index++];
+                var value = utf8[index];
+                if (TTrust.StopAtNonAscii && value >= 0x80)
+                {
+                    // Unvalidated non-ASCII: hand back to the caller, which validates the run and
+                    // re-feeds it through the trusted entry point.
+                    return index;
+                }
+                index++;
                 if (trackSourceRanges)
                 {
                     _currentSourceOffset = sourceBase + index;
@@ -599,7 +640,7 @@ internal sealed class Utf8HtmlTokenizer
                 }
                 if (IsScriptState(_state))
                 {
-                    ProcessScriptInput(value, utf8, ref index);
+                    ProcessScriptInput<TTrust>(value, utf8, ref index);
                 }
                 else
                 {
@@ -2291,7 +2332,8 @@ internal sealed class Utf8HtmlTokenizer
         }
     }
 
-    private void ProcessScriptInput(Byte value, ReadOnlySpan<Byte> utf8, ref Int32 index)
+    private void ProcessScriptInput<TTrust>(Byte value, ReadOnlySpan<Byte> utf8, ref Int32 index)
+        where TTrust : struct, IInputTrustPolicy
     {
         var reconsume = true;
         while (reconsume)
@@ -2312,7 +2354,9 @@ internal sealed class Utf8HtmlTokenizer
 
         var remaining = utf8[index..];
         var run = _captureText
-            ? remaining.IndexOfAny(EscapedScriptTextTerminators)
+            ? remaining.IndexOfAny(
+                TTrust.StopAtNonAscii ? EscapedScriptTextArbitraryStops : EscapedScriptTextTerminators
+            )
             : remaining.IndexOfAny((Byte)'<', (Byte)'-');
         if (run < 0)
         {
@@ -2658,12 +2702,6 @@ internal sealed class Utf8HtmlTokenizer
             _ => 1,
         };
 
-    private static Int32 FindTextTerminator(ReadOnlySpan<Byte> value, Boolean includeAmpersand)
-    {
-        var index = value.IndexOfAny(includeAmpersand ? DataTextTerminators : RawTextTerminators);
-        return index < 0 ? value.Length : index;
-    }
-
     private void AppendTagName(Byte value) => Append(_name, value);
 
     private void AppendTagName(ReadOnlySpan<Byte> value) => Append(_name, value);
@@ -2684,29 +2722,9 @@ internal sealed class Utf8HtmlTokenizer
 
     private Utf8HtmlName CurrentAttributeName() => new(_attributeName.WrittenSpan, ref _attributeNameIdentityCache);
 
-    private static Int32 FindPlaintextTerminator(ReadOnlySpan<Byte> value)
-    {
-        var terminator = value.IndexOfAny(PlaintextTerminators);
-        return terminator < 0 ? value.Length : terminator;
-    }
-
-    private static Int32 FindQuotedAttributeValueTerminator(ReadOnlySpan<Byte> value, Byte quote)
-    {
-        var terminator = value.IndexOfAny(
-            quote == (Byte)'"' ? DoubleQuotedAttributeValueTerminators : SingleQuotedAttributeValueTerminators
-        );
-        return terminator < 0 ? value.Length : terminator;
-    }
-
     private static Int32 FindDiscardedQuotedAttributeValueTerminator(ReadOnlySpan<Byte> value, Byte quote)
     {
         var terminator = value.IndexOf(quote);
-        return terminator < 0 ? value.Length : terminator;
-    }
-
-    private static Int32 FindUnquotedAttributeValueTerminator(ReadOnlySpan<Byte> value)
-    {
-        var terminator = value.IndexOfAny(UnquotedAttributeValueTerminators);
         return terminator < 0 ? value.Length : terminator;
     }
 
@@ -2961,12 +2979,6 @@ internal sealed class Utf8HtmlTokenizer
             _currentSourceOffset = sourceOffset + index;
         }
         FinishTag(selfClosing);
-    }
-
-    private static Int32 FindCommentTerminator(ReadOnlySpan<Byte> value)
-    {
-        var terminator = value.IndexOfAny(CommentTerminators);
-        return terminator < 0 ? value.Length : terminator;
     }
 
     private Boolean IsAttributeReturnState() => _returnState is not State.Data and not State.RawText;
