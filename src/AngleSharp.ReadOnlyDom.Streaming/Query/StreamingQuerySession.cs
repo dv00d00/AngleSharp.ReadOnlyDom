@@ -15,6 +15,7 @@ public sealed class StreamingQuerySession<TState> : IDisposable
     private readonly QueryExecution<TState> _execution;
     private readonly Utf8HtmlTokenizerInput _input;
     private bool _completed;
+    private bool _disposed;
 
     internal StreamingQuerySession(
         QueryPlan<TState> plan,
@@ -39,18 +40,37 @@ public sealed class StreamingQuerySession<TState> : IDisposable
         }
     }
 
-    /// <summary>Gets the state object; handlers may have mutated it after any <see cref="Write"/>.</summary>
+    /// <summary>
+    /// Gets the state object; handlers may have mutated it after any <see cref="Write"/>. The caller-owned state remains
+    /// available after this session is disposed.
+    /// </summary>
     public TState State => _execution.State;
 
     /// <summary>Consumes the next input chunk. Chunk boundaries may split UTF-8 sequences freely.</summary>
-    public void Write(ReadOnlySpan<byte> utf8) => _input.Write(utf8);
+    public void Write(ReadOnlySpan<byte> utf8)
+    {
+        ThrowIfDisposed();
+        _input.Write(utf8);
+    }
 
     /// <inheritdoc cref="Write(ReadOnlySpan{byte})"/>
-    public void Write(ReadOnlyMemory<byte> utf8) => _input.Write(utf8);
+    public void Write(ReadOnlyMemory<byte> utf8)
+    {
+        ThrowIfDisposed();
+        _input.Write(utf8);
+    }
+
+    /// <inheritdoc cref="Write(ReadOnlySpan{byte})"/>
+    public void Write(byte[] utf8)
+    {
+        ArgumentNullException.ThrowIfNull(utf8);
+        Write(utf8.AsSpan());
+    }
 
     /// <summary>Signals end of input, flushing carried state, and returns the final state.</summary>
     public TState Complete()
     {
+        ThrowIfDisposed();
         if (!_completed)
         {
             _input.Complete();
@@ -60,5 +80,14 @@ public sealed class StreamingQuerySession<TState> : IDisposable
     }
 
     /// <summary>Releases pooled buffers. Completing first is not required.</summary>
-    public void Dispose() => _execution.Dispose();
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        _execution.Dispose();
+    }
+
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 }

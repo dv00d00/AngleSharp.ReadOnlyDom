@@ -361,7 +361,7 @@ internal static class StreamTaxProfileRunner
 
     private sealed class CountState
     {
-        public int Count;
+        public int Count { get; set; }
     }
 
     private sealed class ChunkedPipeReader(byte[] source, int chunkSize) : PipeReader

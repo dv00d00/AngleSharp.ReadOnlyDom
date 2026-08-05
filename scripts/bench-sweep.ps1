@@ -73,7 +73,7 @@ function Invoke-Lane([Hashtable] $Lane, [String] $CorpusPath, [Int32] $Warmup, [
     $info.UseShellExecute = $false
     $info.Environment["DOTNET_gcServer"] = "0"
     $process = [Diagnostics.Process]::Start($info)
-    $process.PriorityClass = "High"
+    if ($IsWindows) { $process.PriorityClass = "High" }
     $output = $process.StandardOutput.ReadToEnd()
     $process.WaitForExit()
 
