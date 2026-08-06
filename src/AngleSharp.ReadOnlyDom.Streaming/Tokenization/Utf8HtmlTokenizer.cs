@@ -114,6 +114,7 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         Duplicate,
     }
 
+    private static readonly SearchValues<Byte> HtmlSpaces = SearchValues.Create("\t\n\f\r "u8);
     private static readonly SearchValues<Byte> DataTextTerminators = SearchValues.Create("<&\0\r"u8);
     private static readonly SearchValues<Byte> RawTextTerminators = SearchValues.Create("<\0\r"u8);
     private static readonly SearchValues<Byte> PlaintextTerminators = SearchValues.Create("\0\r"u8);
@@ -637,6 +638,23 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         {
                             Append(_attributeName, remaining[..run]);
                         }
+                        index += run;
+                        continue;
+                    }
+                }
+                else if (
+                    _state is State.BeforeAttributeName or State.AfterAttributeName or State.BeforeAttributeValue
+                    && !_pendingCarriageReturn
+                )
+                {
+                    // The captured tag tail reaches here (the discarded tail is scanned above);
+                    // real-world markup pads attributes with long whitespace runs that would
+                    // otherwise bounce through the per-byte dispatcher one space at a time.
+                    var run = utf8[index..].IndexOfAnyExcept(HtmlSpaces);
+                    run = run < 0 ? utf8.Length - index : run;
+                    if (run > 0)
+                    {
+                        RecordState<TMetrics>((Int32)_state, run);
                         index += run;
                         continue;
                     }
