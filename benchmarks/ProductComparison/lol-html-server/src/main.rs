@@ -1,4 +1,4 @@
-use axum::body::Body;
+use axum::body::{Body, Bytes};
 use axum::extract::Request;
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -8,11 +8,26 @@ use http_body_util::BodyExt;
 use lol_html::send::{HtmlRewriter, Settings};
 use lol_html::{element, OutputSink};
 use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::UnboundedReceiverStream;
 
 struct DiscardOutput;
 
 impl OutputSink for DiscardOutput {
     fn handle_chunk(&mut self, _chunk: &[u8]) {}
+}
+
+struct ChannelOutput {
+    tx: mpsc::UnboundedSender<Result<Bytes, std::io::Error>>,
+}
+
+impl OutputSink for ChannelOutput {
+    fn handle_chunk(&mut self, chunk: &[u8]) {
+        if !chunk.is_empty() {
+            // A dropped receiver means the client went away; the write loop notices on its own.
+            let _ = self.tx.send(Ok(Bytes::copy_from_slice(chunk)));
+        }
+    }
 }
 
 #[tokio::main]
@@ -23,7 +38,8 @@ async fn main() {
         .unwrap_or(5082);
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
-        .route("/extract", post(extract));
+        .route("/extract", post(extract))
+        .route("/rewrite", post(rewrite));
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
         .await
         .expect("failed to bind benchmark server");
@@ -31,6 +47,45 @@ async fn main() {
     axum::serve(listener, app)
         .await
         .expect("benchmark server failed");
+}
+
+// Full-duplex streaming: rewritten output leaves through the response while the request body
+// is still arriving. The spawned task owns the rewriter; its channel closing (on completion or
+// error) is what terminates the chunked response.
+async fn rewrite(request: Request) -> Response {
+    let (tx, rx) = mpsc::unbounded_channel::<Result<Bytes, std::io::Error>>();
+    let sink_tx = tx.clone();
+    let mut body = request.into_body();
+    tokio::spawn(async move {
+        let settings = Settings::new_send().append_element_content_handler(element!(
+            "ul.news-list li[dt-eid='em_item_article'] a[href]",
+            |element| {
+                element.set_attribute("data-q", "1")?;
+                Ok(())
+            }
+        ));
+        let mut rewriter = HtmlRewriter::new(settings, ChannelOutput { tx: sink_tx });
+        while let Some(frame) = body.frame().await {
+            let Ok(frame) = frame else {
+                let _ = tx.send(Err(std::io::Error::other("request body read failed")));
+                return;
+            };
+            if let Ok(data) = frame.into_data() {
+                if rewriter.write(&data).is_err() {
+                    let _ = tx.send(Err(std::io::Error::other("rewrite failed")));
+                    return;
+                }
+            }
+        }
+        if rewriter.end().is_err() {
+            let _ = tx.send(Err(std::io::Error::other("rewrite failed")));
+        }
+    });
+    (
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        Body::from_stream(UnboundedReceiverStream::new(rx)),
+    )
+        .into_response()
 }
 
 async fn extract(request: Request) -> Result<Response, StatusCode> {
