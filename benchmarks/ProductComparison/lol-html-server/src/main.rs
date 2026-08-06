@@ -17,16 +17,45 @@ impl OutputSink for DiscardOutput {
     fn handle_chunk(&mut self, _chunk: &[u8]) {}
 }
 
+// lol-html hands the sink one chunk per token run; shipping each as its own chunked-encoding
+// frame is a syscall per handful of bytes. Coalescing to response-sized segments matches what
+// the Kestrel lane gets for free from its pipe.
+const COALESCE_BYTES: usize = 16 * 1024;
+
 struct ChannelOutput {
     tx: mpsc::UnboundedSender<Result<Bytes, std::io::Error>>,
+    buffer: Vec<u8>,
+}
+
+impl ChannelOutput {
+    fn new(tx: mpsc::UnboundedSender<Result<Bytes, std::io::Error>>) -> Self {
+        Self {
+            tx,
+            buffer: Vec::with_capacity(COALESCE_BYTES),
+        }
+    }
+
+    fn flush(&mut self) {
+        if !self.buffer.is_empty() {
+            // A dropped receiver means the client went away; the write loop notices on its own.
+            let _ = self.tx.send(Ok(Bytes::from(std::mem::take(&mut self.buffer))));
+        }
+    }
 }
 
 impl OutputSink for ChannelOutput {
     fn handle_chunk(&mut self, chunk: &[u8]) {
-        if !chunk.is_empty() {
-            // A dropped receiver means the client went away; the write loop notices on its own.
-            let _ = self.tx.send(Ok(Bytes::copy_from_slice(chunk)));
+        self.buffer.extend_from_slice(chunk);
+        if self.buffer.len() >= COALESCE_BYTES {
+            self.flush();
         }
+    }
+}
+
+impl Drop for ChannelOutput {
+    // The rewriter owns the sink and drops it after end(); this is where the tail ships.
+    fn drop(&mut self) {
+        self.flush();
     }
 }
 
@@ -44,9 +73,31 @@ async fn main() {
         .await
         .expect("failed to bind benchmark server");
     println!("READY http://127.0.0.1:{port}");
-    axum::serve(listener, app)
+    // Kestrel disables Nagle by default; without the same here every small chunked write
+    // risks a delayed-ACK stall and the comparison measures TCP timers instead of parsers.
+    axum::serve(NoDelayListener(listener), app)
         .await
         .expect("benchmark server failed");
+}
+
+struct NoDelayListener(tokio::net::TcpListener);
+
+impl axum::serve::Listener for NoDelayListener {
+    type Io = tokio::net::TcpStream;
+    type Addr = std::net::SocketAddr;
+
+    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+        loop {
+            if let Ok((stream, address)) = self.0.accept().await {
+                let _ = stream.set_nodelay(true);
+                return (stream, address);
+            }
+        }
+    }
+
+    fn local_addr(&self) -> std::io::Result<Self::Addr> {
+        self.0.local_addr()
+    }
 }
 
 // Full-duplex streaming: rewritten output leaves through the response while the request body
@@ -64,7 +115,7 @@ async fn rewrite(request: Request) -> Response {
                 Ok(())
             }
         ));
-        let mut rewriter = HtmlRewriter::new(settings, ChannelOutput { tx: sink_tx });
+        let mut rewriter = HtmlRewriter::new(settings, ChannelOutput::new(sink_tx));
         while let Some(frame) = body.frame().await {
             let Ok(frame) = frame else {
                 let _ = tx.send(Err(std::io::Error::other("request body read failed")));
