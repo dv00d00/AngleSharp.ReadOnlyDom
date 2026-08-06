@@ -8,5 +8,6 @@ publish = false
 axum = "0.8"
 http-body-util = "0.1"
 lol_html = "=3.0.1"
+html5gum = "0.8"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync"] }
 tokio-stream = "0.1"
