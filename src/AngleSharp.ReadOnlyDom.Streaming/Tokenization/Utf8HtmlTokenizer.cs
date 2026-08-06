@@ -114,6 +114,7 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         Duplicate,
     }
 
+    private static readonly SearchValues<Byte> HtmlSpaces = SearchValues.Create("\t\n\f\r "u8);
     private static readonly SearchValues<Byte> DataTextTerminators = SearchValues.Create("<&\0\r"u8);
     private static readonly SearchValues<Byte> RawTextTerminators = SearchValues.Create("<\0\r"u8);
     private static readonly SearchValues<Byte> PlaintextTerminators = SearchValues.Create("\0\r"u8);
@@ -518,12 +519,56 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     internal Boolean TracksStartTagSourceRanges => _startTagSourceRangeSink is not null;
 
     /// <summary>
+    /// The normalized-input offset before which no future start-tag edit can land. Only an
+    /// unterminated start tag can still receive an insertion at its eventual close, so while one is
+    /// open the offset pins to its '&lt;'; every insertion point and separator look-back of any
+    /// future <see cref="IUtf8HtmlStartTagSourceRangeSink.StartTagSourceRange"/> sits at or above
+    /// the returned value. Meaningful only while <see cref="TracksStartTagSourceRanges"/> is set,
+    /// and only at quiescent points (between <see cref="Write"/> calls).
+    /// </summary>
+    internal Int64 RewritePublishableOffset
+    {
+        get
+        {
+            if (_completed)
+            {
+                return _normalizedBytesConsumed;
+            }
+            switch (_state)
+            {
+                case State.TagOpen:
+                    // Could still become a start tag; its '<' is already consumed.
+                    return _lastLessThanSourceOffset;
+                case State.TagName:
+                case State.BeforeAttributeName:
+                case State.AttributeName:
+                case State.AfterAttributeName:
+                case State.BeforeAttributeValue:
+                case State.AttributeValueDoubleQuoted:
+                case State.AttributeValueSingleQuoted:
+                case State.AttributeValueUnquoted:
+                case State.AfterAttributeValueQuoted:
+                case State.SelfClosingStartTag:
+                    return _isEndTag ? _normalizedBytesConsumed : _currentTagSourceOffset;
+                case State.CharacterReference:
+                    // A reference inside a captured attribute value keeps the start tag open.
+                    return !_isEndTag && IsTagTailState(_returnState)
+                        ? _currentTagSourceOffset
+                        : _normalizedBytesConsumed;
+                default:
+                    // End tags, comments, doctypes, raw text, and script data never produce edits.
+                    return _normalizedBytesConsumed;
+            }
+        }
+    }
+
+    /// <summary>
     /// Consumes input that skipped UTF-8 validation, stopping before the first byte that would
     /// need it. Returns the number of bytes consumed; the byte at that position, if any, is
     /// non-ASCII and must be validated by the caller before re-entry via
     /// <see cref="WriteTrustedUtf8"/>. Must not be used while
-    /// <see cref="TracksStartTagSourceRanges"/> is set, because partial consumption would
-    /// double-observe the unconsumed tail.
+    /// <see cref="TracksStartTagSourceRanges"/> is set: discarded text swallows unvalidated bytes
+    /// raw, but an observing sink republishes the stream, which must be normalized UTF-8.
     /// </summary>
     internal Int32 WriteArbitraryAscii(ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest) =>
         _stateMetrics is null
@@ -536,10 +581,6 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     {
         var trackSourceRanges = _startTagSourceRangeSink is not null;
         var sourceBase = trackSourceRanges ? _normalizedBytesConsumed : 0;
-        if (trackSourceRanges)
-        {
-            _startTagSourceRangeSink!.ObserveNormalizedUtf8(sourceBase, utf8);
-        }
         var index = 0;
         try
         {
@@ -597,6 +638,23 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         {
                             Append(_attributeName, remaining[..run]);
                         }
+                        index += run;
+                        continue;
+                    }
+                }
+                else if (
+                    _state is State.BeforeAttributeName or State.AfterAttributeName or State.BeforeAttributeValue
+                    && !_pendingCarriageReturn
+                )
+                {
+                    // The captured tag tail reaches here (the discarded tail is scanned above);
+                    // real-world markup pads attributes with long whitespace runs that would
+                    // otherwise bounce through the per-byte dispatcher one space at a time.
+                    var run = utf8[index..].IndexOfAnyExcept(HtmlSpaces);
+                    run = run < 0 ? utf8.Length - index : run;
+                    if (run > 0)
+                    {
+                        RecordState<TMetrics>((Int32)_state, run);
                         index += run;
                         continue;
                     }
@@ -793,6 +851,13 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             if (trackSourceRanges)
             {
                 _normalizedBytesConsumed = sourceBase + index;
+                // Only the consumed slice is reported, so partial consumption (yield, or the fused
+                // ASCII path handing back at a non-ASCII byte) never double-observes the tail.
+                _startTagSourceRangeSink!.ObserveNormalizedUtf8End(
+                    sourceBase,
+                    utf8[..index],
+                    RewritePublishableOffset
+                );
             }
         }
     }

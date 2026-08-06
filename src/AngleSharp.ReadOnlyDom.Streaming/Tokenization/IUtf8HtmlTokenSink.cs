@@ -55,9 +55,16 @@ internal interface IUtf8HtmlStartTagSourceRangeSink
 {
     Boolean WantsStartTagSourceRanges { get; }
 
-    void ObserveNormalizedUtf8(Int64 sourceStart, ReadOnlySpan<Byte> utf8) { }
-
     void StartTagSourceRange(Int64 sourceStart, Int64 sourceEnd);
+
+    /// <summary>
+    /// Reports each consumed normalized span after the tokenizer processed it, while the span is
+    /// still addressable. <paramref name="publishableOffset"/> is the offset before which no future
+    /// start-tag edit can land (see <c>Utf8HtmlTokenizer.RewritePublishableOffset</c>), so a
+    /// streaming rewriter can publish everything below it straight from the borrowed span and only
+    /// buffer the tail beyond it. Spans arrive contiguously in normalized-offset order.
+    /// </summary>
+    void ObserveNormalizedUtf8End(Int64 sourceStart, ReadOnlySpan<Byte> utf8, Int64 publishableOffset) { }
 }
 
 /// <summary>

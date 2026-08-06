@@ -24,3 +24,11 @@ public delegate void RewriteHandler<TState>(ref TState state, in Element element
 /// recorded edit payloads and are only valid for the duration of the call - copy them to keep them.
 /// </summary>
 public delegate void RewriteSegmentSink<TState>(ref TState state, ReadOnlySpan<byte> utf8);
+
+/// <summary>
+/// Receives one output segment of a streaming rewrite as soon as it can no longer change. Segments
+/// borrow the session's input chunk, its holdback buffer, or recorded edit payloads and are only
+/// valid for the duration of the call - copy them to keep them. Callers that need their own state
+/// hold it in the enclosing scope; the session's Write loop is caller-owned.
+/// </summary>
+public delegate void StreamingRewriteSegmentSink(ReadOnlySpan<byte> utf8);

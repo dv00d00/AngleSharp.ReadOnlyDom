@@ -17,8 +17,11 @@
 param(
     [double] $Seconds = 2,
     [int] $Rounds = 3,
-    [ValidateSet("passthrough", "match", "extract", "rewrite", "rewrite-sink")]
+    [ValidateSet("passthrough", "match", "extract", "rewrite", "rewrite-sink", "rewrite-stream")]
     [string] $Workload = "passthrough",
+    # "qq" is the corpus-specific composite selector; "generic" (a[href]) matches on every corpus.
+    [ValidateSet("qq", "generic")]
+    [string] $Query = "qq",
     [ValidateSet("stream", "stream-trusted", "push", "buffer-arbitrary", "buffer-trusted")]
     [string] $Mode = "stream",
     [switch] $Unlimited,
@@ -63,15 +66,16 @@ if ($IncludeLolHtml) { $lanes["lol-html"] = @{ Executable = $lolExecutable; Pref
 
 function Invoke-Lane([Hashtable] $Lane, [String] $CorpusPath, [Int32] $Warmup, [Int64] $Bytes) {
     $info = [Diagnostics.ProcessStartInfo]::new($Lane.Executable)
-    # The Rust lane implements one rewrite workload; the sink shape is a managed-side choice.
-    $laneWorkload = if ($Lane.Executable -ne "dotnet" -and $Workload -eq "rewrite-sink") { "rewrite" } else { $Workload }
+    # The Rust lane implements one rewrite workload; the sink/stream shapes are managed-side choices.
+    $laneWorkload = if ($Lane.Executable -ne "dotnet" -and $Workload -in @("rewrite-sink", "rewrite-stream")) { "rewrite" } else { $Workload }
     $arguments = @($Lane.Prefix) + @(
         "--input", $CorpusPath,
         "--seconds", $Seconds.ToString($culture),
         "--warmup", $Warmup.ToString($culture),
         "--copies", "1",
         "--chunk-size", $ChunkSize.ToString($culture),
-        "--workload", $laneWorkload
+        "--workload", $laneWorkload,
+        "--query", $Query
     )
     # Only the managed console understands --mode; the Rust lane always streams.
     if ($Lane.Executable -eq "dotnet") {
@@ -135,7 +139,25 @@ foreach ($corpus in $Corpora) {
     # The checksum covers concatenated bytes without value boundaries, so the URL count is
     # compared as well. The Rust lane only implements the match/extract value semantics.
     foreach ($lane in @($lanes.Keys) | Where-Object { $_ -ne "candidate" }) {
-        if ($lane -eq "lol-html" -and $Workload -notin @("match", "extract", "rewrite", "rewrite-sink")) { continue }
+        if ($lane -eq "lol-html" -and $Workload -notin @("match", "extract", "rewrite", "rewrite-sink", "rewrite-stream")) { continue }
+        if ($lane -eq "lol-html" -and $Workload -like "rewrite*") {
+            # lol-html re-serializes edited start tags (intra-tag whitespace collapses to single
+            # spaces); this engine preserves source bytes exactly. Outputs are equivalent but not
+            # byte-identical, so cross-engine rewrite validation compares the edit count only.
+            # Counts may differ slightly on documents with matches inside <noscript>: lol-html
+            # hardcodes scripting-enabled parsing (noscript is raw text), this engine follows the
+            # scripting-off default and tokenizes inside it. Tolerate <=1%; anything larger is a bug.
+            $lolUrls = [Int64]::Parse($facts[$lane].Urls, $culture)
+            $candidateUrls = [Int64]::Parse($facts["candidate"].Urls, $culture)
+            $tolerance = [Math]::Max(1, [Math]::Ceiling($candidateUrls * 0.01))
+            if ([Math]::Abs($lolUrls - $candidateUrls) -gt $tolerance) {
+                throw "Correctness mismatch on ${corpus}: lol-html edited $lolUrls tags, candidate $candidateUrls."
+            }
+            if ($lolUrls -ne $candidateUrls) {
+                Write-Host "note: ${corpus}: edit counts differ within noscript tolerance (lol-html $lolUrls, candidate $candidateUrls)"
+            }
+            continue
+        }
         if ($facts[$lane].Checksum -ne $facts["candidate"].Checksum -or $facts[$lane].Urls -ne $facts["candidate"].Urls) {
             throw (
                 "Correctness mismatch on ${corpus}: $lane disagrees with candidate " +
@@ -158,7 +180,7 @@ foreach ($corpus in $Corpora) {
 $lines = [Collections.Generic.List[String]]::new()
 $lines.Add("# Cross-corpus streaming sweep")
 $lines.Add("")
-$lines.Add("- Workload: $Workload")
+$lines.Add("- Workload: $Workload (query: $Query)")
 $lines.Add("- Input mode: $Mode, $ChunkSize-byte chunks")
 $lines.Add("- Measurement: $Rounds interleaved rounds x $Seconds seconds per corpus, median reported")
 $lines.Add("- GC: workstation (measurement only; the console ships Server GC)")

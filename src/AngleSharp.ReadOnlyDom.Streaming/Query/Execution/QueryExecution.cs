@@ -39,7 +39,8 @@ internal class QueryExecution<TState, TResourceLimits>
     private readonly int _maximumNestingDepth;
     private readonly long _maximumQueryCaptureBytes;
     private readonly RewriteHandler<TState>? _rewriteHandler;
-    private readonly Utf8RewriteCollector? _rewriteCollector;
+    private readonly IStartTagEditCollector? _rewriteCollector;
+    private readonly Utf8StreamingRewriteCollector? _streamingRewriteCollector;
     private long _startTagSourceStart = -1;
     private long _startTagSourceEnd = -1;
     private long _queryCaptureBytes;
@@ -51,7 +52,7 @@ internal class QueryExecution<TState, TResourceLimits>
         TState state,
         HtmlStreamingLimits limits,
         RewriteHandler<TState>? rewriteHandler = null,
-        Utf8RewriteCollector? rewriteCollector = null
+        IStartTagEditCollector? rewriteCollector = null
     )
     {
         ArgumentNullException.ThrowIfNull(limits);
@@ -61,6 +62,7 @@ internal class QueryExecution<TState, TResourceLimits>
         _maximumQueryCaptureBytes = limits.MaximumQueryCaptureBytes;
         _rewriteHandler = rewriteHandler;
         _rewriteCollector = rewriteCollector;
+        _streamingRewriteCollector = rewriteCollector as Utf8StreamingRewriteCollector;
         _activeCounts = ArrayPool<int>.Shared.Rent(Math.Max(plan.Nodes.Length, 1));
         _activeCounts.AsSpan(0, plan.Nodes.Length).Clear();
         _frames = ArrayPool<QueryFrame>.Shared.Rent(Math.Min(64, _maximumNestingDepth));
@@ -80,6 +82,9 @@ internal class QueryExecution<TState, TResourceLimits>
             : Utf8HtmlTokenCapture.None;
 
     public bool WantsStartTagSourceRanges => _rewriteHandler is not null;
+
+    public void ObserveNormalizedUtf8End(long sourceStart, ReadOnlySpan<byte> utf8, long publishableOffset) =>
+        _streamingRewriteCollector?.PublishWindow(sourceStart, utf8, publishableOffset);
 
     public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
     {
@@ -718,7 +723,7 @@ internal sealed class QueryExecution<TState> : QueryExecution<TState, EnforcedRe
         TState state,
         HtmlStreamingLimits limits,
         RewriteHandler<TState>? rewriteHandler = null,
-        Utf8RewriteCollector? rewriteCollector = null
+        IStartTagEditCollector? rewriteCollector = null
     )
         : base(plan, state, limits, rewriteHandler, rewriteCollector) { }
 }

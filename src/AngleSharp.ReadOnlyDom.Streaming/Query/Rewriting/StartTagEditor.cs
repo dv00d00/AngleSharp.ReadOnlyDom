@@ -3,12 +3,12 @@ namespace AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
 /// <summary>Records byte-preserving edits to the currently matched start tag.</summary>
 public ref struct StartTagEditor
 {
-    private readonly Utf8RewriteCollector _collector;
+    private readonly IStartTagEditCollector _collector;
     private readonly long _sourceStart;
     private readonly long _sourceEnd;
     private readonly bool _selfClosing;
 
-    internal StartTagEditor(Utf8RewriteCollector collector, long sourceStart, long sourceEnd, bool selfClosing)
+    internal StartTagEditor(IStartTagEditCollector collector, long sourceStart, long sourceEnd, bool selfClosing)
     {
         _collector = collector;
         _sourceStart = sourceStart;

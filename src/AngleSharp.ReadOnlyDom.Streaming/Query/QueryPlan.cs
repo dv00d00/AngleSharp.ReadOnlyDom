@@ -56,9 +56,12 @@ public sealed class QueryPlan<TState>
 
     internal QueryExecution<TState, TResourceLimits> CreateExecution<TResourceLimits>(
         TState state,
-        HtmlStreamingLimits limits
+        HtmlStreamingLimits limits,
+        RewriteHandler<TState>? rewriteHandler = null,
+        IStartTagEditCollector? rewriteCollector = null
     )
-        where TResourceLimits : struct, IResourceLimitPolicy => new(this, state, limits);
+        where TResourceLimits : struct, IResourceLimitPolicy =>
+        new(this, state, limits, rewriteHandler, rewriteCollector);
 
     internal IQueryExecution<TState> CreateResourceAwareExecution(TState state, HtmlStreamingLimits limits) =>
         limits.EnforcesLimits
@@ -75,6 +78,36 @@ public sealed class QueryPlan<TState>
         Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes,
         HtmlStreamingLimits? limits = null
     ) => new(this, state, inputContract, limits ?? HtmlStreamingLimits.Default);
+
+    /// <summary>
+    /// Begins a push-style streaming rewrite: call <see cref="StreamingRewriteSession{TState}.Write"/> per
+    /// input chunk and <see cref="StreamingRewriteSession{TState}.Complete"/> at end of input. Bytes reach
+    /// <paramref name="output"/> as soon as they can no longer be edited, so peak buffering is bounded by
+    /// the largest start tag instead of the document size. Select
+    /// <see cref="Utf8InputContract.WellFormedUtf8"/> only when the complete input is guaranteed valid
+    /// UTF-8; the default repairs malformed sequences, publishing the normalized stream.
+    /// </summary>
+    public StreamingRewriteSession<TState> CreateRewriteSession(
+        TState state,
+        IBufferWriter<byte> output,
+        RewriteHandler<TState> handler,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes,
+        HtmlStreamingLimits? limits = null
+    ) => new(this, state, output, handler, inputContract, limits ?? HtmlStreamingLimits.Default);
+
+    /// <summary>
+    /// Streaming rewrite like
+    /// <see cref="CreateRewriteSession(TState, IBufferWriter{byte}, RewriteHandler{TState}, Utf8InputContract, HtmlStreamingLimits?)"/>
+    /// but publishes borrowed segments instead of copying into a writer: untouched runs of input
+    /// reach <paramref name="sink"/> as slices of the session's current chunk or holdback buffer.
+    /// </summary>
+    public StreamingRewriteSession<TState> CreateRewriteSession(
+        TState state,
+        StreamingRewriteSegmentSink sink,
+        RewriteHandler<TState> handler,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes,
+        HtmlStreamingLimits? limits = null
+    ) => new(this, state, sink, handler, inputContract, limits ?? HtmlStreamingLimits.Default);
 
     /// <summary>Executes the plan over UTF-8, replacing malformed input with U+FFFD.</summary>
     public TState Execute(ReadOnlySpan<byte> utf8, TState state, HtmlStreamingLimits? limits = null) =>
