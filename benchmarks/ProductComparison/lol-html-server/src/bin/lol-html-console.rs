@@ -260,6 +260,8 @@ fn parse_options() -> Options {
             "--workload" => workload = value,
             "--query" => query = value,
             "--dump" => dump = Some(value),
+            // Accepted for bench-ab.ps1 lane compatibility; meaningless to lol-html.
+            "--mode" | "--unlimited" => {}
             _ => panic!("unknown option: {name}"),
         }
     }

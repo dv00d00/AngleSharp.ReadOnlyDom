@@ -20,14 +20,21 @@
     See bench-sweep.ps1 for why measurement forces workstation GC and leaves affinity alone.
 #>
 param(
+    # Either lane accepts a managed console dll (run through `dotnet`) or a NativeAOT
+    # console exe (run directly).
     [Parameter(Mandatory = $true)]
     [String] $BaselineDll,
+    # Overrides the working-tree console as the candidate lane; use to A/B two saved
+    # builds (e.g. two NativeAOT publishes). Implies -SkipBuild.
+    [String] $CandidateDll,
     [double] $Seconds = 3,
     [int] $Rounds = 5,
     [int] $Warmup = 400,
     [Int32[]] $Copies = @(1),
-    [ValidateSet("passthrough", "match", "extract")]
+    [ValidateSet("passthrough", "match", "extract", "rewrite", "rewrite-sink", "rewrite-stream")]
     [string] $Workload = "extract",
+    [ValidateSet("qq", "generic")]
+    [string] $Query = "qq",
     [ValidateSet("stream", "stream-trusted", "push", "buffer-arbitrary", "buffer-trusted")]
     [string] $Mode = "stream",
     [switch] $Unlimited,
@@ -45,7 +52,8 @@ $corpusPath = Join-Path $root "tests/AngleSharp.ReadOnlyDom.Tests/temp/$Corpus"
 if (-not (Test-Path $corpusPath)) { throw "Missing corpus: $corpusPath" }
 if (-not (Test-Path $BaselineDll)) { throw "Missing baseline console: $BaselineDll" }
 
-if (-not $SkipBuild) {
+if ($CandidateDll -and -not (Test-Path $CandidateDll)) { throw "Missing candidate console: $CandidateDll" }
+if (-not $SkipBuild -and -not $CandidateDll) {
     dotnet build $angleProject -c Release --no-restore -m:1 --disable-build-servers `
         -p:UseSharedCompilation=false -p:PublishAot=false -p:NuGetAudit=false
     if ($LASTEXITCODE -ne 0) { throw "AngleSharp console build failed." }
@@ -53,22 +61,25 @@ if (-not $SkipBuild) {
 
 $lanes = [ordered]@{
     candidate = @{
-        Dll = Join-Path (Split-Path $angleProject) "bin/Release/net10.0/AngleSharp.NativeConsole.dll"
+        Dll = if ($CandidateDll) { $CandidateDll }
+              else { Join-Path (Split-Path $angleProject) "bin/Release/net10.0/AngleSharp.NativeConsole.dll" }
         Unlimited = $Unlimited.IsPresent
     }
     baseline = @{ Dll = $BaselineDll; Unlimited = $BaselineUnlimited.IsPresent }
 }
 
 function Invoke-Lane([Hashtable] $Lane, [Int32] $CopyCount) {
-    $info = [Diagnostics.ProcessStartInfo]::new("dotnet")
+    $native = [IO.Path]::GetExtension($Lane.Dll) -eq ".exe"
+    $info = [Diagnostics.ProcessStartInfo]::new($(if ($native) { $Lane.Dll } else { "dotnet" }))
+    if (-not $native) { $info.ArgumentList.Add([String]$Lane.Dll) }
     $arguments = @(
-        $Lane.Dll,
         "--input", $corpusPath,
         "--seconds", $Seconds.ToString($culture),
         "--warmup", $Warmup.ToString($culture),
         "--copies", $CopyCount.ToString($culture),
         "--chunk-size", $ChunkSize.ToString($culture),
         "--workload", $Workload,
+        "--query", $Query,
         "--mode", $Mode,
         "--unlimited", $Lane.Unlimited.ToString().ToLowerInvariant()
     )
@@ -90,7 +101,8 @@ function Invoke-Lane([Hashtable] $Lane, [Int32] $CopyCount) {
     }
     [pscustomobject]@{
         Rate      = [Int64]::Parse($values.requests, $culture) / ([Double]::Parse($values.elapsed_ms, $culture) / 1000.0)
-        Allocated = [Double]::Parse($values.allocated_bytes_per_request, $culture)
+        # Rust lanes do not report allocations.
+        Allocated = if ($values.ContainsKey("allocated_bytes_per_request")) { [Double]::Parse($values.allocated_bytes_per_request, $culture) } else { 0.0 }
         Checksum  = $values.value_checksum
         Urls      = $values.urls
     }
