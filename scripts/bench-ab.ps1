@@ -26,8 +26,10 @@ param(
     [int] $Rounds = 5,
     [int] $Warmup = 400,
     [Int32[]] $Copies = @(1),
-    [ValidateSet("passthrough", "match", "extract")]
+    [ValidateSet("passthrough", "match", "extract", "rewrite", "rewrite-sink", "rewrite-stream")]
     [string] $Workload = "extract",
+    [ValidateSet("qq", "generic")]
+    [string] $Query = "qq",
     [ValidateSet("stream", "stream-trusted", "push", "buffer-arbitrary", "buffer-trusted")]
     [string] $Mode = "stream",
     [switch] $Unlimited,
@@ -69,6 +71,7 @@ function Invoke-Lane([Hashtable] $Lane, [Int32] $CopyCount) {
         "--copies", $CopyCount.ToString($culture),
         "--chunk-size", $ChunkSize.ToString($culture),
         "--workload", $Workload,
+        "--query", $Query,
         "--mode", $Mode,
         "--unlimited", $Lane.Unlimited.ToString().ToLowerInvariant()
     )

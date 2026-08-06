@@ -228,6 +228,14 @@ public sealed class Utf8HtmlTokenizerTests
     [Arguments("<!DOCTYPE html PUBLIC 'unterminated")]
     [Arguments("<p>&notin;&notit;&ampx</p>")]
     [Arguments("<a x='&notit;' y='&ampx'>x</a>")]
+    [Arguments("<a x='&#x2F;a&#x3D;1&amp;b=2' y=/a&#x3D;1&amp;b=2>x</a>")]
+    [Arguments("<a x='&#0;&#xD800;&#x80;' y='&#12foo &#x12zoo'>x</a>")]
+    [Arguments("<a x='&#9999999999999999999999;' y='&#xFFFFFFFFFFFFFFFF;'>x</a>")]
+    // A bare "&;" is excluded: AngleSharp drops the ';' where the spec (and this tokenizer,
+    // before and after deferred attribute decoding) flushes '&' and keeps ';' as a value byte.
+    [Arguments("<a x='&' z='&#' q='&#;' r='&#x' s='&#x;' t='a&'>x</a>")]
+    [Arguments("<a x='&not' y='&not;in' z='&notq' w=a&ampz>x</a>")]
+    [Arguments("<a x='&&amp;&#38&' y='&aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;'>x</a>")]
     [Arguments("<p>&#x80;&#0;&#xD800;</p>")]
     [Arguments("<p>&#12foo &#x12zoo</p>")]
     [Arguments("<p>&#99999999999999999999999999999999999999999999999999;</p>")]
