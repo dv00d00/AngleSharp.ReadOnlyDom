@@ -2008,11 +2008,18 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
 
     private void CommitAttribute()
     {
-        if (_attributeName.WrittenCount == 0)
+        // FinishTag calls this on every tag close whether or not an attribute is pending;
+        // the commit path's struct locals must stay out of this frame so the nothing-pending
+        // exit does not pay their stack clearing.
+        if (_attributeName.WrittenCount != 0)
         {
-            return;
+            CommitPendingAttribute();
         }
+    }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void CommitPendingAttribute()
+    {
         if (_isEndTag)
         {
             Clear(_attributeName);
