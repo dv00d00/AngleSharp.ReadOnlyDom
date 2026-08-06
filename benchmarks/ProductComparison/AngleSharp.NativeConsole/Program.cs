@@ -9,12 +9,13 @@ using AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
 using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
 var options = Options.Parse(args);
+RewriteScratch.DumpPath = options.Dump;
 var source = await File.ReadAllBytesAsync(options.Input);
 var input = RepeatBody(source, options.Copies);
-var urlQuery = CreateUrlQuery();
-var matchQuery = CreateMatchQuery();
+var urlQuery = CreateUrlQuery(options.Query);
+var matchQuery = CreateMatchQuery(options.Query);
 var passThroughQuery = StreamQuery.For<CountState>("zz").Compile();
-var rewriteQuery = CreateRewriteQuery();
+var rewriteQuery = CreateRewriteQuery(options.Query);
 
 BenchmarkResult last = default;
 for (var index = 0; index < options.Warmup; index++)
@@ -187,6 +188,8 @@ static BenchmarkResult RewriteStream(QueryPlan<CountState> plan, byte[] input, i
     for (var offset = 0; offset < input.Length; offset += chunkSize)
         session.Write(input.AsSpan(offset, Math.Min(chunkSize, input.Length - offset)));
     var state = session.Complete();
+    if (RewriteScratch.Checksum is null && RewriteScratch.DumpPath is not null)
+        File.WriteAllBytes(RewriteScratch.DumpPath, output.WrittenSpan.ToArray());
     RewriteScratch.Checksum ??= Fnv(output.WrittenSpan);
     return new BenchmarkResult(state.Count, RewriteScratch.Checksum.Value);
 }
@@ -209,8 +212,16 @@ static TState PushParse<TState>(QueryPlan<TState> plan, byte[] input, int chunkS
     return session.Complete();
 }
 
-static QueryPlan<UrlState> CreateUrlQuery()
+// "qq" is the corpus-specific composite selector; "generic" is a[href], which matches on every
+// corpus and gives the rewrite lanes real edit density outside qq.html.
+static QueryPlan<UrlState> CreateUrlQuery(string query)
 {
+    if (query == "generic")
+    {
+        var anchor = StreamQuery.For<UrlState>("a").Attribute("href");
+        anchor.OnStart(static (ref state, in element) => state.Add(element), "href");
+        return anchor.Compile();
+    }
     var list = StreamQuery.For<UrlState>("ul").Class("news-list");
     var card = list.Descendant("li").Attribute("dt-eid", "em_item_article");
     card.Descendant("a")
@@ -219,8 +230,14 @@ static QueryPlan<UrlState> CreateUrlQuery()
     return list.Compile();
 }
 
-static QueryPlan<CountState> CreateMatchQuery()
+static QueryPlan<CountState> CreateMatchQuery(string query)
 {
+    if (query == "generic")
+    {
+        var anchor = StreamQuery.For<CountState>("a").Attribute("href");
+        anchor.OnStart(static (ref state, in _) => state.Count++);
+        return anchor.Compile();
+    }
     var list = StreamQuery.For<CountState>("ul").Class("news-list");
     var card = list.Descendant("li").Attribute("dt-eid", "em_item_article");
     card.Descendant("a")
@@ -229,9 +246,11 @@ static QueryPlan<CountState> CreateMatchQuery()
     return list.Compile();
 }
 
-static QueryPlan<CountState> CreateRewriteQuery()
+static QueryPlan<CountState> CreateRewriteQuery(string query)
 {
     // No OnStart handler: the rewrite handler itself counts, matching the lol-html lane.
+    if (query == "generic")
+        return StreamQuery.For<CountState>("a").Attribute("href").Compile();
     var list = StreamQuery.For<CountState>("ul").Class("news-list");
     var card = list.Descendant("li").Attribute("dt-eid", "em_item_article");
     card.Descendant("a").Attribute("href");
@@ -280,6 +299,7 @@ static class RewriteScratch
     public static ArrayBufferWriter<byte>? Output;
     public static long? Checksum;
     public static long Accumulator = 17;
+    public static string? DumpPath;
 }
 
 sealed class ChunkedMemoryPipeReader(byte[] source, int chunkSize) : PipeReader
@@ -328,7 +348,9 @@ sealed record Options(
     int ChunkSize,
     string Mode,
     string Workload,
-    bool Unlimited
+    bool Unlimited,
+    string Query,
+    string? Dump
 )
 {
     public static Options Parse(string[] args)
@@ -337,6 +359,9 @@ sealed record Options(
         var workload = values.GetValueOrDefault("--workload", "extract");
         if (workload is not ("passthrough" or "match" or "extract" or "rewrite" or "rewrite-sink" or "rewrite-stream"))
             throw new ArgumentException($"Unknown workload: {workload}");
+        var query = values.GetValueOrDefault("--query", "qq");
+        if (query is not ("qq" or "generic"))
+            throw new ArgumentException($"Unknown query: {query}");
         return new Options(
             values["--input"],
             double.Parse(values.GetValueOrDefault("--seconds", "10"), CultureInfo.InvariantCulture),
@@ -345,7 +370,9 @@ sealed record Options(
             int.Parse(values.GetValueOrDefault("--chunk-size", "4096"), CultureInfo.InvariantCulture),
             values.GetValueOrDefault("--mode", "stream"),
             workload,
-            bool.Parse(values.GetValueOrDefault("--unlimited", "false"))
+            bool.Parse(values.GetValueOrDefault("--unlimited", "false")),
+            query,
+            values.GetValueOrDefault("--dump")
         );
     }
 }

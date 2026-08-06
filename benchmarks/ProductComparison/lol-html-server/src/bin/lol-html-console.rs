@@ -18,6 +18,17 @@ struct Options {
     copies: usize,
     chunk_size: usize,
     workload: String,
+    query: String,
+    dump: Option<String>,
+}
+
+// "qq" is the corpus-specific composite selector; "generic" is a[href], which matches on every
+// corpus and gives the rewrite lanes real edit density outside qq.html.
+fn selector(query: &str) -> &'static str {
+    match query {
+        "generic" => "a[href]",
+        _ => "ul.news-list li[dt-eid='em_item_article'] a[href]",
+    }
 }
 
 fn main() {
@@ -25,8 +36,9 @@ fn main() {
     let source = fs::read(&options.input).expect("failed to read input");
     let input = repeat_body(&source, options.copies);
 
+    let dump = options.dump.as_deref();
     for _ in 0..options.warmup {
-        let _ = parse(&input, options.chunk_size, &options.workload);
+        let _ = parse(&input, options.chunk_size, &options.workload, &options.query, dump);
     }
 
     let started = Instant::now();
@@ -34,7 +46,7 @@ fn main() {
     let mut requests = 0u64;
     let mut checksum = 0i64;
     let last = loop {
-        let result = parse(&input, options.chunk_size, &options.workload);
+        let result = parse(&input, options.chunk_size, &options.workload, &options.query, dump);
         checksum = checksum.wrapping_add(result.1);
         requests += 1;
         if started.elapsed() >= duration {
@@ -56,7 +68,13 @@ fn main() {
     );
 }
 
-fn parse(input: &[u8], chunk_size: usize, workload: &str) -> (usize, i64) {
+fn parse(
+    input: &[u8],
+    chunk_size: usize,
+    workload: &str,
+    query: &str,
+    dump: Option<&str>,
+) -> (usize, i64) {
     if workload == "passthrough" {
         // Keep a never-matching handler so both products must parse tags while the
         // emitted document remains byte-for-byte unchanged. With no handlers at all,
@@ -75,7 +93,7 @@ fn parse(input: &[u8], chunk_size: usize, workload: &str) -> (usize, i64) {
         let matches = Rc::new(RefCell::new(0usize));
         let handler_matches = Rc::clone(&matches);
         let settings = Settings::default().append_element_content_handler(element!(
-            "ul.news-list li[dt-eid='em_item_article'] a[href]",
+            selector(query),
             move |_| {
                 *handler_matches.borrow_mut() += 1;
                 Ok(())
@@ -99,6 +117,7 @@ fn parse(input: &[u8], chunk_size: usize, workload: &str) -> (usize, i64) {
         struct ChecksumOutput {
             active: bool,
             checksum: Rc<RefCell<i64>>,
+            dump: Option<Rc<RefCell<Vec<u8>>>>,
         }
         impl OutputSink for ChecksumOutput {
             fn handle_chunk(&mut self, chunk: &[u8]) {
@@ -107,6 +126,9 @@ fn parse(input: &[u8], chunk_size: usize, workload: &str) -> (usize, i64) {
                     for value in chunk {
                         *checksum = checksum.wrapping_mul(31).wrapping_add(i64::from(*value));
                     }
+                    if let Some(dump) = &self.dump {
+                        dump.borrow_mut().extend_from_slice(chunk);
+                    }
                 }
             }
         }
@@ -114,7 +136,7 @@ fn parse(input: &[u8], chunk_size: usize, workload: &str) -> (usize, i64) {
         let matches = Rc::new(RefCell::new(0usize));
         let handler_matches = Rc::clone(&matches);
         let settings = Settings::default().append_element_content_handler(element!(
-            "ul.news-list li[dt-eid='em_item_article'] a[href]",
+            selector(query),
             move |element| {
                 *handler_matches.borrow_mut() += 1;
                 element.set_attribute("data-q", "1")?;
@@ -123,17 +145,26 @@ fn parse(input: &[u8], chunk_size: usize, workload: &str) -> (usize, i64) {
         ));
         let first_pass = REWRITE_CHECKSUM.with(|cache| cache.borrow().is_none());
         let accumulator = Rc::new(RefCell::new(17i64));
+        let dump_buffer = if first_pass && dump.is_some() {
+            Some(Rc::new(RefCell::new(Vec::new())))
+        } else {
+            None
+        };
         let mut rewriter = HtmlRewriter::new(
             settings,
             ChecksumOutput {
                 active: first_pass,
                 checksum: Rc::clone(&accumulator),
+                dump: dump_buffer.clone(),
             },
         );
         for chunk in input.chunks(chunk_size) {
             rewriter.write(chunk).expect("lol-html parse failed");
         }
         rewriter.end().expect("lol-html completion failed");
+        if let (Some(buffer), Some(path)) = (dump_buffer, dump) {
+            fs::write(path, buffer.borrow().as_slice()).expect("failed to write dump");
+        }
         let checksum = REWRITE_CHECKSUM.with(|cache| {
             let mut cache = cache.borrow_mut();
             if first_pass {
@@ -148,7 +179,7 @@ fn parse(input: &[u8], chunk_size: usize, workload: &str) -> (usize, i64) {
     let urls = Rc::new(RefCell::new(Vec::<String>::new()));
     let handler_urls = Rc::clone(&urls);
     let settings = Settings::default().append_element_content_handler(element!(
-        "ul.news-list li[dt-eid='em_item_article'] a[href]",
+        selector(query),
         move |element| {
             if let Some(url) = element.get_attribute("href") {
                 handler_urls.borrow_mut().push(url);
@@ -204,6 +235,8 @@ fn parse_options() -> Options {
     let mut copies = 1;
     let mut chunk_size = 4096;
     let mut workload = String::from("extract");
+    let mut query = String::from("qq");
+    let mut dump = None;
     while let Some(name) = values.next() {
         let value = values.next().expect("option value is missing");
         match name.as_str() {
@@ -213,6 +246,8 @@ fn parse_options() -> Options {
             "--copies" => copies = value.parse().expect("invalid copies"),
             "--chunk-size" => chunk_size = value.parse().expect("invalid chunk size"),
             "--workload" => workload = value,
+            "--query" => query = value,
+            "--dump" => dump = Some(value),
             _ => panic!("unknown option: {name}"),
         }
     }
@@ -220,6 +255,7 @@ fn parse_options() -> Options {
         workload.as_str(),
         "passthrough" | "match" | "extract" | "rewrite"
     ));
+    assert!(matches!(query.as_str(), "qq" | "generic"));
     Options {
         input: input.expect("--input is required"),
         seconds,
@@ -227,5 +263,7 @@ fn parse_options() -> Options {
         copies,
         chunk_size,
         workload,
+        query,
+        dump,
     }
 }
