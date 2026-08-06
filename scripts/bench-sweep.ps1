@@ -28,6 +28,11 @@ param(
     [Int32] $ChunkSize = 4096,
     # Optional second .NET lane: a console DLL built from another commit.
     [string] $BaselineDll,
+    # Overrides the working-tree console as the candidate lane. A .exe (e.g. a tuned
+    # NativeAOT publish) runs directly; anything else runs through `dotnet`. Skips the build.
+    [string] $CandidateDll,
+    # Overrides the Rust lane binary (e.g. a PGO-tuned release-tuned build).
+    [string] $LolConsole,
     # Optional third .NET lane: the same candidate DLL driven through the push session,
     # the structural equivalent of lol-html's write() shape.
     [switch] $IncludePush,
@@ -48,18 +53,25 @@ $corpusRoot = Join-Path $root "tests/AngleSharp.ReadOnlyDom.Tests/temp"
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $reportPath = Join-Path $root "artifacts/benchmarks/$timestamp-sweep/report.md"
 
-dotnet build $angleProject -c Release --no-restore -m:1 --disable-build-servers `
-    -p:UseSharedCompilation=false -p:PublishAot=false -p:NuGetAudit=false
-if ($LASTEXITCODE -ne 0) { throw "AngleSharp console build failed." }
+if (-not $CandidateDll) {
+    dotnet build $angleProject -c Release --no-restore -m:1 --disable-build-servers `
+        -p:UseSharedCompilation=false -p:PublishAot=false -p:NuGetAudit=false
+    if ($LASTEXITCODE -ne 0) { throw "AngleSharp console build failed." }
+}
 
-$candidateDll = Join-Path (Split-Path $angleProject) "bin/Release/net10.0/AngleSharp.NativeConsole.dll"
+$candidateDll = if ($CandidateDll) { $CandidateDll }
+                else { Join-Path (Split-Path $angleProject) "bin/Release/net10.0/AngleSharp.NativeConsole.dll" }
 $extension = if ($IsWindows) { ".exe" } else { "" }
-$lolExecutable = Join-Path $root "benchmarks/ProductComparison/lol-html-server/target/release/lol-html-console$extension"
+$lolExecutable = if ($LolConsole) { $LolConsole }
+                 else { Join-Path $root "benchmarks/ProductComparison/lol-html-server/target/release/lol-html-console$extension" }
 if ($IncludeLolHtml -and -not (Test-Path $lolExecutable)) {
     throw "lol-html console not built. Run scripts/bench-native-console.ps1 first."
 }
 
-$lanes = [ordered]@{ candidate = @{ Executable = "dotnet"; Prefix = @($candidateDll) } }
+$lanes = [ordered]@{
+    candidate = if ([IO.Path]::GetExtension($candidateDll) -eq ".exe") { @{ Executable = $candidateDll; Prefix = @() } }
+                else { @{ Executable = "dotnet"; Prefix = @($candidateDll) } }
+}
 if ($BaselineDll) { $lanes["baseline"] = @{ Executable = "dotnet"; Prefix = @($BaselineDll) } }
 if ($IncludePush) { $lanes["push"] = @{ Executable = "dotnet"; Prefix = @($candidateDll); Mode = "push" } }
 if ($IncludeLolHtml) { $lanes["lol-html"] = @{ Executable = $lolExecutable; Prefix = @() } }

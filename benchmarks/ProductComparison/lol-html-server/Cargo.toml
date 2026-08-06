@@ -11,3 +11,11 @@ lol_html = "=3.0.1"
 html5gum = "0.8"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync"] }
 tokio-stream = "0.1"
+
+# Maximum-optimization profile for benchmark fairness against the tuned NativeAOT lane
+# (IlcInstructionSet=native + MIBC). Build the comparison binaries with:
+#   RUSTFLAGS="-C target-cpu=native" cargo build --profile release-tuned --bin lol-html-console
+[profile.release-tuned]
+inherits = "release"
+lto = "fat"
+codegen-units = 1

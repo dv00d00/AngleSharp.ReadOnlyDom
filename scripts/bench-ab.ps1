@@ -101,7 +101,8 @@ function Invoke-Lane([Hashtable] $Lane, [Int32] $CopyCount) {
     }
     [pscustomobject]@{
         Rate      = [Int64]::Parse($values.requests, $culture) / ([Double]::Parse($values.elapsed_ms, $culture) / 1000.0)
-        Allocated = [Double]::Parse($values.allocated_bytes_per_request, $culture)
+        # Rust lanes do not report allocations.
+        Allocated = if ($values.ContainsKey("allocated_bytes_per_request")) { [Double]::Parse($values.allocated_bytes_per_request, $culture) } else { 0.0 }
         Checksum  = $values.value_checksum
         Urls      = $values.urls
     }
