@@ -8,9 +8,6 @@ internal interface IUtf8HtmlTokenizerInput
 {
     Utf8HtmlTokenizerCounters Counters { get; }
 
-    /// <inheritdoc cref="Utf8HtmlTokenizer{TResourceLimits}.RewritePublishableOffset"/>
-    Int64 RewritePublishableOffset { get; }
-
     void Write(ReadOnlyMemory<Byte> input);
 
     void Write(ReadOnlySpan<Byte> input);
@@ -116,8 +113,6 @@ internal class Utf8HtmlTokenizerInput<TResourceLimits> : IUtf8HtmlTokenizerInput
     }
 
     public Utf8HtmlTokenizerCounters Counters => _tokenizer.GetCounters(_normalizer.BytesConsumed);
-
-    public Int64 RewritePublishableOffset => _tokenizer.RewritePublishableOffset;
 
     public void Write(ReadOnlyMemory<Byte> input)
     {

@@ -83,8 +83,8 @@ internal class QueryExecution<TState, TResourceLimits>
 
     public bool WantsStartTagSourceRanges => _rewriteHandler is not null;
 
-    public void ObserveNormalizedUtf8(long sourceStart, ReadOnlySpan<byte> utf8) =>
-        _streamingRewriteCollector?.Observe(sourceStart, utf8);
+    public void ObserveNormalizedUtf8End(long sourceStart, ReadOnlySpan<byte> utf8, long publishableOffset) =>
+        _streamingRewriteCollector?.PublishWindow(sourceStart, utf8, publishableOffset);
 
     public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
     {

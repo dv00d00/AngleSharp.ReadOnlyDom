@@ -566,8 +566,8 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     /// need it. Returns the number of bytes consumed; the byte at that position, if any, is
     /// non-ASCII and must be validated by the caller before re-entry via
     /// <see cref="WriteTrustedUtf8"/>. Must not be used while
-    /// <see cref="TracksStartTagSourceRanges"/> is set, because partial consumption would
-    /// double-observe the unconsumed tail.
+    /// <see cref="TracksStartTagSourceRanges"/> is set: discarded text swallows unvalidated bytes
+    /// raw, but an observing sink republishes the stream, which must be normalized UTF-8.
     /// </summary>
     internal Int32 WriteArbitraryAscii(ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest) =>
         _stateMetrics is null
@@ -580,10 +580,6 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     {
         var trackSourceRanges = _startTagSourceRangeSink is not null;
         var sourceBase = trackSourceRanges ? _normalizedBytesConsumed : 0;
-        if (trackSourceRanges)
-        {
-            _startTagSourceRangeSink!.ObserveNormalizedUtf8(sourceBase, utf8);
-        }
         var index = 0;
         try
         {
@@ -837,6 +833,13 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             if (trackSourceRanges)
             {
                 _normalizedBytesConsumed = sourceBase + index;
+                // Only the consumed slice is reported, so partial consumption (yield, or the fused
+                // ASCII path handing back at a non-ASCII byte) never double-observes the tail.
+                _startTagSourceRangeSink!.ObserveNormalizedUtf8End(
+                    sourceBase,
+                    utf8[..index],
+                    RewritePublishableOffset
+                );
             }
         }
     }

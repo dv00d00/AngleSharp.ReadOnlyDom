@@ -34,13 +34,32 @@ public sealed class StreamingRewriteSession<TState> : IDisposable
         Utf8InputContract inputContract,
         HtmlStreamingLimits limits
     )
+        : this(plan, state, new Utf8StreamingRewriteCollector(output, limits), handler, inputContract, limits) { }
+
+    internal StreamingRewriteSession(
+        QueryPlan<TState> plan,
+        TState state,
+        StreamingRewriteSegmentSink sink,
+        RewriteHandler<TState> handler,
+        Utf8InputContract inputContract,
+        HtmlStreamingLimits limits
+    )
+        : this(plan, state, new Utf8StreamingRewriteCollector(sink, limits), handler, inputContract, limits) { }
+
+    private StreamingRewriteSession(
+        QueryPlan<TState> plan,
+        TState state,
+        Utf8StreamingRewriteCollector collector,
+        RewriteHandler<TState> handler,
+        Utf8InputContract inputContract,
+        HtmlStreamingLimits limits
+    )
     {
-        ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(handler);
         if (inputContract is not (Utf8InputContract.ArbitraryBytes or Utf8InputContract.WellFormedUtf8))
             throw new ArgumentOutOfRangeException(nameof(inputContract));
 
-        _collector = new Utf8StreamingRewriteCollector(output, limits);
+        _collector = collector;
         try
         {
             if (limits.EnforcesLimits)
@@ -94,8 +113,9 @@ public sealed class StreamingRewriteSession<TState> : IDisposable
     public void Write(ReadOnlySpan<byte> utf8)
     {
         ThrowIfDisposed();
+        // Publishing happens inside the write, where the tokenizer reports each consumed span to
+        // the collector while it is still addressable.
         _input.Write(utf8);
-        _collector.PublishUpTo(_input.RewritePublishableOffset);
     }
 
     /// <inheritdoc cref="Write(ReadOnlySpan{byte})"/>

@@ -95,6 +95,20 @@ public sealed class QueryPlan<TState>
         HtmlStreamingLimits? limits = null
     ) => new(this, state, output, handler, inputContract, limits ?? HtmlStreamingLimits.Default);
 
+    /// <summary>
+    /// Streaming rewrite like
+    /// <see cref="CreateRewriteSession(TState, IBufferWriter{byte}, RewriteHandler{TState}, Utf8InputContract, HtmlStreamingLimits?)"/>
+    /// but publishes borrowed segments instead of copying into a writer: untouched runs of input
+    /// reach <paramref name="sink"/> as slices of the session's current chunk or holdback buffer.
+    /// </summary>
+    public StreamingRewriteSession<TState> CreateRewriteSession(
+        TState state,
+        StreamingRewriteSegmentSink sink,
+        RewriteHandler<TState> handler,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes,
+        HtmlStreamingLimits? limits = null
+    ) => new(this, state, sink, handler, inputContract, limits ?? HtmlStreamingLimits.Default);
+
     /// <summary>Executes the plan over UTF-8, replacing malformed input with U+FFFD.</summary>
     public TState Execute(ReadOnlySpan<byte> utf8, TState state, HtmlStreamingLimits? limits = null) =>
         Execute(utf8, state, Utf8InputContract.ArbitraryBytes, limits);

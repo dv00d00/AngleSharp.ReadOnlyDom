@@ -169,6 +169,37 @@ public sealed class StreamingRewriteSessionTests
     }
 
     [Test]
+    public async Task SegmentSinkEmitsTheSameBytesAsTheBufferWriter()
+    {
+        var plan = CreatePlan();
+        var source = Encoding.UTF8.GetBytes(Documents[2]);
+        var expected = RewriteWholeBuffer(plan, source, out var expectedMatches);
+
+        foreach (var size in (int[])[1, 7, source.Length])
+        {
+            var collected = new List<byte>();
+            var segments = 0;
+            using var session = plan.CreateRewriteSession(
+                0,
+                segment =>
+                {
+                    segments++;
+                    collected.AddRange(segment);
+                },
+                Edit,
+                Utf8InputContract.WellFormedUtf8
+            );
+            for (var offset = 0; offset < source.Length; offset += size)
+                session.Write(source.AsSpan(offset, Math.Min(size, source.Length - offset)));
+            var matches = session.Complete();
+
+            await Assert.That(collected.SequenceEqual(expected)).IsTrue();
+            await Assert.That(matches).IsEqualTo(expectedMatches);
+            await Assert.That(segments).IsGreaterThan(expectedMatches);
+        }
+    }
+
+    [Test]
     public async Task ArbitraryBytesInputIsNormalizedAndRewritten()
     {
         var plan = CreatePlan();

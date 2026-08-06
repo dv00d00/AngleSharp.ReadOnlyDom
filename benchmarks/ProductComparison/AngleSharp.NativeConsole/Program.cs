@@ -167,16 +167,26 @@ static BenchmarkResult RewriteSink(QueryPlan<CountState> plan, byte[] input, Htm
     return new BenchmarkResult(state.Count, RewriteScratch.Checksum!.Value);
 }
 
-// Chunked input, incremental output: the memory-profile-fair counterpart of the lol-html rewrite
-// lane, which also streams 4KB chunks through a bounded internal buffer.
+// Chunked input, borrowed segments out: the memory-profile-fair counterpart of the lol-html
+// rewrite lane, which also streams 4KB chunks through a bounded internal buffer and hands its
+// sink output chunks by reference. Matching that lane exactly, the first pass checksums (and
+// optionally dumps) the published segments and later passes discard them, so both engines
+// measure rewriting and publishing rather than memcpy.
 static BenchmarkResult RewriteStream(QueryPlan<CountState> plan, byte[] input, int chunkSize, HtmlStreamingLimits? limits)
 {
-    RewriteScratch.Output ??= new ArrayBufferWriter<byte>(input.Length + 4096);
-    var output = RewriteScratch.Output;
-    output.ResetWrittenCount();
+    var checksumThisPass = RewriteScratch.Checksum is null;
+    var capture = checksumThisPass && RewriteScratch.DumpPath is not null ? new ArrayBufferWriter<byte>() : null;
+    if (checksumThisPass)
+        RewriteScratch.Accumulator = 17;
     using var session = plan.CreateRewriteSession(
         new CountState(),
-        output,
+        checksumThisPass
+            ? segment =>
+            {
+                RewriteScratch.Accumulator = Fnv(segment, RewriteScratch.Accumulator);
+                capture?.Write(segment);
+            }
+            : static _ => { },
         static (ref CountState state, in Element _, ref StartTagEditor tag) =>
         {
             state.Count++;
@@ -188,9 +198,9 @@ static BenchmarkResult RewriteStream(QueryPlan<CountState> plan, byte[] input, i
     for (var offset = 0; offset < input.Length; offset += chunkSize)
         session.Write(input.AsSpan(offset, Math.Min(chunkSize, input.Length - offset)));
     var state = session.Complete();
-    if (RewriteScratch.Checksum is null && RewriteScratch.DumpPath is not null)
-        File.WriteAllBytes(RewriteScratch.DumpPath, output.WrittenSpan.ToArray());
-    RewriteScratch.Checksum ??= Fnv(output.WrittenSpan);
+    if (capture is not null)
+        File.WriteAllBytes(RewriteScratch.DumpPath!, capture.WrittenSpan.ToArray());
+    RewriteScratch.Checksum ??= RewriteScratch.Accumulator;
     return new BenchmarkResult(state.Count, RewriteScratch.Checksum.Value);
 }
 

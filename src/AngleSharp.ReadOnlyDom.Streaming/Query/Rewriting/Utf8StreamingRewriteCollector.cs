@@ -3,43 +3,49 @@ using System.Buffers;
 namespace AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
 
 /// <summary>
-/// Streaming counterpart of <see cref="Utf8RewriteCollector"/>: observes the normalized input as the
-/// tokenizer consumes it, applies start-tag edits the moment they are recorded, and publishes every
-/// byte to the output as soon as it can no longer change. Between writes only the unpublishable
-/// tail - at most the currently open start tag - stays buffered, so peak memory is independent of
-/// document size.
+/// Streaming counterpart of <see cref="Utf8RewriteCollector"/>. Edits recorded during a tokenizer
+/// write only capture payload bytes; when the write completes, <see cref="PublishWindow"/> receives
+/// the consumed span while it is still addressable and publishes everything below the tokenizer's
+/// rewrite watermark straight from that borrowed span - untouched bytes cross exactly once, into
+/// the output writer. Only the unpublishable tail (at most the currently open start tag) is copied
+/// into the pending holdback buffer, so peak memory is independent of document size.
 /// </summary>
 internal sealed class Utf8StreamingRewriteCollector : IStartTagEditCollector, IDisposable
 {
-    private readonly IBufferWriter<byte> _output;
+    private readonly IBufferWriter<byte>? _output;
+    private readonly StreamingRewriteSegmentSink? _sink;
     private readonly int _maximumHoldbackBytes;
+    private readonly ArrayBufferWriter<byte> _payload = new(256);
+    private readonly List<Insertion> _insertions = [];
     private byte[] _pending;
-    private int _pendingStart;
     private int _pendingLength;
     private long _publishedThrough;
     private long _observedEnd;
 
     internal Utf8StreamingRewriteCollector(IBufferWriter<byte> output, HtmlStreamingLimits limits)
+        : this(limits)
     {
+        ArgumentNullException.ThrowIfNull(output);
         _output = output;
+    }
+
+    internal Utf8StreamingRewriteCollector(StreamingRewriteSegmentSink sink, HtmlStreamingLimits limits)
+        : this(limits)
+    {
+        ArgumentNullException.ThrowIfNull(sink);
+        _sink = sink;
+    }
+
+    private Utf8StreamingRewriteCollector(HtmlStreamingLimits limits)
+    {
         _maximumHoldbackBytes = limits.EnforcesLimits ? limits.MaximumBufferedTokenBytes : int.MaxValue;
         _pending = ArrayPool<byte>.Shared.Rent(4096);
     }
 
-    /// <summary>Receives each normalized input span before the tokenizer consumes it.</summary>
-    internal void Observe(long sourceStart, ReadOnlySpan<byte> utf8)
-    {
-        if (sourceStart != _observedEnd)
-            throw new InvalidOperationException("The observed input stream is not contiguous.");
-        if (utf8.IsEmpty)
-            return;
-
-        EnsurePendingCapacity(utf8.Length);
-        utf8.CopyTo(_pending.AsSpan(_pendingStart + _pendingLength));
-        _pendingLength += utf8.Length;
-        _observedEnd += utf8.Length;
-    }
-
+    /// <summary>
+    /// Records the edit; source bytes are validated and interleaved later, in
+    /// <see cref="PublishWindow"/>, where they are addressable.
+    /// </summary>
     public void AppendAttribute(
         long sourceStart,
         long sourceEnd,
@@ -49,11 +55,91 @@ internal sealed class Utf8StreamingRewriteCollector : IStartTagEditCollector, ID
     )
     {
         Utf8RewriteCollector.ValidateName(name);
+        var payloadStart = _payload.WrittenCount;
+        Utf8RewriteCollector.WriteAttributePayload(_payload, name, value);
+        _insertions.Add(
+            new Insertion(sourceStart, sourceEnd, selfClosing, payloadStart, _payload.WrittenCount - payloadStart)
+        );
+    }
+
+    /// <summary>
+    /// Consumes one tokenizer write window: the pending holdback covers
+    /// [<see cref="_publishedThrough"/>, chunkStart) and <paramref name="chunk"/> covers
+    /// [chunkStart, chunkStart + length). Applies the recorded edits, publishes everything below
+    /// <paramref name="watermark"/>, and carries the remainder into the holdback buffer.
+    /// </summary>
+    internal void PublishWindow(long chunkStart, ReadOnlySpan<byte> chunk, long watermark)
+    {
+        if (chunkStart != _observedEnd)
+            throw new InvalidOperationException("The observed input stream is not contiguous.");
+        _observedEnd += chunk.Length;
+
+        var pendingBase = chunkStart - _pendingLength;
+        var limit = Math.Min(watermark, _observedEnd);
+
+        foreach (var insertion in _insertions)
+        {
+            ApplyInsertion(insertion, pendingBase, chunkStart, chunk, limit);
+        }
+        _insertions.Clear();
+        _payload.ResetWrittenCount();
+
+        PublishRange(_publishedThrough, limit, pendingBase, chunkStart, chunk);
+        _publishedThrough = limit;
+
+        // Carry [limit, observedEnd) - at most the open start tag - into the holdback buffer.
+        var pendingCarry = (int)(Math.Max(limit, pendingBase) < chunkStart ? chunkStart - Math.Max(limit, pendingBase) : 0);
+        var chunkCarryStart = (int)(Math.Max(limit, chunkStart) - chunkStart);
+        var chunkCarry = chunk.Length - chunkCarryStart;
+        var carry = pendingCarry + chunkCarry;
+        if (carry > _maximumHoldbackBytes)
+        {
+            throw new HtmlStreamingLimitExceededException(
+                HtmlStreamingLimit.BufferedTokenBytes,
+                _maximumHoldbackBytes,
+                carry
+            );
+        }
+        EnsurePendingCapacity(carry);
+        if (pendingCarry > 0)
+        {
+            // The surviving holdback tail is the suffix of the previous holdback; shift it home.
+            Array.Copy(_pending, (int)(Math.Max(limit, pendingBase) - pendingBase), _pending, 0, pendingCarry);
+        }
+        if (chunkCarry > 0)
+        {
+            chunk[chunkCarryStart..].CopyTo(_pending.AsSpan(pendingCarry));
+        }
+        _pendingLength = carry;
+    }
+
+    /// <summary>Publishes everything still pending; call after the tokenizer has completed.</summary>
+    internal void Finish() => PublishWindow(_observedEnd, [], _observedEnd);
+
+    public void Dispose()
+    {
+        var pending = _pending;
+        _pending = [];
+        _pendingLength = 0;
+        if (pending.Length > 0)
+            ArrayPool<byte>.Shared.Return(pending);
+    }
+
+    private void ApplyInsertion(
+        in Insertion insertion,
+        long pendingBase,
+        long chunkStart,
+        ReadOnlySpan<byte> chunk,
+        long limit
+    )
+    {
+        var sourceStart = insertion.SourceStart;
+        var sourceEnd = insertion.SourceEnd;
         if (
-            sourceEnd > _observedEnd
+            sourceStart < 0
             || sourceEnd <= sourceStart
-            || sourceStart < 0
-            || (sourceStart >= _publishedThrough && ByteAt(sourceStart) != (byte)'<')
+            || sourceEnd > limit
+            || (sourceStart >= _publishedThrough && ByteAt(sourceStart, pendingBase, chunkStart, chunk) != (byte)'<')
         )
         {
             throw new InvalidOperationException("A recorded start-tag source range is outside the input.");
@@ -62,96 +148,88 @@ internal sealed class Utf8StreamingRewriteCollector : IStartTagEditCollector, ID
         var position = sourceEnd - 1;
         if (position < _publishedThrough)
             throw new InvalidOperationException("Start-tag rewrite ranges are not ordered.");
-        if (ByteAt(position) != (byte)'>')
+        if (ByteAt(position, pendingBase, chunkStart, chunk) != (byte)'>')
             throw new InvalidOperationException("A recorded start-tag source range does not end at a tag close.");
-        if (selfClosing && position > sourceStart && position > _publishedThrough && ByteAt(position - 1) == (byte)'/')
+        if (
+            insertion.SelfClosing
+            && position > sourceStart
+            && position > _publishedThrough
+            && ByteAt(position - 1, pendingBase, chunkStart, chunk) == (byte)'/'
+        )
+        {
             position--;
+        }
 
         // Mirrors Utf8RewriteCollector.SegmentEnumerator: _publishedThrough plays the cursor.
         var needsSeparator =
             position == _publishedThrough
             || position == sourceStart
-            || !Utf8RewriteCollector.IsHtmlSpace(ByteAt(position - 1));
-        Publish(position);
+            || !Utf8RewriteCollector.IsHtmlSpace(ByteAt(position - 1, pendingBase, chunkStart, chunk));
+        PublishRange(_publishedThrough, position, pendingBase, chunkStart, chunk);
+        _publishedThrough = position;
         if (needsSeparator)
         {
-            _output.GetSpan(1)[0] = (byte)' ';
-            _output.Advance(1);
+            Write(" "u8);
         }
-        Utf8RewriteCollector.WriteAttributePayload(_output, name, value);
+        Write(_payload.WrittenSpan.Slice(insertion.PayloadStart, insertion.PayloadLength));
     }
 
-    /// <summary>
-    /// Publishes every observed byte below <paramref name="watermark"/> and enforces the holdback
-    /// bound on what remains.
-    /// </summary>
-    internal void PublishUpTo(long watermark)
+    private byte ByteAt(long offset, long pendingBase, long chunkStart, ReadOnlySpan<byte> chunk) =>
+        offset < chunkStart ? _pending[(int)(offset - pendingBase)] : chunk[(int)(offset - chunkStart)];
+
+    private void PublishRange(long from, long to, long pendingBase, long chunkStart, ReadOnlySpan<byte> chunk)
     {
-        Publish(Math.Min(watermark, _observedEnd));
-        if (_pendingLength > _maximumHoldbackBytes)
-        {
-            throw new HtmlStreamingLimitExceededException(
-                HtmlStreamingLimit.BufferedTokenBytes,
-                _maximumHoldbackBytes,
-                _pendingLength
-            );
-        }
-    }
-
-    /// <summary>Publishes everything still pending; call after the tokenizer has completed.</summary>
-    internal void Finish() => Publish(_observedEnd);
-
-    public void Dispose()
-    {
-        var pending = _pending;
-        _pending = [];
-        _pendingStart = 0;
-        _pendingLength = 0;
-        if (pending.Length > 0)
-            ArrayPool<byte>.Shared.Return(pending);
-    }
-
-    private byte ByteAt(long offset) => _pending[_pendingStart + (int)(offset - _publishedThrough)];
-
-    private void Publish(long upTo)
-    {
-        var count = (int)(upTo - _publishedThrough);
-        if (count <= 0)
+        if (to <= from)
             return;
+
+        if (from < chunkStart)
+        {
+            var pendingEnd = Math.Min(to, chunkStart);
+            Write(_pending.AsSpan((int)(from - pendingBase), (int)(pendingEnd - from)));
+            from = pendingEnd;
+        }
+        if (to > from)
+        {
+            Write(chunk[(int)(from - chunkStart)..(int)(to - chunkStart)]);
+        }
+    }
+
+    private void Write(ReadOnlySpan<byte> value)
+    {
+        if (_sink is not null)
+        {
+            // Borrowed segments reach the sink by reference; no byte is copied.
+            _sink(value);
+            return;
+        }
 
         // Bounded slices keep pipe-style writers on pooled segments instead of one huge rent.
-        var remaining = count;
-        while (remaining > 0)
+        var output = _output!;
+        while (!value.IsEmpty)
         {
-            var slice = Math.Min(remaining, 32 * 1024);
-            _pending.AsSpan(_pendingStart + (count - remaining), slice).CopyTo(_output.GetSpan(slice));
-            _output.Advance(slice);
-            remaining -= slice;
+            var slice = Math.Min(value.Length, 32 * 1024);
+            value[..slice].CopyTo(output.GetSpan(slice));
+            output.Advance(slice);
+            value = value[slice..];
         }
-        _pendingStart += count;
-        _pendingLength -= count;
-        _publishedThrough = upTo;
-        if (_pendingLength == 0)
-            _pendingStart = 0;
     }
 
-    private void EnsurePendingCapacity(int incoming)
+    private void EnsurePendingCapacity(int required)
     {
-        var required = _pendingLength + incoming;
-        if (_pendingStart + required <= _pending.Length)
-            return;
-
         if (required <= _pending.Length)
-        {
-            Array.Copy(_pending, _pendingStart, _pending, 0, _pendingLength);
-            _pendingStart = 0;
             return;
-        }
 
         var grown = ArrayPool<byte>.Shared.Rent(required);
-        Array.Copy(_pending, _pendingStart, grown, 0, _pendingLength);
+        Array.Copy(_pending, grown, _pendingLength);
         ArrayPool<byte>.Shared.Return(_pending);
         _pending = grown;
-        _pendingStart = 0;
     }
+
+    private readonly record struct Insertion(
+        long SourceStart,
+        long SourceEnd,
+        bool SelfClosing,
+        int PayloadStart,
+        int PayloadLength
+    );
 }
