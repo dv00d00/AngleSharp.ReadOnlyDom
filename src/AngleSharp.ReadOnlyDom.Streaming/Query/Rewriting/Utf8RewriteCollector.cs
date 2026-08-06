@@ -2,12 +2,24 @@ using System.Buffers;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
 
-internal sealed class Utf8RewriteCollector
+/// <summary>Receives start-tag edits recorded through a <see cref="StartTagEditor"/>.</summary>
+internal interface IStartTagEditCollector
+{
+    void AppendAttribute(
+        long sourceStart,
+        long sourceEnd,
+        bool selfClosing,
+        ReadOnlySpan<byte> name,
+        ReadOnlySpan<byte> value
+    );
+}
+
+internal sealed class Utf8RewriteCollector : IStartTagEditCollector
 {
     private readonly ArrayBufferWriter<byte> _payload = new(256);
     private readonly List<Insertion> _insertions = [];
 
-    internal void AppendAttribute(
+    public void AppendAttribute(
         long sourceStart,
         long sourceEnd,
         bool selfClosing,
@@ -17,21 +29,30 @@ internal sealed class Utf8RewriteCollector
     {
         ValidateName(name);
         var payloadStart = _payload.WrittenCount;
-        Write(name);
-        Write("=\""u8);
-        foreach (var item in value)
-        {
-            if (item == (byte)'&')
-                Write("&amp;"u8);
-            else if (item == (byte)'"')
-                Write("&quot;"u8);
-            else
-                WriteByte(item);
-        }
-        WriteByte((byte)'"');
+        WriteAttributePayload(_payload, name, value);
         _insertions.Add(
             new Insertion(sourceStart, sourceEnd, selfClosing, payloadStart, _payload.WrittenCount - payloadStart)
         );
+    }
+
+    internal static void WriteAttributePayload(
+        IBufferWriter<byte> output,
+        ReadOnlySpan<byte> name,
+        ReadOnlySpan<byte> value
+    )
+    {
+        Write(output, name);
+        Write(output, "=\""u8);
+        foreach (var item in value)
+        {
+            if (item == (byte)'&')
+                Write(output, "&amp;"u8);
+            else if (item == (byte)'"')
+                Write(output, "&quot;"u8);
+            else
+                WriteByte(output, item);
+        }
+        WriteByte(output, (byte)'"');
     }
 
     internal void WriteTo(ReadOnlySpan<byte> source, IBufferWriter<byte> output)
@@ -143,10 +164,10 @@ internal sealed class Utf8RewriteCollector
         }
     }
 
-    private static bool IsHtmlSpace(byte value) =>
+    internal static bool IsHtmlSpace(byte value) =>
         value is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\f' or (byte)'\r';
 
-    private static void ValidateName(ReadOnlySpan<byte> name)
+    internal static void ValidateName(ReadOnlySpan<byte> name)
     {
         if (name.IsEmpty)
             throw new ArgumentException("An attribute name cannot be empty.", nameof(name));
@@ -157,16 +178,10 @@ internal sealed class Utf8RewriteCollector
         }
     }
 
-    private void WriteByte(byte value)
+    private static void WriteByte(IBufferWriter<byte> output, byte value)
     {
-        _payload.GetSpan(1)[0] = value;
-        _payload.Advance(1);
-    }
-
-    private void Write(ReadOnlySpan<byte> value)
-    {
-        value.CopyTo(_payload.GetSpan(value.Length));
-        _payload.Advance(value.Length);
+        output.GetSpan(1)[0] = value;
+        output.Advance(1);
     }
 
     private static void Write(IBufferWriter<byte> output, ReadOnlySpan<byte> value)

@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Text;
 using AngleSharp.ReadOnlyDom.Streaming;
 using AngleSharp.ReadOnlyDom.Streaming.Query;
 using AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
@@ -51,46 +50,52 @@ app.MapPost(
     "/rewrite",
     async context =>
     {
-        // Streaming-input rewrite is tracked by #61; until it lands the request buffers fully,
-        // then the rewritten document publishes into the response pipe as borrowed segments
-        // (Response.BodyWriter is the IBufferWriter the rewriter fills directly).
-        var hint = (int)Math.Clamp(context.Request.ContentLength ?? 64 * 1024, 4096, 32 * 1024 * 1024);
-        var input = new ArrayBufferWriter<byte>(hint);
-        var reader = context.Request.BodyReader;
-        while (true)
-        {
-            var read = await reader.ReadAsync(context.RequestAborted);
-            foreach (var segment in read.Buffer)
-                input.Write(segment.Span);
-            reader.AdvanceTo(read.Buffer.End);
-            if (read.IsCompleted)
-                break;
-        }
-
+        // Full-duplex streaming (#61): rewritten output leaves through the response while the
+        // request body is still arriving. Only the currently open start tag is ever buffered, so
+        // peak memory is independent of document size - the same profile as the lol-html lane.
         context.Response.ContentType = "text/html; charset=utf-8";
+        var reader = context.Request.BodyReader;
+        var writer = context.Response.BodyWriter;
+        using var session = rewriteQuery.CreateRewriteSession(
+            new RewriteState(),
+            writer,
+            static (ref RewriteState state, in Element _, ref StartTagEditor tag) =>
+            {
+                state.Count++;
+                tag.AppendAttribute("data-q"u8, "1"u8);
+            },
+            Utf8InputContract.ArbitraryBytes,
+            rewriteLimits
+        );
         try
         {
-            rewriteQuery.Rewrite(
-                input.WrittenSpan,
-                context.Response.BodyWriter,
-                new RewriteState(),
-                static (ref RewriteState state, in Element _, ref StartTagEditor tag) =>
-                {
-                    state.Count++;
-                    tag.AppendAttribute("data-q"u8, "1"u8);
-                },
-                Utf8InputContract.ArbitraryBytes,
-                rewriteLimits
-            );
+            while (true)
+            {
+                var read = await reader.ReadAsync(context.RequestAborted);
+                foreach (var segment in read.Buffer)
+                    session.Write(segment.Span);
+                reader.AdvanceTo(read.Buffer.End);
+                if (!writer.CanGetUnflushedBytes || writer.UnflushedBytes >= 16 * 1024)
+                    await writer.FlushAsync(context.RequestAborted);
+                if (read.IsCompleted)
+                    break;
+            }
+            session.Complete();
         }
         catch (HtmlStreamingLimitExceededException)
         {
-            // Nothing has been flushed yet, so the status line is still ours to change.
-            context.Response.Clear();
-            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            if (!context.Response.HasStarted && (!writer.CanGetUnflushedBytes || writer.UnflushedBytes == 0))
+            {
+                // The status line is still ours to change.
+                context.Response.Clear();
+                context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+                return;
+            }
+            // Output already left (or sits in the pipe); the only honest signal is a broken stream.
+            context.Abort();
             return;
         }
-        await context.Response.BodyWriter.FlushAsync(context.RequestAborted);
+        await writer.FlushAsync(context.RequestAborted);
     }
 );
 

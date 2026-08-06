@@ -518,6 +518,50 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     internal Boolean TracksStartTagSourceRanges => _startTagSourceRangeSink is not null;
 
     /// <summary>
+    /// The normalized-input offset before which no future start-tag edit can land. Only an
+    /// unterminated start tag can still receive an insertion at its eventual close, so while one is
+    /// open the offset pins to its '&lt;'; every insertion point and separator look-back of any
+    /// future <see cref="IUtf8HtmlStartTagSourceRangeSink.StartTagSourceRange"/> sits at or above
+    /// the returned value. Meaningful only while <see cref="TracksStartTagSourceRanges"/> is set,
+    /// and only at quiescent points (between <see cref="Write"/> calls).
+    /// </summary>
+    internal Int64 RewritePublishableOffset
+    {
+        get
+        {
+            if (_completed)
+            {
+                return _normalizedBytesConsumed;
+            }
+            switch (_state)
+            {
+                case State.TagOpen:
+                    // Could still become a start tag; its '<' is already consumed.
+                    return _lastLessThanSourceOffset;
+                case State.TagName:
+                case State.BeforeAttributeName:
+                case State.AttributeName:
+                case State.AfterAttributeName:
+                case State.BeforeAttributeValue:
+                case State.AttributeValueDoubleQuoted:
+                case State.AttributeValueSingleQuoted:
+                case State.AttributeValueUnquoted:
+                case State.AfterAttributeValueQuoted:
+                case State.SelfClosingStartTag:
+                    return _isEndTag ? _normalizedBytesConsumed : _currentTagSourceOffset;
+                case State.CharacterReference:
+                    // A reference inside a captured attribute value keeps the start tag open.
+                    return !_isEndTag && IsTagTailState(_returnState)
+                        ? _currentTagSourceOffset
+                        : _normalizedBytesConsumed;
+                default:
+                    // End tags, comments, doctypes, raw text, and script data never produce edits.
+                    return _normalizedBytesConsumed;
+            }
+        }
+    }
+
+    /// <summary>
     /// Consumes input that skipped UTF-8 validation, stopping before the first byte that would
     /// need it. Returns the number of bytes consumed; the byte at that position, if any, is
     /// non-ASCII and must be validated by the caller before re-entry via

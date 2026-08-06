@@ -67,6 +67,8 @@ static async ValueTask<BenchmarkResult> Parse(
         return RewriteBuffered(rewriteQuery, input, limits);
     if (options.Workload == "rewrite-sink")
         return RewriteSink(rewriteQuery, input, limits);
+    if (options.Workload == "rewrite-stream")
+        return RewriteStream(rewriteQuery, input, options.ChunkSize, limits);
 
     if (options.Workload == "extract")
     {
@@ -162,6 +164,31 @@ static BenchmarkResult RewriteSink(QueryPlan<CountState> plan, byte[] input, Htm
     if (checksumThisPass)
         RewriteScratch.Checksum = RewriteScratch.Accumulator;
     return new BenchmarkResult(state.Count, RewriteScratch.Checksum!.Value);
+}
+
+// Chunked input, incremental output: the memory-profile-fair counterpart of the lol-html rewrite
+// lane, which also streams 4KB chunks through a bounded internal buffer.
+static BenchmarkResult RewriteStream(QueryPlan<CountState> plan, byte[] input, int chunkSize, HtmlStreamingLimits? limits)
+{
+    RewriteScratch.Output ??= new ArrayBufferWriter<byte>(input.Length + 4096);
+    var output = RewriteScratch.Output;
+    output.ResetWrittenCount();
+    using var session = plan.CreateRewriteSession(
+        new CountState(),
+        output,
+        static (ref CountState state, in Element _, ref StartTagEditor tag) =>
+        {
+            state.Count++;
+            tag.AppendAttribute("data-q"u8, "1"u8);
+        },
+        Utf8InputContract.WellFormedUtf8,
+        limits
+    );
+    for (var offset = 0; offset < input.Length; offset += chunkSize)
+        session.Write(input.AsSpan(offset, Math.Min(chunkSize, input.Length - offset)));
+    var state = session.Complete();
+    RewriteScratch.Checksum ??= Fnv(output.WrittenSpan);
+    return new BenchmarkResult(state.Count, RewriteScratch.Checksum.Value);
 }
 
 static long Fnv(ReadOnlySpan<byte> value, long checksum = 17)
@@ -308,7 +335,7 @@ sealed record Options(
     {
         var values = args.Chunk(2).ToDictionary(pair => pair[0], pair => pair[1]);
         var workload = values.GetValueOrDefault("--workload", "extract");
-        if (workload is not ("passthrough" or "match" or "extract" or "rewrite" or "rewrite-sink"))
+        if (workload is not ("passthrough" or "match" or "extract" or "rewrite" or "rewrite-sink" or "rewrite-stream"))
             throw new ArgumentException($"Unknown workload: {workload}");
         return new Options(
             values["--input"],
