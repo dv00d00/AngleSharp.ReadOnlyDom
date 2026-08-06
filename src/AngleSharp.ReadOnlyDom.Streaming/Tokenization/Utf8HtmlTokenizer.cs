@@ -387,6 +387,25 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         public static Boolean StopAtNonAscii => true;
     }
 
+    // The threaded tag-tail scanner is shared by discarded and captured tags through the same
+    // policy trick. CaptureOff folds every capture action away, compiling to the pure structural
+    // scan discarded tails always had; CaptureOn inlines the attribute name/value bookkeeping the
+    // per-byte machine would otherwise perform one Process call per delimiter byte.
+    private interface IAttributeCapturePolicy
+    {
+        static abstract Boolean Enabled { get; }
+    }
+
+    private readonly struct CaptureOff : IAttributeCapturePolicy
+    {
+        public static Boolean Enabled => false;
+    }
+
+    private readonly struct CaptureOn : IAttributeCapturePolicy
+    {
+        public static Boolean Enabled => true;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void RecordState<TMetrics>(Int32 state, Int32 count)
         where TMetrics : struct, IStateMetricsPolicy
@@ -590,17 +609,15 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         {
             while (index < utf8.Length)
             {
-                if (
-                    !_pendingCarriageReturn
-                    && (_isEndTag || (_startTagEmitted && !_captureStartTagAttributes))
-                    && IsTagTailState(_state)
-                )
+                if (!_pendingCarriageReturn && (_isEndTag || _startTagEmitted) && IsTagTailState(_state))
                 {
-                    var consumed = ScanDiscardedTagTail<TMetrics>(
-                        utf8[index..],
-                        trackSourceRanges ? sourceBase + index : 0,
-                        trackSourceRanges
-                    );
+                    // A start tag is always emitted before its tail states, so the capture flag is
+                    // settled here; end tags never capture, whatever the flag still says from the
+                    // previous start tag (the raw-text end-tag path skips BeginTag).
+                    var sourceOffset = trackSourceRanges ? sourceBase + index : 0;
+                    var consumed = !_isEndTag && _captureStartTagAttributes
+                        ? ScanTagTail<TMetrics, TTrust, CaptureOn>(utf8[index..], sourceOffset, trackSourceRanges)
+                        : ScanTagTail<TMetrics, TTrust, CaptureOff>(utf8[index..], sourceOffset, trackSourceRanges);
                     if (consumed > 0)
                     {
                         index += consumed;
@@ -621,44 +638,6 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                     {
                         RecordState<TMetrics>((Int32)_state, run);
                         AppendTagName(remaining[..run]);
-                        index += run;
-                        continue;
-                    }
-                }
-                else if (_state == State.AttributeName)
-                {
-                    var remaining = utf8.Slice(index);
-                    var run = IndexOfCaptureStop<TTrust>(
-                        remaining,
-                        AttributeNameTerminators,
-                        AttributeNameArbitraryAllowed
-                    );
-                    run = run < 0 ? remaining.Length : run;
-
-                    if (run > 0)
-                    {
-                        RecordState<TMetrics>((Int32)_state, run);
-                        if (_captureStartTagAttributes)
-                        {
-                            Append(_attributeName, remaining[..run]);
-                        }
-                        index += run;
-                        continue;
-                    }
-                }
-                else if (
-                    _state is State.BeforeAttributeName or State.AfterAttributeName or State.BeforeAttributeValue
-                    && !_pendingCarriageReturn
-                )
-                {
-                    // The captured tag tail reaches here (the discarded tail is scanned above);
-                    // real-world markup pads attributes with long whitespace runs that would
-                    // otherwise bounce through the per-byte dispatcher one space at a time.
-                    var run = utf8[index..].IndexOfAnyExcept(HtmlSpaces);
-                    run = run < 0 ? utf8.Length - index : run;
-                    if (run > 0)
-                    {
-                        RecordState<TMetrics>((Int32)_state, run);
                         index += run;
                         continue;
                     }
@@ -721,74 +700,6 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         RecordState<TMetrics>((Int32)_state, 1);
                         EmitText("<"u8);
                         index++;
-                        continue;
-                    }
-                }
-                else if (
-                    _state is State.AttributeValueDoubleQuoted or State.AttributeValueSingleQuoted
-                    && !_pendingCarriageReturn
-                )
-                {
-                    var remaining = utf8.Slice(index);
-                    var quote = _state == State.AttributeValueDoubleQuoted ? (Byte)'"' : (Byte)'\'';
-                    Int32 run;
-                    if (_attributeCapture == AttributeCapture.Capture)
-                    {
-                        run = _state == State.AttributeValueDoubleQuoted
-                            ? IndexOfCaptureStop<TTrust>(
-                                remaining,
-                                DoubleQuotedAttributeValueTerminators,
-                                DoubleQuotedAttributeValueArbitraryAllowed
-                            )
-                            : IndexOfCaptureStop<TTrust>(
-                                remaining,
-                                SingleQuotedAttributeValueTerminators,
-                                SingleQuotedAttributeValueArbitraryAllowed
-                            );
-                        run = run < 0 ? remaining.Length : run;
-                    }
-                    else
-                    {
-                        run = FindDiscardedQuotedAttributeValueTerminator(remaining, quote);
-                    }
-                    if (run > 0)
-                    {
-                        RecordState<TMetrics>((Int32)_state, run);
-                        if (_attributeCapture == AttributeCapture.Capture)
-                        {
-                            Append(AttributeValue, remaining[..run]);
-                        }
-
-                        index += run;
-                        continue;
-                    }
-                }
-                else if (_state == State.AttributeValueUnquoted && !_pendingCarriageReturn)
-                {
-                    var remaining = utf8.Slice(index);
-                    Int32 run;
-                    if (_attributeCapture == AttributeCapture.Capture)
-                    {
-                        run = IndexOfCaptureStop<TTrust>(
-                            remaining,
-                            UnquotedAttributeValueTerminators,
-                            UnquotedAttributeValueArbitraryAllowed
-                        );
-                        run = run < 0 ? remaining.Length : run;
-                    }
-                    else
-                    {
-                        run = FindDiscardedUnquotedAttributeValueTerminator(remaining);
-                    }
-                    if (run > 0)
-                    {
-                        RecordState<TMetrics>((Int32)_state, run);
-                        if (_attributeCapture == AttributeCapture.Capture)
-                        {
-                            Append(AttributeValue, remaining.Slice(0, run));
-                        }
-
-                        index += run;
                         continue;
                     }
                 }
@@ -3039,18 +2950,6 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
 
     private Utf8HtmlName CurrentAttributeName() => new(_attributeName.WrittenSpan, ref _attributeNameIdentityCache);
 
-    private static Int32 FindDiscardedQuotedAttributeValueTerminator(ReadOnlySpan<Byte> value, Byte quote)
-    {
-        var terminator = value.IndexOf(quote);
-        return terminator < 0 ? value.Length : terminator;
-    }
-
-    private static Int32 FindDiscardedUnquotedAttributeValueTerminator(ReadOnlySpan<Byte> value)
-    {
-        var terminator = value.IndexOfAny(DiscardedUnquotedAttributeValueTerminators);
-        return terminator < 0 ? value.Length : terminator;
-    }
-
     private static Boolean IsTagTailState(State state) =>
         state
             is State.BeforeAttributeName
@@ -3063,14 +2962,25 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 or State.AfterAttributeValueQuoted
                 or State.SelfClosingStartTag;
 
-    private Int32 ScanDiscardedTagTail<TMetrics>(ReadOnlySpan<Byte> utf8, Int64 sourceOffset, Boolean trackSourceRanges)
+    private Int32 ScanTagTail<TMetrics, TTrust, TCapture>(
+        ReadOnlySpan<Byte> utf8,
+        Int64 sourceOffset,
+        Boolean trackSourceRanges
+    )
         where TMetrics : struct, IStateMetricsPolicy
+        where TTrust : struct, IInputTrustPolicy
+        where TCapture : struct, IAttributeCapturePolicy
     {
         // Threaded form of the tag-tail states: the entry state dispatches once, control then
         // transfers directly between the labelled constructs, and the current state lives in
         // the program counter instead of the _state field until the span runs out or the tag
         // finishes. Discarded tails dominate dense markup, so the per-transition dispatch and
         // field traffic this removes is multiplied by the attribute count of the whole input.
+        // The CaptureOn instantiation runs the same shape over captured start tags, folding the
+        // name/value appends and commit calls into the transfers; bytes the scanner cannot
+        // resolve locally ('\0' replacement, '\r' normalization inside values, unvalidated
+        // non-ASCII) hand back to the per-byte fallback by writing _state and returning the
+        // consumed count, after which the outer loop re-enters the scanner.
         var index = 0;
         Byte value;
         switch (_state)
@@ -3123,25 +3033,63 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 index++;
                 goto SelfClosingStartTag;
             }
+            if (TCapture.Enabled)
+            {
+                if (value == 0 || (TTrust.StopAtNonAscii && value >= 0x80))
+                {
+                    // '\0' starts the name with a replacement character and unvalidated
+                    // non-ASCII must bounce to the caller: per-byte fallback for both.
+                    _state = State.BeforeAttributeName;
+                    return index;
+                }
+                Clear(_attributeName);
+                Clear(_attributeValue);
+                _attributeNameIdentityCache.Reset();
+                Append(_attributeName, value);
+                index++;
+            }
             goto AttributeName;
         }
 
         AttributeName:
         {
             var remaining = utf8[index..];
-            var run = remaining.IndexOfAny(DiscardedAttributeNameTerminators);
+            var run = TCapture.Enabled
+                ? IndexOfCaptureStop<TTrust>(remaining, AttributeNameTerminators, AttributeNameArbitraryAllowed)
+                : remaining.IndexOfAny(DiscardedAttributeNameTerminators);
             if (run < 0)
             {
                 RecordState<TMetrics>((Int32)State.AttributeName, remaining.Length);
+                if (TCapture.Enabled && !remaining.IsEmpty)
+                {
+                    Append(_attributeName, remaining);
+                }
                 _state = State.AttributeName;
                 return utf8.Length;
             }
+            value = remaining[run];
+            if (TCapture.Enabled)
+            {
+                if (run > 0)
+                {
+                    Append(_attributeName, remaining[..run]);
+                }
+                if (value == 0 || (TTrust.StopAtNonAscii && value >= 0x80))
+                {
+                    RecordState<TMetrics>((Int32)State.AttributeName, run);
+                    _state = State.AttributeName;
+                    return index + run;
+                }
+            }
             RecordState<TMetrics>((Int32)State.AttributeName, run + 1);
             index += run;
-            value = utf8[index];
             if (value == (Byte)'=')
             {
                 index++;
+                if (TCapture.Enabled)
+                {
+                    DecideAttributeCapture();
+                }
                 goto BeforeAttributeValue;
             }
             if (IsSpace(value))
@@ -3149,7 +3097,12 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 index++;
                 goto AfterAttributeName;
             }
-            // '/' or '>': reconsumed by the attribute-start handler, as in the general machine.
+            // '/' or '>': the pending attribute commits, then the byte is reconsumed by the
+            // attribute-start handler, as in the general machine.
+            if (TCapture.Enabled)
+            {
+                CommitAttribute();
+            }
             goto BeforeAttributeName;
         }
 
@@ -3171,7 +3124,17 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             if (value == (Byte)'=')
             {
                 index++;
+                if (TCapture.Enabled)
+                {
+                    DecideAttributeCapture();
+                }
                 goto BeforeAttributeValue;
+            }
+            // Anything else ends the name-only attribute; the byte is reconsumed as an
+            // attribute-name starter (or '/', '>').
+            if (TCapture.Enabled)
+            {
+                CommitAttribute();
             }
             goto BeforeAttributeName;
         }
@@ -3203,6 +3166,7 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             }
             if (value == (Byte)'>')
             {
+                // FinishTag commits the pending missing-value attribute before closing.
                 _state = State.BeforeAttributeValue;
                 FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
                 return index;
@@ -3213,51 +3177,159 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         AttributeValueDoubleQuoted:
         {
             var remaining = utf8[index..];
-            var run = remaining.IndexOf((Byte)'"');
-            if (run < 0)
+            if (TCapture.Enabled && _attributeCapture == AttributeCapture.Capture)
             {
-                RecordState<TMetrics>((Int32)State.AttributeValueDoubleQuoted, remaining.Length);
-                _state = State.AttributeValueDoubleQuoted;
-                return utf8.Length;
+                var run = IndexOfCaptureStop<TTrust>(
+                    remaining,
+                    DoubleQuotedAttributeValueTerminators,
+                    DoubleQuotedAttributeValueArbitraryAllowed
+                );
+                if (run < 0)
+                {
+                    RecordState<TMetrics>((Int32)State.AttributeValueDoubleQuoted, remaining.Length);
+                    if (!remaining.IsEmpty)
+                    {
+                        Append(AttributeValue, remaining);
+                    }
+                    _state = State.AttributeValueDoubleQuoted;
+                    return utf8.Length;
+                }
+                if (run > 0)
+                {
+                    Append(AttributeValue, remaining[..run]);
+                }
+                if (remaining[run] != (Byte)'"')
+                {
+                    // '\0' replacement, '\r' normalization, or unvalidated non-ASCII.
+                    RecordState<TMetrics>((Int32)State.AttributeValueDoubleQuoted, run);
+                    _state = State.AttributeValueDoubleQuoted;
+                    return index + run;
+                }
+                RecordState<TMetrics>((Int32)State.AttributeValueDoubleQuoted, run + 1);
+                index += run + 1;
+                goto AfterAttributeValueQuoted;
             }
-            RecordState<TMetrics>((Int32)State.AttributeValueDoubleQuoted, run + 1);
-            index += run + 1;
-            goto AfterAttributeValueQuoted;
+            else
+            {
+                var run = remaining.IndexOf((Byte)'"');
+                if (run < 0)
+                {
+                    RecordState<TMetrics>((Int32)State.AttributeValueDoubleQuoted, remaining.Length);
+                    _state = State.AttributeValueDoubleQuoted;
+                    return utf8.Length;
+                }
+                RecordState<TMetrics>((Int32)State.AttributeValueDoubleQuoted, run + 1);
+                index += run + 1;
+                goto AfterAttributeValueQuoted;
+            }
         }
 
         AttributeValueSingleQuoted:
         {
             var remaining = utf8[index..];
-            var run = remaining.IndexOf((Byte)'\'');
-            if (run < 0)
+            if (TCapture.Enabled && _attributeCapture == AttributeCapture.Capture)
             {
-                RecordState<TMetrics>((Int32)State.AttributeValueSingleQuoted, remaining.Length);
-                _state = State.AttributeValueSingleQuoted;
-                return utf8.Length;
+                var run = IndexOfCaptureStop<TTrust>(
+                    remaining,
+                    SingleQuotedAttributeValueTerminators,
+                    SingleQuotedAttributeValueArbitraryAllowed
+                );
+                if (run < 0)
+                {
+                    RecordState<TMetrics>((Int32)State.AttributeValueSingleQuoted, remaining.Length);
+                    if (!remaining.IsEmpty)
+                    {
+                        Append(AttributeValue, remaining);
+                    }
+                    _state = State.AttributeValueSingleQuoted;
+                    return utf8.Length;
+                }
+                if (run > 0)
+                {
+                    Append(AttributeValue, remaining[..run]);
+                }
+                if (remaining[run] != (Byte)'\'')
+                {
+                    RecordState<TMetrics>((Int32)State.AttributeValueSingleQuoted, run);
+                    _state = State.AttributeValueSingleQuoted;
+                    return index + run;
+                }
+                RecordState<TMetrics>((Int32)State.AttributeValueSingleQuoted, run + 1);
+                index += run + 1;
+                goto AfterAttributeValueQuoted;
             }
-            RecordState<TMetrics>((Int32)State.AttributeValueSingleQuoted, run + 1);
-            index += run + 1;
-            goto AfterAttributeValueQuoted;
+            else
+            {
+                var run = remaining.IndexOf((Byte)'\'');
+                if (run < 0)
+                {
+                    RecordState<TMetrics>((Int32)State.AttributeValueSingleQuoted, remaining.Length);
+                    _state = State.AttributeValueSingleQuoted;
+                    return utf8.Length;
+                }
+                RecordState<TMetrics>((Int32)State.AttributeValueSingleQuoted, run + 1);
+                index += run + 1;
+                goto AfterAttributeValueQuoted;
+            }
         }
 
         AttributeValueUnquoted:
         {
             var remaining = utf8[index..];
-            var run = remaining.IndexOfAny(DiscardedUnquotedAttributeValueTerminators);
-            if (run < 0)
+            Int32 run;
+            if (TCapture.Enabled && _attributeCapture == AttributeCapture.Capture)
             {
-                RecordState<TMetrics>((Int32)State.AttributeValueUnquoted, remaining.Length);
-                _state = State.AttributeValueUnquoted;
-                return utf8.Length;
+                run = IndexOfCaptureStop<TTrust>(
+                    remaining,
+                    UnquotedAttributeValueTerminators,
+                    UnquotedAttributeValueArbitraryAllowed
+                );
+                if (run < 0)
+                {
+                    RecordState<TMetrics>((Int32)State.AttributeValueUnquoted, remaining.Length);
+                    if (!remaining.IsEmpty)
+                    {
+                        Append(AttributeValue, remaining);
+                    }
+                    _state = State.AttributeValueUnquoted;
+                    return utf8.Length;
+                }
+                value = remaining[run];
+                if (run > 0)
+                {
+                    Append(AttributeValue, remaining[..run]);
+                }
+                if (value == 0 || (TTrust.StopAtNonAscii && value >= 0x80))
+                {
+                    RecordState<TMetrics>((Int32)State.AttributeValueUnquoted, run);
+                    _state = State.AttributeValueUnquoted;
+                    return index + run;
+                }
+            }
+            else
+            {
+                run = remaining.IndexOfAny(DiscardedUnquotedAttributeValueTerminators);
+                if (run < 0)
+                {
+                    RecordState<TMetrics>((Int32)State.AttributeValueUnquoted, remaining.Length);
+                    _state = State.AttributeValueUnquoted;
+                    return utf8.Length;
+                }
+                value = remaining[run];
             }
             RecordState<TMetrics>((Int32)State.AttributeValueUnquoted, run + 1);
             index += run;
-            value = utf8[index];
             if (value == (Byte)'>')
             {
+                // FinishTag commits the pending attribute before closing.
                 _state = State.AttributeValueUnquoted;
                 FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
                 return index;
+            }
+            // Whitespace ends the unquoted value.
+            if (TCapture.Enabled)
+            {
+                CommitAttribute();
             }
             index++;
             goto BeforeAttributeName;
@@ -3272,6 +3344,12 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             }
             value = utf8[index];
             RecordState<TMetrics>((Int32)State.AfterAttributeValueQuoted, 1);
+            if (TCapture.Enabled)
+            {
+                // The general machine commits the closed value before dispatching on the byte
+                // after the quote; a span ending here defers the commit the same way.
+                CommitAttribute();
+            }
             if (IsSpace(value))
             {
                 index++;
