@@ -15,16 +15,24 @@ var corpora = new[]
 
 using var angle = ServerProcess.Start("AngleSharp NativeAOT", options.AngleServer, 5081);
 using var lol = ServerProcess.Start("lol-html Rust", options.LolServer, 5082);
+using var angleJit = options.AngleJitServer is null
+    ? null
+    : ServerProcess.Start("AngleSharp JIT", options.AngleJitServer, 5083);
 await angle.WaitUntilReady();
 await lol.WaitUntilReady();
+if (angleJit is not null)
+    await angleJit.WaitUntilReady();
 
 using var angleClient = CreateClient(6);
 using var lolClient = CreateClient(6);
-var services = new[]
+using var angleJitClient = angleJit is null ? null : CreateClient(6);
+var services = new List<Service>
 {
-    new Service("AngleSharp NativeAOT", angle, angleClient),
-    new Service("lol-html Rust", lol, lolClient),
+    new("AngleSharp NativeAOT", angle, angleClient, angle.EndpointUri(options.Endpoint)),
+    new("lol-html Rust", lol, lolClient, lol.EndpointUri(options.Endpoint)),
 };
+if (angleJit is not null)
+    services.Add(new Service("AngleSharp JIT", angleJit, angleJitClient!, angleJit.EndpointUri(options.Endpoint)));
 
 var results = new List<LaneRun>();
 string? report = null;
@@ -32,12 +40,18 @@ try
 {
     foreach (var corpus in corpora)
     {
-        var expected = await SendOnce(angleClient, angle.ExtractUri, corpus.Bytes);
-        var actual = await SendOnce(lolClient, lol.ExtractUri, corpus.Bytes);
-        if (!expected.AsSpan().SequenceEqual(actual))
-            throw new InvalidOperationException($"Servers returned different output for {corpus.Name}.");
-        if (CountLines(expected) != corpus.ExpectedUrls)
-            throw new InvalidOperationException($"Unexpected URL count for {corpus.Name}.");
+        var expected = await SendOnce(services[0].Client, services[0].Target, corpus.Bytes);
+        foreach (var service in services.Skip(1))
+        {
+            var actual = await SendOnce(service.Client, service.Target, corpus.Bytes);
+            if (!expected.AsSpan().SequenceEqual(actual))
+                throw new InvalidOperationException($"{service.Name} returned different output for {corpus.Name}.");
+        }
+        var observed = options.Endpoint == "rewrite"
+            ? CountOccurrences(expected, "data-q=\"1\""u8)
+            : CountLines(expected);
+        if (observed != corpus.ExpectedUrls)
+            throw new InvalidOperationException($"Unexpected match count for {corpus.Name}: {observed}.");
 
         foreach (var concurrency in options.Concurrency)
         {
@@ -46,7 +60,7 @@ try
 
             for (var round = 1; round <= options.Rounds; round++)
             {
-                var order = round % 2 == 0 ? services.Reverse() : services;
+                var order = round % 2 == 0 ? Enumerable.Reverse(services) : services;
                 foreach (var service in order)
                 {
                     var result = await Measure(service, corpus, concurrency, options.Duration, round, expected);
@@ -61,12 +75,13 @@ try
             }
         }
     }
-    report = BuildReport(options, results, angle, lol);
+    report = BuildReport(options, results, angle, lol, angleJit);
 }
 finally
 {
     angle.Stop();
     lol.Stop();
+    angleJit?.Stop();
 }
 
 if (report is null)
@@ -99,7 +114,7 @@ static async Task WarmUp(Service service, Corpus corpus, int concurrency, int re
         {
             _ = worker;
             for (var index = 0; index < perWorker; index++)
-                _ = await SendOnce(service.Client, service.Process.ExtractUri, corpus.Bytes);
+                _ = await SendOnce(service.Client, service.Target, corpus.Bytes);
         })
     );
 }
@@ -141,7 +156,7 @@ static async Task<LaneRun> Measure(
         while (Stopwatch.GetTimestamp() < deadline)
         {
             var requestStart = Stopwatch.GetTimestamp();
-            var response = await SendOnce(service.Client, service.Process.ExtractUri, corpus.Bytes);
+            var response = await SendOnce(service.Client, service.Target, corpus.Bytes);
             var requestEnd = Stopwatch.GetTimestamp();
             if (!expected.AsSpan().SequenceEqual(response))
                 throw new InvalidOperationException($"{service.Name} returned inconsistent output.");
@@ -165,20 +180,29 @@ static async Task<byte[]> SendOnce(HttpClient client, Uri endpoint, byte[] paylo
     return await response.Content.ReadAsByteArrayAsync();
 }
 
-static string BuildReport(Options options, List<LaneRun> runs, ServerProcess angle, ServerProcess lol)
+static string BuildReport(
+    Options options,
+    List<LaneRun> runs,
+    ServerProcess angle,
+    ServerProcess lol,
+    ServerProcess? angleJit
+)
 {
     var output = new StringBuilder();
     output.AppendLine("# Native HTTP product comparison");
     output.AppendLine();
     output.AppendLine($"- Timestamp: `{DateTimeOffset.Now:O}`");
+    output.AppendLine($"- Endpoint: `/{options.Endpoint}`");
     output.AppendLine("- Input: HTTP/1.1 keep-alive, chunked request body written in 4 KiB chunks");
     output.AppendLine($"- Measurement: {options.Rounds} alternating rounds x {options.Duration.TotalSeconds:N0} seconds");
     output.AppendLine($"- Warmup: {options.WarmupRequests} requests per lane");
     output.AppendLine("- Servers: Rust release binary and .NET NativeAOT/Kestrel binary");
     if (angle.PeakWorkingSet64 > 0 && lol.PeakWorkingSet64 > 0)
     {
-        output.AppendLine($"- AngleSharp peak working set: {angle.PeakWorkingSet64 / 1024.0 / 1024.0:N1} MiB");
+        output.AppendLine($"- AngleSharp NativeAOT peak working set: {angle.PeakWorkingSet64 / 1024.0 / 1024.0:N1} MiB");
         output.AppendLine($"- lol-html peak working set: {lol.PeakWorkingSet64 / 1024.0 / 1024.0:N1} MiB");
+        if (angleJit is not null)
+            output.AppendLine($"- AngleSharp JIT peak working set: {angleJit.PeakWorkingSet64 / 1024.0 / 1024.0:N1} MiB");
     }
     output.AppendLine();
     output.AppendLine("| Corpus | Concurrency | Service | Requests | Req/s | p50 | p95 | p99 | CPU ms/request |");
@@ -206,6 +230,18 @@ static double Percentile(double[] values, double percentile)
 }
 
 static int CountLines(byte[] value) => value.Count(item => item == (byte)'\n');
+
+static int CountOccurrences(byte[] value, ReadOnlySpan<byte> needle)
+{
+    var count = 0;
+    var span = value.AsSpan();
+    for (var index = span.IndexOf(needle); index >= 0; index = span.IndexOf(needle))
+    {
+        count++;
+        span = span[(index + needle.Length)..];
+    }
+    return count;
+}
 
 static byte[] RepeatBody(byte[] utf8, int copies)
 {
@@ -254,18 +290,21 @@ sealed class ChunkedContent(byte[] payload) : HttpContent
 
 sealed class ServerProcess : IDisposable
 {
+    private readonly int _port;
+
     private ServerProcess(string name, Process process, int port)
     {
         Name = name;
         Process = process;
+        _port = port;
         HealthUri = new Uri($"http://127.0.0.1:{port}/health");
-        ExtractUri = new Uri($"http://127.0.0.1:{port}/extract");
     }
 
     public string Name { get; }
     public Process Process { get; }
     public Uri HealthUri { get; }
-    public Uri ExtractUri { get; }
+
+    public Uri EndpointUri(string endpoint) => new($"http://127.0.0.1:{_port}/{endpoint}");
     public long PeakWorkingSet64
     {
         get
@@ -322,7 +361,7 @@ sealed class ServerProcess : IDisposable
     }
 }
 
-sealed record Service(string Name, ServerProcess Process, HttpClient Client);
+sealed record Service(string Name, ServerProcess Process, HttpClient Client, Uri Target);
 sealed record Corpus(string Name, byte[] Bytes, int ExpectedUrls);
 sealed record LaneRun(
     string Service,
@@ -338,8 +377,10 @@ sealed record LaneRun(
 sealed record Options(
     string AngleServer,
     string LolServer,
+    string? AngleJitServer,
     string CorpusPath,
     string OutputPath,
+    string Endpoint,
     int Rounds,
     TimeSpan Duration,
     int WarmupRequests,
@@ -351,11 +392,16 @@ sealed record Options(
         var values = args
             .Chunk(2)
             .ToDictionary(pair => pair[0], pair => pair.Length == 2 ? pair[1] : string.Empty);
+        var endpoint = values.GetValueOrDefault("--endpoint", "extract");
+        if (endpoint is not ("extract" or "rewrite"))
+            throw new ArgumentException($"Unknown endpoint: {endpoint}");
         return new Options(
             Required("--angle"),
             Required("--lol"),
+            values.GetValueOrDefault("--angle-jit"),
             Required("--corpus"),
             values.GetValueOrDefault("--output", "artifacts/benchmarks/product-comparison.md"),
+            endpoint,
             int.Parse(values.GetValueOrDefault("--rounds", "3"), CultureInfo.InvariantCulture),
             TimeSpan.FromSeconds(
                 double.Parse(values.GetValueOrDefault("--seconds", "10"), CultureInfo.InvariantCulture)
