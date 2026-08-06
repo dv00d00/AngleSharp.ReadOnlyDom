@@ -123,10 +123,13 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     private static readonly SearchValues<Byte> DiscardedAttributeNameTerminators = SearchValues.Create(
         "\t\n\f\r /=>"u8
     );
-    private static readonly SearchValues<Byte> DoubleQuotedAttributeValueTerminators = SearchValues.Create("\"&\0\r"u8);
-    private static readonly SearchValues<Byte> SingleQuotedAttributeValueTerminators = SearchValues.Create("'&\0\r"u8);
+    // '&' never terminates a captured value scan: a character reference inside an attribute
+    // value cannot affect tokenization, so references are decoded once over the contiguous
+    // buffered value when the attribute commits instead of per byte during the scan.
+    private static readonly SearchValues<Byte> DoubleQuotedAttributeValueTerminators = SearchValues.Create("\"\0\r"u8);
+    private static readonly SearchValues<Byte> SingleQuotedAttributeValueTerminators = SearchValues.Create("'\0\r"u8);
     private static readonly SearchValues<Byte> UnquotedAttributeValueTerminators = SearchValues.Create(
-        "\0&>\t\n\f\r "u8
+        "\0>\t\n\f\r "u8
     );
     private static readonly SearchValues<Byte> DiscardedUnquotedAttributeValueTerminators = SearchValues.Create(
         ">\t\n\f\r "u8
@@ -149,13 +152,13 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         "\0\t\n\f\r /=>"u8
     );
     private static readonly SearchValues<Byte> DoubleQuotedAttributeValueArbitraryAllowed = CreateArbitraryAllowed(
-        "\"&\0\r"u8
+        "\"\0\r"u8
     );
     private static readonly SearchValues<Byte> SingleQuotedAttributeValueArbitraryAllowed = CreateArbitraryAllowed(
-        "'&\0\r"u8
+        "'\0\r"u8
     );
     private static readonly SearchValues<Byte> UnquotedAttributeValueArbitraryAllowed = CreateArbitraryAllowed(
-        "\0&>\t\n\f\r "u8
+        "\0>\t\n\f\r "u8
     );
     private static readonly SearchValues<Byte> CommentArbitraryAllowed = CreateArbitraryAllowed("<-\0\r"u8);
     private static readonly SearchValues<Byte> EscapedScriptTextArbitraryAllowed = CreateArbitraryAllowed("<-\0\r"u8);
@@ -261,6 +264,7 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     private readonly Utf8TokenBuffer _name = new(32);
     private readonly Utf8TokenBuffer _attributeName = new(32);
     private Utf8TokenBuffer? _attributeValue;
+    private Utf8TokenBuffer? _decodedAttributeValue;
     private Utf8TokenBuffer? _seenAttributeNames;
     private readonly Utf8TokenBuffer _candidate = new(64);
     private Utf8TokenBuffer? _doctypePublic;
@@ -1136,16 +1140,10 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                     {
                         _state = State.AfterAttributeValueQuoted;
                     }
-                    else if (
-                        value == (Byte)'&'
-                        && _attributeCapture == AttributeCapture.Capture
-                        && !IsNotConsumingCharacterReferences
-                    )
-                    {
-                        BeginCharacterReference(_state);
-                    }
                     else
                     {
+                        // '&' is appended raw here: attribute character references are
+                        // decoded over the buffered value when the attribute commits.
                         if (_attributeCapture == AttributeCapture.Capture)
                         {
                             AppendReplacedNull(AttributeValue, value, lowerAscii: false);
@@ -1157,14 +1155,6 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                     {
                         CommitAttribute();
                         _state = State.BeforeAttributeName;
-                    }
-                    else if (
-                        value == (Byte)'&'
-                        && _attributeCapture == AttributeCapture.Capture
-                        && !IsNotConsumingCharacterReferences
-                    )
-                    {
-                        BeginCharacterReference(_state);
                     }
                     else if (value == (Byte)'>')
                     {
@@ -1806,6 +1796,161 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         _state = State.CharacterReference;
     }
 
+    /// <summary>
+    /// Decodes character references over a fully buffered attribute value. References in
+    /// attribute values cannot affect tokenization, so the scan buffers their bytes raw and
+    /// this pass resolves them once per attribute instead of routing every byte through the
+    /// per-byte reference machinery. Mirrors the reference states in attribute context,
+    /// including the missing-semicolon suppression rule; the value's real terminator (quote,
+    /// space, or '&gt;') is never alphanumeric or '=', so the end of the buffer never
+    /// suppresses a match.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void DecodeAttributeValueReferences(
+        ReadOnlySpan<Byte> value,
+        Int32 ampersand,
+        Utf8TokenBuffer destination
+    )
+    {
+        var index = ampersand;
+        Append(destination, value[..index]);
+        while (true)
+        {
+            index = DecodeAttributeReference(value, index, destination);
+            var run = value[index..].IndexOf((Byte)'&');
+            if (run < 0)
+            {
+                Append(destination, value[index..]);
+                return;
+            }
+            Append(destination, value.Slice(index, run));
+            index += run;
+        }
+    }
+
+    /// <summary>
+    /// Decodes the single reference candidate whose '&amp;' sits at <paramref name="index"/>,
+    /// appends its result to <paramref name="destination"/>, and returns the index of the
+    /// first byte it did not consume.
+    /// </summary>
+    private Int32 DecodeAttributeReference(ReadOnlySpan<Byte> value, Int32 index, Utf8TokenBuffer destination)
+    {
+        var position = index + 1;
+        if (position < value.Length && value[position] == (Byte)'#')
+        {
+            return DecodeNumericAttributeReference(value, index, destination);
+        }
+
+        // The per-byte machine accumulates at most 32 alphanumeric candidate bytes.
+        var start = position;
+        while (position < value.Length && position - start < 32 && IsAsciiAlphaNumeric(value[position]))
+        {
+            position++;
+        }
+        if (position == start)
+        {
+            Append(destination, "&"u8);
+            return position;
+        }
+
+        var hasSemicolon = position < value.Length && value[position] == (Byte)';';
+        var candidate = value[start..(position + (hasSemicolon ? 1 : 0))];
+        Span<Byte> replacement = stackalloc Byte[8];
+        var entityLength = Utf8HtmlEntityDecoder.WriteLongestSymbolUtf8(candidate, replacement, out var matchedLength);
+        if (entityLength != 0 && candidate[matchedLength - 1] != (Byte)';')
+        {
+            var followerIndex = start + matchedLength;
+            if (
+                followerIndex < value.Length
+                && (value[followerIndex] == (Byte)'=' || IsAsciiAlphaNumeric(value[followerIndex]))
+            )
+            {
+                entityLength = 0;
+            }
+        }
+        if (entityLength != 0)
+        {
+            Append(destination, replacement[..entityLength]);
+            Append(destination, candidate[matchedLength..]);
+        }
+        else
+        {
+            Append(destination, "&"u8);
+            Append(destination, candidate);
+        }
+        return position + (hasSemicolon ? 1 : 0);
+    }
+
+    private Int32 DecodeNumericAttributeReference(ReadOnlySpan<Byte> value, Int32 index, Utf8TokenBuffer destination)
+    {
+        // index points at '&', index + 1 at '#'.
+        var position = index + 2;
+        var isHex = position < value.Length && (value[position] | 0x20) == (Byte)'x';
+        if (isHex)
+        {
+            position++;
+        }
+        var radix = isHex ? 16u : 10u;
+        var digitsStart = position;
+        var scalar = 0u;
+        var overflow = false;
+        while (position < value.Length)
+        {
+            var digit = (UInt32)(value[position] - (Byte)'0');
+            if (digit > 9)
+            {
+                if (!isHex)
+                {
+                    break;
+                }
+                digit = (UInt32)((value[position] | 0x20) - (Byte)'a');
+                if (digit > 5)
+                {
+                    break;
+                }
+                digit += 10;
+            }
+            if (!overflow && scalar <= (0x10FFFFu - digit) / radix)
+            {
+                scalar = scalar * radix + digit;
+            }
+            else
+            {
+                overflow = true;
+            }
+            position++;
+        }
+        if (position == digitsStart)
+        {
+            // "&#" or "&#x" without digits is flushed raw; a terminating ';' goes with it.
+            var end = position < value.Length && value[position] == (Byte)';' ? position + 1 : position;
+            Append(destination, value[index..end]);
+            return end;
+        }
+        if (position < value.Length && value[position] == (Byte)';')
+        {
+            position++;
+        }
+
+        Span<Byte> replacement = stackalloc Byte[4];
+        Int32 length;
+        if (overflow)
+        {
+            length = WriteReplacementCharacter(replacement);
+        }
+        else
+        {
+            var code = (Int32)scalar;
+            var mapped = Utf8HtmlEntityDecoder.GetSymbolCodeFromTable(code);
+            code = mapped < 0 ? code : mapped;
+            length = Utf8HtmlEntityDecoder.IsInvalidNumber(code)
+                ? WriteReplacementCharacter(replacement)
+                : WriteScalarUtf8(code, replacement);
+        }
+        Append(destination, replacement[..length]);
+        return position;
+    }
+
     private void BeginTag(Boolean isEndTag, Byte firstByte)
     {
         _isEndTag = isEndTag;
@@ -1881,7 +2026,19 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         {
             if (_attributeCapture == AttributeCapture.Capture)
             {
-                _sink.Attribute(name, WrittenSpan(_attributeValue));
+                var value = WrittenSpan(_attributeValue);
+                var ampersand = IsNotConsumingCharacterReferences ? -1 : value.IndexOf((Byte)'&');
+                if (ampersand < 0)
+                {
+                    _sink.Attribute(name, value);
+                }
+                else
+                {
+                    var decoded = _decodedAttributeValue ??= new(128);
+                    DecodeAttributeValueReferences(value, ampersand, decoded);
+                    _sink.Attribute(name, WrittenSpan(decoded));
+                    Clear(decoded);
+                }
             }
         }
         Clear(_attributeName);
