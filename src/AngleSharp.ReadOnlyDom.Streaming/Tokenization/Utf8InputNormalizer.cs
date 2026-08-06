@@ -103,8 +103,9 @@ internal struct Utf8InputNormalizer<TResourceLimits>
 
         // The ASCII fast path lets the tokenizer's own state machine consume unvalidated input and
         // stop exactly at the first non-ASCII byte, so validation runs only over non-ASCII runs.
-        // It cannot be used while start-tag source ranges are observed, because a partially
-        // consumed span would be observed again on re-entry.
+        // It cannot be used while start-tag source ranges are observed: the fused path swallows
+        // unvalidated bytes inside discarded text (nothing consumes them), but an observing sink
+        // republishes the stream, which must be normalized UTF-8.
         var asciiFastPath = !tokenizer.TracksStartTagSourceRanges;
 
         while (index < utf8.Length)
