@@ -502,6 +502,7 @@ public sealed class QueryTests
         (string Html, int Matches)[] cases =
         [
             ("<aside alpha=one beta=two><mark></mark></aside>", 1),
+            ("<aside alpha=one\r\n\t                                beta=two><mark></mark></aside>", 1),
             ("<aside alpha=\"x>y\" beta='z' gamma=u delta = \"v\"/><mark></mark>", 1),
             ("<aside alpha='closed'unexpected=ok><mark></mark></aside>", 1),
             ("<aside alpha='unterminated><mark></mark></aside>", 0),
