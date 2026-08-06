@@ -13,7 +13,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks.Support;
 //      the normalizer) and fed through the trusted contract.
 // Both across three sink modes: text-capturing, attributes-only, and discard-everything - the
 // last one returns no captures at all, which is what routes tag tails through the raw
-// ScanDiscardedTagTail path that skips validation entirely. Chunking invariance is the property
+// ScanTagTail discarded path that skips validation entirely. Chunking invariance is the property
 // that catches replacement-ordering bugs: a U+FFFD emitted from a carry drains at the wrong
 // stream position long before any unit test notices.
 //

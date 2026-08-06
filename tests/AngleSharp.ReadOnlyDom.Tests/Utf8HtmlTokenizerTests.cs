@@ -30,6 +30,31 @@ public sealed class Utf8HtmlTokenizerTests
     }
 
     [Test]
+    [Arguments("<a first=1 second=2>tail", false)]
+    [Arguments("<a first='1' second=2>tail", false)]
+    [Arguments("<a first=1 second=2>tail", true)]
+    public async Task YieldRequestedByAttributeCallbackStopsTheCurrentWrite(String html, Boolean requestFromWants)
+    {
+        var sink = new YieldingAttributeSink(requestFromWants);
+        var tokenizer = new Utf8HtmlTokenizer(sink);
+        sink.Tokenizer = tokenizer;
+        var utf8 = Encoding.UTF8.GetBytes(html);
+
+        var consumed = tokenizer.WriteUntilYield(utf8);
+
+        await Assert.That(consumed).IsLessThan(utf8.Length);
+        await Assert.That(sink.Attributes.Count).IsEqualTo(requestFromWants ? 0 : 1);
+        await Assert.That(sink.StartTagEnded).IsFalse();
+
+        var resumed = tokenizer.WriteUntilYield(utf8.AsSpan(consumed));
+        tokenizer.Complete();
+
+        await Assert.That(consumed + resumed).IsEqualTo(utf8.Length);
+        await Assert.That(sink.Attributes).IsEquivalentTo(["first=1", "second=2"]);
+        await Assert.That(sink.StartTagEnded).IsTrue();
+    }
+
+    [Test]
     public async Task PipeReaderConsumesUtf8WithoutMaterializingWholeResponse()
     {
         var utf8 = Encoding.UTF8.GetBytes(Html);
@@ -507,6 +532,55 @@ public sealed class Utf8HtmlTokenizerTests
                 utf8 = utf8[consumed..];
             }
         }
+    }
+
+    private sealed class YieldingAttributeSink(Boolean requestFromWants) : IUtf8HtmlTokenSink
+    {
+        private Boolean _requested;
+
+        public Utf8HtmlTokenizer Tokenizer { get; set; } = null!;
+
+        public List<String> Attributes { get; } = [];
+
+        public Boolean StartTagEnded { get; private set; }
+
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.None;
+
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name) => Utf8HtmlStartTagCapture.Attributes;
+
+        public Boolean WantsAttribute(Utf8HtmlName name)
+        {
+            if (requestFromWants && !_requested)
+            {
+                _requested = true;
+                Tokenizer.RequestYield();
+            }
+            return true;
+        }
+
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<Byte> value)
+        {
+            Attributes.Add($"{Encoding.UTF8.GetString(name.Verbatim)}={Encoding.UTF8.GetString(value)}");
+            if (!requestFromWants && !_requested)
+            {
+                _requested = true;
+                Tokenizer.RequestYield();
+            }
+        }
+
+        public void StartTagEnd(Boolean selfClosing) => StartTagEnded = true;
+
+        public void Text(ReadOnlySpan<Byte> utf8) { }
+
+        public void EndTag(Utf8HtmlName name) { }
+
+        public void Comment(ReadOnlySpan<Byte> utf8) { }
+
+        public void ProcessingInstruction(ReadOnlySpan<Byte> utf8) { }
+
+        public void Doctype(in Utf8DoctypeToken token) { }
+
+        public void EndOfFile() { }
     }
 }
 #endif
