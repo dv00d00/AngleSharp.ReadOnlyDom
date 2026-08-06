@@ -38,7 +38,13 @@ fn main() {
 
     let dump = options.dump.as_deref();
     for _ in 0..options.warmup {
-        let _ = parse(&input, options.chunk_size, &options.workload, &options.query, dump);
+        let _ = parse(
+            &input,
+            options.chunk_size,
+            &options.workload,
+            &options.query,
+            dump,
+        );
     }
 
     let started = Instant::now();
@@ -46,7 +52,13 @@ fn main() {
     let mut requests = 0u64;
     let mut checksum = 0i64;
     let last = loop {
-        let result = parse(&input, options.chunk_size, &options.workload, &options.query, dump);
+        let result = parse(
+            &input,
+            options.chunk_size,
+            &options.workload,
+            &options.query,
+            dump,
+        );
         checksum = checksum.wrapping_add(result.1);
         requests += 1;
         if started.elapsed() >= duration {

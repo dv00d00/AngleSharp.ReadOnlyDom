@@ -7,9 +7,10 @@ use axum::Router;
 use http_body_util::BodyExt;
 use lol_html::send::{HtmlRewriter, Settings};
 use lol_html::{element, OutputSink};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::wrappers::ReceiverStream;
 
 struct DiscardOutput;
 
@@ -21,24 +22,33 @@ impl OutputSink for DiscardOutput {
 // frame is a syscall per handful of bytes. Coalescing to response-sized segments matches what
 // the Kestrel lane gets for free from its pipe.
 const COALESCE_BYTES: usize = 16 * 1024;
+const CHANNEL_CAPACITY: usize = 2;
 
 struct ChannelOutput {
-    tx: mpsc::UnboundedSender<Result<Bytes, std::io::Error>>,
+    tx: mpsc::Sender<Result<Bytes, std::io::Error>>,
     buffer: Vec<u8>,
+    receiver_closed: Arc<AtomicBool>,
 }
 
 impl ChannelOutput {
-    fn new(tx: mpsc::UnboundedSender<Result<Bytes, std::io::Error>>) -> Self {
+    fn new(
+        tx: mpsc::Sender<Result<Bytes, std::io::Error>>,
+        receiver_closed: Arc<AtomicBool>,
+    ) -> Self {
         Self {
             tx,
             buffer: Vec::with_capacity(COALESCE_BYTES),
+            receiver_closed,
         }
     }
 
     fn flush(&mut self) {
-        if !self.buffer.is_empty() {
-            // A dropped receiver means the client went away; the write loop notices on its own.
-            let _ = self.tx.send(Ok(Bytes::from(std::mem::take(&mut self.buffer))));
+        if self.buffer.is_empty() || self.receiver_closed.load(Ordering::Relaxed) {
+            return;
+        }
+        let chunk = Bytes::from(std::mem::take(&mut self.buffer));
+        if self.tx.blocking_send(Ok(chunk)).is_err() {
+            self.receiver_closed.store(true, Ordering::Relaxed);
         }
     }
 }
@@ -104,10 +114,29 @@ impl axum::serve::Listener for NoDelayListener {
 // is still arriving. The spawned task owns the rewriter; its channel closing (on completion or
 // error) is what terminates the chunked response.
 async fn rewrite(request: Request) -> Response {
-    let (tx, rx) = mpsc::unbounded_channel::<Result<Bytes, std::io::Error>>();
-    let sink_tx = tx.clone();
+    // The async request pump and synchronous lol-html worker are separated by bounded channels.
+    // The worker blocks when the response stops draining, propagating socket backpressure all the
+    // way to request-body consumption instead of queueing the complete rewritten document.
+    let (input_tx, mut input_rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(CHANNEL_CAPACITY);
+    let (output_tx, output_rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(CHANNEL_CAPACITY);
     let mut body = request.into_body();
     tokio::spawn(async move {
+        while let Some(frame) = body.frame().await {
+            let item = match frame {
+                Ok(frame) => match frame.into_data() {
+                    Ok(data) => Ok(data),
+                    Err(_) => continue,
+                },
+                Err(_) => Err(std::io::Error::other("request body read failed")),
+            };
+            let failed = item.is_err();
+            if input_tx.send(item).await.is_err() || failed {
+                return;
+            }
+        }
+    });
+
+    tokio::task::spawn_blocking(move || {
         let settings = Settings::new_send().append_element_content_handler(element!(
             "ul.news-list li[dt-eid='em_item_article'] a[href]",
             |element| {
@@ -115,26 +144,36 @@ async fn rewrite(request: Request) -> Response {
                 Ok(())
             }
         ));
-        let mut rewriter = HtmlRewriter::new(settings, ChannelOutput::new(sink_tx));
-        while let Some(frame) = body.frame().await {
-            let Ok(frame) = frame else {
-                let _ = tx.send(Err(std::io::Error::other("request body read failed")));
-                return;
-            };
-            if let Ok(data) = frame.into_data() {
-                if rewriter.write(&data).is_err() {
-                    let _ = tx.send(Err(std::io::Error::other("rewrite failed")));
+        let receiver_closed = Arc::new(AtomicBool::new(false));
+        let mut rewriter = HtmlRewriter::new(
+            settings,
+            ChannelOutput::new(output_tx.clone(), Arc::clone(&receiver_closed)),
+        );
+        while let Some(frame) = input_rx.blocking_recv() {
+            let data = match frame {
+                Ok(data) => data,
+                Err(error) => {
+                    drop(rewriter);
+                    let _ = output_tx.blocking_send(Err(error));
                     return;
                 }
+            };
+            if rewriter.write(&data).is_err() {
+                drop(rewriter);
+                let _ = output_tx.blocking_send(Err(std::io::Error::other("rewrite failed")));
+                return;
+            }
+            if receiver_closed.load(Ordering::Relaxed) {
+                return;
             }
         }
         if rewriter.end().is_err() {
-            let _ = tx.send(Err(std::io::Error::other("rewrite failed")));
+            let _ = output_tx.blocking_send(Err(std::io::Error::other("rewrite failed")));
         }
     });
     (
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        Body::from_stream(UnboundedReceiverStream::new(rx)),
+        Body::from_stream(ReceiverStream::new(output_rx)),
     )
         .into_response()
 }
