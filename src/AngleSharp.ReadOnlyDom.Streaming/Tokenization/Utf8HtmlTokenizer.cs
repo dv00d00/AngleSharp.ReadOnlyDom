@@ -616,8 +616,18 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                     // previous start tag (the raw-text end-tag path skips BeginTag).
                     var sourceOffset = trackSourceRanges ? sourceBase + index : 0;
                     var consumed = !_isEndTag && _captureStartTagAttributes
-                        ? ScanTagTail<TMetrics, TTrust, CaptureOn>(utf8[index..], sourceOffset, trackSourceRanges)
-                        : ScanTagTail<TMetrics, TTrust, CaptureOff>(utf8[index..], sourceOffset, trackSourceRanges);
+                        ? ScanTagTail<TMetrics, TTrust, CaptureOn>(
+                            utf8[index..],
+                            sourceOffset,
+                            trackSourceRanges,
+                            yieldOnRequest
+                        )
+                        : ScanTagTail<TMetrics, TTrust, CaptureOff>(
+                            utf8[index..],
+                            sourceOffset,
+                            trackSourceRanges,
+                            yieldOnRequest
+                        );
                     if (consumed > 0)
                     {
                         index += consumed;
@@ -2965,7 +2975,8 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     private Int32 ScanTagTail<TMetrics, TTrust, TCapture>(
         ReadOnlySpan<Byte> utf8,
         Int64 sourceOffset,
-        Boolean trackSourceRanges
+        Boolean trackSourceRanges,
+        Boolean yieldOnRequest
     )
         where TMetrics : struct, IStateMetricsPolicy
         where TTrust : struct, IInputTrustPolicy
@@ -2982,6 +2993,9 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         // non-ASCII) hand back to the per-byte fallback by writing _state and returning the
         // consumed count, after which the outer loop re-enters the scanner.
         var index = 0;
+        // A callback may request a yield while the old per-byte machine is still reconsuming the
+        // current delimiter. Finish that transition before returning at the same observable boundary.
+        var yieldAfterTransition = false;
         Byte value;
         switch (_state)
         {
@@ -3031,6 +3045,11 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             if (value == (Byte)'/')
             {
                 index++;
+                if (yieldAfterTransition)
+                {
+                    _state = State.SelfClosingStartTag;
+                    return index;
+                }
                 goto SelfClosingStartTag;
             }
             if (TCapture.Enabled)
@@ -3047,6 +3066,11 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 _attributeNameIdentityCache.Reset();
                 Append(_attributeName, value);
                 index++;
+            }
+            if (yieldAfterTransition)
+            {
+                _state = State.AttributeName;
+                return index;
             }
             goto AttributeName;
         }
@@ -3089,6 +3113,11 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 if (TCapture.Enabled)
                 {
                     DecideAttributeCapture();
+                    if (yieldOnRequest && _yieldRequested)
+                    {
+                        _state = State.BeforeAttributeValue;
+                        return index;
+                    }
                 }
                 goto BeforeAttributeValue;
             }
@@ -3102,6 +3131,7 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             if (TCapture.Enabled)
             {
                 CommitAttribute();
+                yieldAfterTransition = yieldOnRequest && _yieldRequested;
             }
             goto BeforeAttributeName;
         }
@@ -3127,6 +3157,11 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 if (TCapture.Enabled)
                 {
                     DecideAttributeCapture();
+                    if (yieldOnRequest && _yieldRequested)
+                    {
+                        _state = State.BeforeAttributeValue;
+                        return index;
+                    }
                 }
                 goto BeforeAttributeValue;
             }
@@ -3135,6 +3170,7 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             if (TCapture.Enabled)
             {
                 CommitAttribute();
+                yieldAfterTransition = yieldOnRequest && _yieldRequested;
             }
             goto BeforeAttributeName;
         }
@@ -3332,6 +3368,11 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 CommitAttribute();
             }
             index++;
+            if (yieldOnRequest && _yieldRequested)
+            {
+                _state = State.BeforeAttributeName;
+                return index;
+            }
             goto BeforeAttributeName;
         }
 
@@ -3353,17 +3394,32 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             if (IsSpace(value))
             {
                 index++;
+                if (yieldOnRequest && _yieldRequested)
+                {
+                    _state = State.BeforeAttributeName;
+                    return index;
+                }
                 goto BeforeAttributeName;
             }
             if (value == (Byte)'/')
             {
                 index++;
+                if (yieldOnRequest && _yieldRequested)
+                {
+                    _state = State.SelfClosingStartTag;
+                    return index;
+                }
                 goto SelfClosingStartTag;
             }
             if (value == (Byte)'>')
             {
                 _state = State.AfterAttributeValueQuoted;
                 FinishScannedTag(ref index, selfClosing: false, sourceOffset, trackSourceRanges);
+                return index;
+            }
+            if (yieldOnRequest && _yieldRequested)
+            {
+                _state = State.BeforeAttributeName;
                 return index;
             }
             goto BeforeAttributeName;
