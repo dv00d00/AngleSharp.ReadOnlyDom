@@ -274,6 +274,7 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     private Boolean _isEndTag;
     private Boolean _startTagEmitted;
     private Boolean _captureStartTagAttributes;
+    private UInt64 _attributeNameFilter;
     private Boolean _captureText;
     private Boolean _pendingCarriageReturn;
     private String? _rawEndTag;
@@ -1971,6 +1972,12 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         }
 
         _captureStartTagAttributes = (_sink.StartTag(CurrentTagName()) & Utf8HtmlStartTagCapture.Attributes) != 0;
+        if (_captureStartTagAttributes)
+        {
+            // One virtual fetch per captured tag; DecideAttributeCapture then pre-filters every
+            // attribute of the tag against this snapshot without calling back into the sink.
+            _attributeNameFilter = _sink.StartTagAttributeFilter;
+        }
         _startTagEmitted = true;
     }
 
@@ -1987,6 +1994,26 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             return;
         }
         EmitTagStart();
+        // Query-directed pre-filter: the sink published a bloom over the semantic hashes of every
+        // attribute name it can still want on this tag (IUtf8HtmlTokenSink.StartTagAttributeFilter).
+        // A missed bit proves the sink rejects this name, so the fast path skips Utf8HtmlName
+        // materialization, the virtual WantsAttribute call, and duplicate tracking. Skipping the
+        // duplicate tracking is safe: suppression is only observable for emitted attributes, and a
+        // semantically equal respelling folds to the same hash and therefore the same verdict, so
+        // every occurrence of a filter-rejected name is rejected here — a rejected occurrence can
+        // never be the first-seen occurrence of an accepted name. Hash false positives merely fall
+        // through to the exact path below, which behaves exactly as the unfiltered tokenizer.
+        var filter = _attributeNameFilter;
+        if (
+            filter != UInt64.MaxValue
+            && (
+                filter & Utf8NameHash.AttributeFilterBit(_attributeNameIdentityCache.GetOrCompute(_attributeName.WrittenSpan))
+            ) == 0
+        )
+        {
+            _attributeCapture = AttributeCapture.Discard;
+            return;
+        }
         var name = CurrentAttributeName();
         var capture = _sink.WantsAttribute(name);
         _attributeCapture =
