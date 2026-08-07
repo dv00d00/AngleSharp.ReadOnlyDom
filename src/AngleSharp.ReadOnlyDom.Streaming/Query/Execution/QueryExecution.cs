@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
 using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
@@ -67,7 +68,7 @@ internal class QueryExecution<TState, TResourceLimits>
         _activeCounts = ArrayPool<int>.Shared.Rent(Math.Max(plan.Nodes.Length, 1));
         _activeCounts.AsSpan(0, plan.Nodes.Length).Clear();
         _frames = ArrayPool<QueryFrame>.Shared.Rent(Math.Min(64, _maximumNestingDepth));
-        _attributeValues = ArrayPool<byte>.Shared.Rent(256);
+        _attributeValues = [];
         _attributeStarts = ArrayPool<int>.Shared.Rent(Math.Max(plan.AttributeNames.Length, 1));
         _attributeLengths = ArrayPool<int>.Shared.Rent(Math.Max(plan.AttributeNames.Length, 1));
         _attributeLengths.AsSpan(0, plan.AttributeNames.Length).Fill(-1);
@@ -381,14 +382,41 @@ internal class QueryExecution<TState, TResourceLimits>
         if (_disposed)
             return;
         _disposed = true;
+        // Frames popped by EndTag/EndOfFile are defaulted in place, so after a completed parse the
+        // rented array holds no live references and can go back to the pool without a whole-array
+        // clear. Only an abandoned (mid-parse) execution still owns frames and needs the cold sweep.
+        if (_frameCount != 0 || _pendingFallbackTagNameUtf8 is not null)
+            ReleaseLiveFrames();
+        // The int arrays go back dirty on purpose: the constructor re-initializes exactly the
+        // plan-sized prefixes it reads (_activeCounts cleared, _attributeLengths filled with -1),
+        // and _attributeStarts is only ever read where the matching length is non-negative.
+        ArrayPool<int>.Shared.Return(_activeCounts);
+        ArrayPool<QueryFrame>.Shared.Return(_frames);
+        ArrayPool<int>.Shared.Return(_attributeStarts);
+        ArrayPool<int>.Shared.Return(_attributeLengths);
+        if (_attributeValues.Length != 0)
+            ArrayPool<byte>.Shared.Return(_attributeValues);
+        if (_completedCaptures.Length != 0)
+            DisposeCompletedCaptures();
+        _frames = [];
+        _attributeValues = [];
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ReleaseLiveFrames()
+    {
         ReleasePendingFallbackTagName();
         for (var index = 0; index < _frameCount; index++)
+        {
             ReleaseFallbackTagName(_frames[index]);
-        ArrayPool<int>.Shared.Return(_activeCounts, clearArray: true);
-        ArrayPool<QueryFrame>.Shared.Return(_frames, clearArray: true);
-        ArrayPool<byte>.Shared.Return(_attributeValues);
-        ArrayPool<int>.Shared.Return(_attributeStarts, clearArray: true);
-        ArrayPool<int>.Shared.Return(_attributeLengths, clearArray: true);
+            _frames[index] = default;
+        }
+        _frameCount = 0;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void DisposeCompletedCaptures()
+    {
         foreach (var captures in _completedCaptures)
         {
             if (captures is null)
@@ -403,8 +431,6 @@ internal class QueryExecution<TState, TResourceLimits>
             _reusableCaptures.Clear();
         }
         Array.Clear(_completedCaptures);
-        _frames = [];
-        _attributeValues = [];
     }
 
     private bool ParentMatches(QueryPlanNode<TState> node)
@@ -604,10 +630,11 @@ internal class QueryExecution<TState, TResourceLimits>
         if (_attributeValueLength + additional <= _attributeValues.Length)
             return;
         var replacement = ArrayPool<byte>.Shared.Rent(
-            Math.Max(_attributeValues.Length * 2, _attributeValueLength + additional)
+            Math.Max(Math.Max(256, _attributeValues.Length * 2), _attributeValueLength + additional)
         );
         _attributeValues.AsSpan(0, _attributeValueLength).CopyTo(replacement);
-        ArrayPool<byte>.Shared.Return(_attributeValues);
+        if (_attributeValues.Length != 0)
+            ArrayPool<byte>.Shared.Return(_attributeValues);
         _attributeValues = replacement;
     }
 
@@ -617,7 +644,8 @@ internal class QueryExecution<TState, TResourceLimits>
             return;
         var replacement = ArrayPool<QueryFrame>.Shared.Rent(_frames.Length * 2);
         _frames.AsSpan(0, _frameCount).CopyTo(replacement);
-        ArrayPool<QueryFrame>.Shared.Return(_frames, clearArray: true);
+        _frames.AsSpan(0, _frameCount).Clear();
+        ArrayPool<QueryFrame>.Shared.Return(_frames);
         _frames = replacement;
     }
 
