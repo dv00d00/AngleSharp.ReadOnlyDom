@@ -60,7 +60,13 @@ request streaming, parser/query, result ownership, and response writing are inte
 
 ```powershell
 ./scripts/bench-product.ps1 -Seconds 15 -Rounds 5 -Concurrency "1,6"
+./scripts/bench-product.ps1 -Endpoint rewrite-full -Seconds 15 -Rounds 5 -Concurrency "1,6"
 ```
+
+The `rewrite` endpoint adds one attribute to each matched anchor. `rewrite-full` runs the same selector and performs the
+same multi-operation element rewrite in both engines: set and remove attributes, insert content before/after the element,
+and prepend/append inner content. Both servers stream request and response bodies, and the correctness pass requires
+byte-identical output before timing.
 
 ## Maintained inventory
 

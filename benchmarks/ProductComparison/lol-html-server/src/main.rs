@@ -5,6 +5,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
 use http_body_util::BodyExt;
+use lol_html::html_content::ContentType;
 use lol_html::send::{HtmlRewriter, Settings};
 use lol_html::{element, OutputSink};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -78,7 +79,8 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
         .route("/extract", post(extract))
-        .route("/rewrite", post(rewrite));
+        .route("/rewrite", post(rewrite))
+        .route("/rewrite-full", post(rewrite_full));
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
         .await
         .expect("failed to bind benchmark server");
@@ -114,6 +116,14 @@ impl axum::serve::Listener for NoDelayListener {
 // is still arriving. The spawned task owns the rewriter; its channel closing (on completion or
 // error) is what terminates the chunked response.
 async fn rewrite(request: Request) -> Response {
+    rewrite_response(request, false).await
+}
+
+async fn rewrite_full(request: Request) -> Response {
+    rewrite_response(request, true).await
+}
+
+async fn rewrite_response(request: Request, full: bool) -> Response {
     // The async request pump and synchronous lol-html worker are separated by bounded channels.
     // The worker blocks when the response stops draining, propagating socket backpressure all the
     // way to request-body consumption instead of queueing the complete rewritten document.
@@ -139,8 +149,15 @@ async fn rewrite(request: Request) -> Response {
     tokio::task::spawn_blocking(move || {
         let settings = Settings::new_send().append_element_content_handler(element!(
             "ul.news-list li[dt-eid='em_item_article'] a[href]",
-            |element| {
+            move |element| {
                 element.set_attribute("data-q", "1")?;
+                if full {
+                    element.remove_attribute("target");
+                    element.before("<!--q-->", ContentType::Html);
+                    element.prepend("<span class=\"q-prefix\">[</span>", ContentType::Html);
+                    element.append("<span class=\"q-suffix\">]</span>", ContentType::Html);
+                    element.after("<!--/q-->", ContentType::Html);
+                }
                 Ok(())
             }
         ));

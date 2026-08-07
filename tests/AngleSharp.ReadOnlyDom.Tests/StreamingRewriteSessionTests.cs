@@ -17,7 +17,7 @@ public sealed class StreamingRewriteSessionTests
         return root.Compile();
     }
 
-    private static void Edit(ref int count, in Element _, ref StartTagEditor tag)
+    private static void Edit(ref int count, in Element _, ref ElementRewriter tag)
     {
         count++;
         tag.AppendAttribute("data-q"u8, "1"u8);
@@ -119,7 +119,7 @@ public sealed class StreamingRewriteSessionTests
         var plan = CreatePlan();
         var source = "<main><a href='x'>t</a><a href=y /></main>"u8.ToArray();
 
-        static void DoubleEdit(ref int count, in Element _, ref StartTagEditor tag)
+        static void DoubleEdit(ref int count, in Element _, ref ElementRewriter tag)
         {
             count++;
             tag.AppendAttribute("data-q"u8, "1"u8);

@@ -132,7 +132,7 @@ static BenchmarkResult RewriteBuffered(QueryPlan<CountState> plan, byte[] input,
         input,
         output,
         new CountState(),
-        static (ref CountState state, in Element _, ref StartTagEditor tag) =>
+        static (ref CountState state, in Element _, ref ElementRewriter tag) =>
         {
             state.Count++;
             tag.AppendAttribute("data-q"u8, "1"u8);
@@ -150,7 +150,7 @@ static BenchmarkResult RewriteSink(QueryPlan<CountState> plan, byte[] input, Htm
     var state = plan.Rewrite(
         input,
         new CountState(),
-        static (ref CountState state, in Element _, ref StartTagEditor tag) =>
+        static (ref CountState state, in Element _, ref ElementRewriter tag) =>
         {
             state.Count++;
             tag.AppendAttribute("data-q"u8, "1"u8);
@@ -192,7 +192,7 @@ static BenchmarkResult RewriteStream(
                 capture?.Write(segment);
             }
             : static _ => { },
-        static (ref CountState state, in Element _, ref StartTagEditor tag) =>
+        static (ref CountState state, in Element _, ref ElementRewriter tag) =>
         {
             state.Count++;
             tag.AppendAttribute("data-q"u8, "1"u8);

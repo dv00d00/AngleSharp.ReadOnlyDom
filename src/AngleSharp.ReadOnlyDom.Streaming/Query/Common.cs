@@ -17,7 +17,7 @@ public delegate void EndHandler<TState>(ref TState state);
 
 public delegate void CompletedElementHandler<TState>(ref TState state, in CompletedElement element);
 
-public delegate void RewriteHandler<TState>(ref TState state, in Element element, ref StartTagEditor startTag);
+public delegate void RewriteHandler<TState>(ref TState state, in Element element, ref ElementRewriter rewriter);
 
 /// <summary>
 /// Receives one output segment of a rewritten document. Segments borrow the caller's input or the
