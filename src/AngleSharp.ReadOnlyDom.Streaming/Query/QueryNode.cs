@@ -113,7 +113,12 @@ public sealed class QueryNode<TState>
 
     /// <summary>
     /// Invokes <paramref name="handler"/> with runs of HTML ASCII whitespace and NBSP collapsed
-    /// to a single ASCII space. Other Unicode whitespace is preserved.
+    /// to a single ASCII space. Other Unicode whitespace is preserved. A single space also
+    /// separates text across the start and end tags of elements that are not laid out inline, so
+    /// <c>&lt;td&gt;12&lt;/td&gt;&lt;td&gt;34&lt;/td&gt;</c> yields <c>12 34</c> rather than
+    /// <c>1234</c>; inline elements such as <c>span</c> and <c>b</c> do not separate. Boundaries
+    /// adjacent to whitespace or to the edges of the captured text add nothing. Use
+    /// <see cref="OnTextContent"/> to reproduce source text without inserted separators.
     /// </summary>
     public QueryNode<TState> OnNormalizedText(
         CompletedElementHandler<TState> handler,

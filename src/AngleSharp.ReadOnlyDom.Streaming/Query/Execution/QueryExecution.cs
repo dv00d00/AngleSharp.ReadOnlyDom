@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
 using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
@@ -211,6 +212,8 @@ internal class QueryExecution<TState, TResourceLimits>
 
     private void StartTagEndCore(bool selfClosing, long sourceStart, long sourceEnd)
     {
+        if (_activeCompletedTextCaptures != 0)
+            MarkTextBoundary(_pendingTagIdentity, _pendingTagIdentityLength);
         var matches = 0UL;
         var candidates = _pendingCandidateBits;
         while (candidates != 0)
@@ -513,6 +516,8 @@ internal class QueryExecution<TState, TResourceLimits>
 
     private void CloseFrame(QueryFrame frame, long sourceStart, long sourceEnd, bool hasExplicitEndTag)
     {
+        if (_activeCompletedTextCaptures != 0)
+            MarkTextBoundary(frame.TagIdentity, frame.TagIdentityLength);
         try
         {
             _rewriteCollector?.EndElement(frame.RewriteScopeId, sourceStart, sourceEnd, hasExplicitEndTag);
@@ -578,6 +583,30 @@ internal class QueryExecution<TState, TResourceLimits>
             captures.Add(capture);
             if (node.CompletedTextMode != CompletedTextMode.None)
                 _activeCompletedTextCaptures++;
+        }
+    }
+
+    /// <summary>
+    /// Separates words in every open normalized capture when a non-inline element opens or closes.
+    /// Callers gate on <c>_activeCompletedTextCaptures</c> so plans that capture no text pay one
+    /// predictable branch and never reach this call.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void MarkTextBoundary(ulong identity, int identityLength)
+    {
+        if (!HtmlTextBoundaryElements.IsBoundary(identity, identityLength))
+            return;
+
+        var completed = _plan.CompletedHandlerMask;
+        while (completed != 0)
+        {
+            var index = BitOperations.TrailingZeroCount(completed);
+            completed &= completed - 1;
+            var captures = _completedCaptures[index];
+            if (captures is null)
+                continue;
+            foreach (var capture in captures)
+                capture.MarkBoundary();
         }
     }
 
