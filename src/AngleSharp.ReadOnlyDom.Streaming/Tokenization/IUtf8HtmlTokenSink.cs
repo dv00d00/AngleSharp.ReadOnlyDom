@@ -44,6 +44,21 @@ internal interface IUtf8HtmlTokenSink
 
     Boolean WantsAttribute(Utf8HtmlName name);
 
+    /// <summary>
+    /// A 64-bit bloom filter over the semantic hashes of every attribute name the sink can still
+    /// answer <see langword="true"/> for from <see cref="WantsAttribute"/> on the current start
+    /// tag. The tokenizer reads it once per start tag, immediately after <see cref="StartTag"/>
+    /// requests attribute capture, and rejects an attribute without materializing its name,
+    /// calling <see cref="WantsAttribute"/>, or tracking it for duplicate suppression when
+    /// <c>(filter &amp; Utf8NameHash.AttributeFilterBit(semanticHash)) == 0</c>. A cleared bit is
+    /// therefore a promise; a set bit is only a hint (false positives fall through to
+    /// <see cref="WantsAttribute"/>). Implementations that narrow the filter promise that their
+    /// <see cref="WantsAttribute"/> answer is a pure function of the semantic (ASCII case-folded)
+    /// name for the duration of the tag. The default wants everything, which preserves the exact
+    /// unfiltered behavior.
+    /// </summary>
+    UInt64 StartTagAttributeFilter => UInt64.MaxValue;
+
     void EndOfFile() { }
 }
 

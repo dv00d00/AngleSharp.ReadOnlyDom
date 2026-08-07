@@ -591,6 +591,87 @@ public sealed class Utf8HtmlTokenizerTests
         }
     }
 
+    [Test]
+    [Arguments(1)]
+    [Arguments(4)]
+    [Arguments(Int32.MaxValue)]
+    public async Task StartTagAttributeFilterSkipsExactlyTheFilterMissedNames(Int32 chunkSize)
+    {
+        var wantedBit = Utf8NameHash.AttributeFilterBit(Utf8NameHash.ComputeSemantic("href"u8));
+        // Derived from the current hash so the shapes stay constructible if the function changes:
+        // 'missed' can never intersect the wanted filter, 'collider' shares href's exact bit
+        // without being semantically equal to it (a guaranteed bloom false positive).
+        var missed = FindAttributeName(bit => (bit & wantedBit) == 0);
+        var collider = FindAttributeName(bit => bit == wantedBit);
+        var sink = new FilteringAttributeSink { StartTagAttributeFilter = wantedBit };
+        var tokenizer = new Utf8HtmlTokenizer(sink);
+        var utf8 = Encoding.UTF8.GetBytes(
+            $"<a {missed}=m1 {collider}=c1 href=first {missed}=m2 HREF=second {collider}=c2>"
+        );
+
+        for (var offset = 0; offset < utf8.Length; )
+        {
+            var length = Math.Min(chunkSize, utf8.Length - offset);
+            tokenizer.Write(utf8.AsSpan(offset, length));
+            offset += length;
+        }
+        tokenizer.Complete();
+
+        // Filter-missed names never reach the sink; false positives and duplicates (including the
+        // respelled HREF) fall through to the exact WantsAttribute path; first occurrence wins.
+        await Assert.That(String.Join('|', sink.WantsAsked)).IsEqualTo($"{collider}|href|href|{collider}");
+        await Assert.That(String.Join('|', sink.Captured)).IsEqualTo("href=first");
+    }
+
+    private static String FindAttributeName(Func<UInt64, Boolean> predicate)
+    {
+        Span<Byte> candidate = stackalloc Byte[3];
+        candidate[0] = (Byte)'x';
+        for (var first = (Byte)'a'; first <= (Byte)'z'; first++)
+        {
+            for (var second = (Byte)'a'; second <= (Byte)'z'; second++)
+            {
+                candidate[1] = first;
+                candidate[2] = second;
+                if (predicate(Utf8NameHash.AttributeFilterBit(Utf8NameHash.ComputeSemantic(candidate))))
+                {
+                    return Encoding.ASCII.GetString(candidate);
+                }
+            }
+        }
+        throw new InvalidOperationException("No candidate attribute name matched the required filter-bit shape.");
+    }
+
+    private sealed class FilteringAttributeSink : IUtf8HtmlTokenSink
+    {
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.None;
+
+        public UInt64 StartTagAttributeFilter { get; init; }
+
+        public List<String> WantsAsked { get; } = [];
+
+        public List<String> Captured { get; } = [];
+
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name) => Utf8HtmlStartTagCapture.Attributes;
+
+        public Boolean WantsAttribute(Utf8HtmlName name)
+        {
+            WantsAsked.Add(Encoding.ASCII.GetString(name.Verbatim).ToLowerInvariant());
+            return name.SemanticEquals("href"u8);
+        }
+
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<Byte> value) =>
+            Captured.Add(
+                $"{Encoding.ASCII.GetString(name.Verbatim).ToLowerInvariant()}={Encoding.UTF8.GetString(value)}"
+            );
+
+        public void StartTagEnd(Boolean selfClosing) { }
+
+        public void Text(ReadOnlySpan<Byte> utf8) { }
+
+        public void EndTag(Utf8HtmlName name) { }
+    }
+
     private sealed class YieldingAttributeSink(Boolean requestFromWants) : IUtf8HtmlTokenSink
     {
         private Boolean _requested;
