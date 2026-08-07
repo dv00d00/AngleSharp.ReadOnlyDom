@@ -40,6 +40,11 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks
                 return Utf8NormalizerFuzzRunner.Run(args.Skip(1).ToArray());
             }
 
+            if (args.Length > 0 && args[0].Equals("--utf8-tokenizer-fuzz", StringComparison.OrdinalIgnoreCase))
+            {
+                return Utf8TokenizerDifferentialFuzzRunner.Run(args.Skip(1).ToArray());
+            }
+
             if (args.Length > 0 && args[0].Equals("--stream-tax-profile", StringComparison.OrdinalIgnoreCase))
             {
                 return StreamTaxProfileRunner.Run(args.Skip(1).ToArray());
