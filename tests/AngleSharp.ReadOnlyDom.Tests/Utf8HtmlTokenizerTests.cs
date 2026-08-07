@@ -340,6 +340,40 @@ public sealed class Utf8HtmlTokenizerTests
     }
 
     [Test]
+    [Arguments("<script>var s = \"</div>\";</script>ok")]
+    [Arguments("<script>a</script >b")]
+    [Arguments("<script>a</script/>b")]
+    [Arguments("<script>a</script/=\">b")]
+    [Arguments("<script>a</script\r\n>b")]
+    [Arguments("<script>a</scriptx>b</script>c")]
+    [Arguments("<script>a</SCRIPT>b")]
+    [Arguments("<script>a<!b</script>c")]
+    [Arguments("<script>a<</script>b")]
+    [Arguments("<script>a</></script>b")]
+    [Arguments("<script>\"</scr\" + \"ipt>\"</script>ok")]
+    [Arguments("<title>a</b>c</title>d")]
+    [Arguments("<title>café &amp; </titl>x</title>y")]
+    [Arguments("<title>a</title/>b")]
+    [Arguments("<style>a</styl>b</style>c")]
+    [Arguments("<style>a<b</style>c")]
+    [Arguments("<style>a</style\t>b")]
+    [Arguments("<textarea>a\r\n</textarea>b")]
+    [Arguments("<textarea>a</textarea")]
+    [Arguments("<xmp>a</b></xmp>c")]
+    public async Task RawTextEndTagCandidatesMatchAtEveryChunkSize(string html)
+    {
+        // The threaded raw-text/script-data scanner resolves "</name" candidates in-span and
+        // declines candidates the chunk boundary splits, handing them to the per-byte
+        // machine's candidate buffer. Every split point of every input must produce the
+        // stream a contiguous write produces.
+        var utf8 = Encoding.UTF8.GetBytes(html);
+        var expected = TokenizeWithAngleSharp(html);
+
+        for (var segmentSize = 1; segmentSize <= utf8.Length; segmentSize++)
+            await Assert.That(Tokenize(utf8, segmentSize).Events).IsEquivalentTo(expected);
+    }
+
+    [Test]
     public async Task InvalidUtf8IsReplacedBeforeBorrowedCallbacks()
     {
         byte[][] cases =
