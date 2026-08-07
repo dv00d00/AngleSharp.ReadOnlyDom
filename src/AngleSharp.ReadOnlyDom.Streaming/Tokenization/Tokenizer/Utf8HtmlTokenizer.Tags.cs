@@ -209,19 +209,10 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         {
             if (_attributeCapture == AttributeCapture.Capture)
             {
-                var value = WrittenSpan(_attributeValue);
-                var ampersand = IsNotConsumingCharacterReferences ? -1 : value.IndexOf((Byte)'&');
-                if (ampersand < 0)
-                {
-                    _sink.Attribute(name, value);
-                }
-                else
-                {
-                    var decoded = _decodedAttributeValue ??= new(128);
-                    DecodeAttributeValueReferences(value, ampersand, decoded);
-                    _sink.Attribute(name, WrittenSpan(decoded));
-                    Clear(decoded);
-                }
+                // The value goes out raw: references in attribute values cannot affect
+                // tokenization, and most captured values are never read, so the consumer
+                // that actually reads one runs Utf8AttributeValueDecoder over it instead.
+                _sink.Attribute(name, WrittenSpan(_attributeValue), !IsNotConsumingCharacterReferences);
             }
         }
         Clear(_attributeName);

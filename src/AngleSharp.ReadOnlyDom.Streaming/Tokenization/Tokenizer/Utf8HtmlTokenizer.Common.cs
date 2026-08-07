@@ -10,7 +10,6 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     private readonly Utf8TokenBuffer _name = new(32);
     private readonly Utf8TokenBuffer _attributeName = new(32);
     private Utf8TokenBuffer? _attributeValue;
-    private Utf8TokenBuffer? _decodedAttributeValue;
     private Utf8TokenBuffer? _seenAttributeNames;
     private readonly Utf8TokenBuffer _candidate = new(64);
     private Utf8TokenBuffer? _doctypePublic;

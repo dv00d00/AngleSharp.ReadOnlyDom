@@ -1,4 +1,14 @@
-﻿namespace AngleSharp.ReadOnlyDom.Streaming.Query;
+namespace AngleSharp.ReadOnlyDom.Streaming.Query;
+
+/// <summary>
+/// Provides attribute values for a callback-scoped <see cref="Element"/> view. Values are decoded
+/// lazily on first read: the execution stores raw captured bytes and runs the character-reference
+/// decoder only for attributes something actually observes.
+/// </summary>
+internal interface IElementAttributeSource
+{
+    bool TryGetAttributeValue(int index, out ReadOnlySpan<byte> value);
+}
 
 /// <summary>
 /// A callback-scoped start-tag view. Attribute spans borrow execution buffers and are valid only until
@@ -8,25 +18,19 @@ public readonly ref struct Element
 {
     private readonly string[] _attributeNames;
     private readonly byte[][] _attributeNameUtf8;
-    private readonly byte[] _values;
-    private readonly int[] _starts;
-    private readonly int[] _lengths;
+    private readonly IElementAttributeSource _source;
     private readonly ulong _allowedAttributeMask;
 
     internal Element(
         string[] attributeNames,
         byte[][] attributeNameUtf8,
-        byte[] values,
-        int[] starts,
-        int[] lengths,
+        IElementAttributeSource source,
         ulong allowedAttributeMask
     )
     {
         _attributeNames = attributeNames;
         _attributeNameUtf8 = attributeNameUtf8;
-        _values = values;
-        _starts = starts;
-        _lengths = lengths;
+        _source = source;
         _allowedAttributeMask = allowedAttributeMask;
     }
 
@@ -43,7 +47,7 @@ public readonly ref struct Element
             var index = System.Numerics.BitOperations.TrailingZeroCount(attributes);
             attributes &= attributes - 1;
             if (_attributeNames[index].Equals(name, StringComparison.OrdinalIgnoreCase))
-                return TryGetAttribute(index, out value);
+                return _source.TryGetAttributeValue(index, out value);
         }
         value = default;
         return false;
@@ -61,21 +65,9 @@ public readonly ref struct Element
             var index = System.Numerics.BitOperations.TrailingZeroCount(attributes);
             attributes &= attributes - 1;
             if (name.SequenceEqual(_attributeNameUtf8[index]))
-                return TryGetAttribute(index, out value);
+                return _source.TryGetAttributeValue(index, out value);
         }
         value = default;
         return false;
-    }
-
-    private bool TryGetAttribute(int index, out ReadOnlySpan<byte> value)
-    {
-        var length = _lengths[index];
-        if (length < 0)
-        {
-            value = default;
-            return false;
-        }
-        value = _values.AsSpan(_starts[index], length);
-        return true;
     }
 }

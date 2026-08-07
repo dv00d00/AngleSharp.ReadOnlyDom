@@ -566,7 +566,8 @@ public sealed class Utf8HtmlTokenizerTests
 
         public bool WantsAttribute(Utf8HtmlName name) => true;
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) => Attribute(name.Verbatim, value);
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value, bool valueMayContainReferences) =>
+            Attribute(name.Verbatim, TestAttributeValueDecoding.Decode(value, valueMayContainReferences));
 
         public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value) =>
             _events.Add("attr:" + DecodeSemanticName(name) + "=" + DecodeValidUtf8(value));
@@ -689,9 +690,9 @@ public sealed class Utf8HtmlTokenizerTests
             return name.SemanticEquals("href"u8);
         }
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<Byte> value) =>
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<Byte> value, Boolean valueMayContainReferences) =>
             Captured.Add(
-                $"{Encoding.ASCII.GetString(name.Verbatim).ToLowerInvariant()}={Encoding.UTF8.GetString(value)}"
+                $"{Encoding.ASCII.GetString(name.Verbatim).ToLowerInvariant()}={Encoding.UTF8.GetString(TestAttributeValueDecoding.Decode(value, valueMayContainReferences))}"
             );
 
         public void StartTagEnd(Boolean selfClosing) { }
@@ -725,9 +726,11 @@ public sealed class Utf8HtmlTokenizerTests
             return true;
         }
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<Byte> value)
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<Byte> value, Boolean valueMayContainReferences)
         {
-            Attributes.Add($"{Encoding.UTF8.GetString(name.Verbatim)}={Encoding.UTF8.GetString(value)}");
+            Attributes.Add(
+                $"{Encoding.UTF8.GetString(name.Verbatim)}={Encoding.UTF8.GetString(TestAttributeValueDecoding.Decode(value, valueMayContainReferences))}"
+            );
             if (!requestFromWants && !_requested)
             {
                 _requested = true;
@@ -780,7 +783,7 @@ public sealed class Utf8HtmlTokenizerTests
 
         public Boolean WantsAttribute(Utf8HtmlName name) => false;
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<Byte> value) { }
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<Byte> value, Boolean valueMayContainReferences) { }
 
         public void StartTagEnd(Boolean selfClosing) => StartTagEnded = true;
 

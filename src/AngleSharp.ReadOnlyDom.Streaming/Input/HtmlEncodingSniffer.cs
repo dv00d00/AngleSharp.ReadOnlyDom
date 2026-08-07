@@ -92,7 +92,9 @@ internal static class HtmlEncodingSniffer
             return _pendingAttribute != AttributeKind.None;
         }
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value)
+        // Raw (undecoded) values are what the HTML encoding-sniffing prescan operates on;
+        // character references never appear in real charset/content declarations.
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value, bool valueMayContainReferences)
         {
             if (!_isMeta)
                 return;
