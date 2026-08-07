@@ -280,7 +280,8 @@ internal static class Utf8NormalizerFuzzRunner
         public bool WantsAttribute(Utf8HtmlName name) =>
             mode != SinkMode.DiscardEverything && Inner.WantsAttribute(name);
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) => Inner.Attribute(name, value);
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value, bool valueMayContainReferences) =>
+            Inner.Attribute(name, value, valueMayContainReferences);
 
         public void StartTagEnd(bool selfClosing) => Inner.StartTagEnd(selfClosing);
 

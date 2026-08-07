@@ -13,6 +13,7 @@ internal interface IQueryExecution<out TState> : IUtf8HtmlTokenSink, IDisposable
 internal class QueryExecution<TState, TResourceLimits>
     : IUtf8HtmlStartTagSourceRangeSink,
         IUtf8HtmlStreamingCommentSink,
+        IElementAttributeSource,
         IQueryExecution<TState>
     where TResourceLimits : struct, IResourceLimitPolicy
 {
@@ -36,6 +37,8 @@ internal class QueryExecution<TState, TResourceLimits>
     private ulong _pendingAttributeFilter;
     private int _pendingAttributeIndex = -1;
     private ulong _seenAttributeBits;
+    private ulong _rawAttributeBits;
+    private Utf8TokenBuffer? _decodeScratch;
     private bool _disposed;
     private readonly int _maximumNestingDepth;
     private readonly long _maximumQueryCaptureBytes;
@@ -161,7 +164,7 @@ internal class QueryExecution<TState, TResourceLimits>
         return false;
     }
 
-    public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value)
+    public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value, bool valueMayContainReferences)
     {
         var index = _pendingAttributeIndex;
         _pendingAttributeIndex = -1;
@@ -175,6 +178,8 @@ internal class QueryExecution<TState, TResourceLimits>
         _attributeStarts[index] = _attributeValueLength;
         _attributeLengths[index] = value.Length;
         _seenAttributeBits |= 1UL << index;
+        if (valueMayContainReferences)
+            _rawAttributeBits |= 1UL << index;
         value.CopyTo(_attributeValues.AsSpan(_attributeValueLength));
         _attributeValueLength += value.Length;
         if (TResourceLimits.Enabled)
@@ -268,14 +273,18 @@ internal class QueryExecution<TState, TResourceLimits>
     }
 
     private Element CreateElement(ulong allowedAttributeMask) =>
-        new(
-            _plan.AttributeNames,
-            _plan.AttributeNamesUtf8,
-            _attributeValues,
-            _attributeStarts,
-            _attributeLengths,
-            allowedAttributeMask
-        );
+        new(_plan.AttributeNames, _plan.AttributeNamesUtf8, this, allowedAttributeMask);
+
+    bool IElementAttributeSource.TryGetAttributeValue(int index, out ReadOnlySpan<byte> value)
+    {
+        if (_attributeLengths[index] < 0)
+        {
+            value = default;
+            return false;
+        }
+        value = GetAttributeValue(index);
+        return true;
+    }
 
     private ulong GetRequestedAttributeMask(ulong nodes)
     {
@@ -424,16 +433,52 @@ internal class QueryExecution<TState, TResourceLimits>
     {
         foreach (var predicate in predicates)
         {
-            var length = _attributeLengths[predicate.AttributeIndex];
-            if (length < 0)
+            if (_attributeLengths[predicate.AttributeIndex] < 0)
                 return false;
-            var value = _attributeValues.AsSpan(_attributeStarts[predicate.AttributeIndex], length);
+            // Existence never reads the value, so it must not trigger the lazy decode.
+            if (predicate.Kind == AttributePredicateKind.Exists)
+                continue;
+            var value = GetAttributeValue(predicate.AttributeIndex);
             if (predicate.Kind == AttributePredicateKind.Equals && !value.SequenceEqual(predicate.Value))
                 return false;
             if (predicate.Kind == AttributePredicateKind.ContainsToken && !ContainsToken(value, predicate.Value!))
                 return false;
         }
         return true;
+    }
+
+    /// <summary>
+    /// Returns the stored attribute value with character references decoded, decoding lazily on
+    /// first read. Values arrive raw from the tokenizer (most are never read); the decoded form
+    /// is memoized by appending it to the value buffer and repointing the attribute's slot, so
+    /// predicates, start handlers, and completed captures all observe it exactly once.
+    /// </summary>
+    private ReadOnlySpan<byte> GetAttributeValue(int index)
+    {
+        var length = _attributeLengths[index];
+        var bit = 1UL << index;
+        if ((_rawAttributeBits & bit) == 0)
+            return _attributeValues.AsSpan(_attributeStarts[index], length);
+        _rawAttributeBits &= ~bit;
+        var raw = _attributeValues.AsSpan(_attributeStarts[index], length);
+        var ampersand = raw.IndexOf((byte)'&');
+        if (ampersand < 0)
+            return raw;
+        var scratch = _decodeScratch ??= new Utf8TokenBuffer(128);
+        scratch.ResetWrittenCount();
+        Utf8AttributeValueDecoder.Decode(raw, ampersand, scratch);
+        var decoded = scratch.WrittenSpan;
+        if (TResourceLimits.Enabled)
+        {
+            EnsureQueryCaptureCapacity(decoded.Length);
+            _queryCaptureBytes += decoded.Length;
+        }
+        EnsureAttributeCapacity(decoded.Length);
+        _attributeStarts[index] = _attributeValueLength;
+        _attributeLengths[index] = decoded.Length;
+        decoded.CopyTo(_attributeValues.AsSpan(_attributeValueLength));
+        _attributeValueLength += decoded.Length;
+        return _attributeValues.AsSpan(_attributeStarts[index], decoded.Length);
     }
 
     private void CloseFrame(QueryFrame frame)
@@ -487,13 +532,13 @@ internal class QueryExecution<TState, TResourceLimits>
             for (var attribute = 0; attribute < node.CapturedAttributeIndexes.Length; attribute++)
             {
                 var attributeIndex = node.CapturedAttributeIndexes[attribute];
-                var length = _attributeLengths[attributeIndex];
-                if (length >= 0)
+                if (_attributeLengths[attributeIndex] >= 0)
                 {
-                    capture.SetAttribute(attribute, _attributeValues.AsSpan(_attributeStarts[attributeIndex], length));
+                    var value = GetAttributeValue(attributeIndex);
+                    capture.SetAttribute(attribute, value);
                     if (TResourceLimits.Enabled)
                     {
-                        _queryCaptureBytes += length;
+                        _queryCaptureBytes += value.Length;
                     }
                 }
             }
@@ -591,6 +636,7 @@ internal class QueryExecution<TState, TResourceLimits>
             _queryCaptureBytes -= _attributeValueLength;
         }
         _attributeValueLength = 0;
+        _rawAttributeBits = 0;
         while (_seenAttributeBits != 0)
         {
             var index = BitOperations.TrailingZeroCount(_seenAttributeBits);

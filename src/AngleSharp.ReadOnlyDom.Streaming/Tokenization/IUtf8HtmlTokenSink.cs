@@ -28,7 +28,15 @@ internal interface IUtf8HtmlTokenSink
 
     Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name);
 
-    void Attribute(Utf8HtmlName name, ReadOnlySpan<Byte> value);
+    /// <summary>
+    /// Consumes one captured attribute value as raw buffered bytes: character references are NOT
+    /// decoded. When <paramref name="valueMayContainReferences"/> is <see langword="true"/> and the
+    /// value contains '&amp;', a sink that needs the decoded form runs
+    /// <see cref="Utf8AttributeValueDecoder.Decode"/> over it — ideally lazily, on first read, since
+    /// most captured values are never observed. When the flag is <see langword="false"/> the raw
+    /// bytes are the final value (the tokenizer is not consuming character references).
+    /// </summary>
+    void Attribute(Utf8HtmlName name, ReadOnlySpan<Byte> value, Boolean valueMayContainReferences);
 
     void StartTagEnd(Boolean selfClosing);
 

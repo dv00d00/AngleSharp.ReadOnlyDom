@@ -177,7 +177,8 @@ internal static class Utf8TokenSmoke
 
         public bool WantsAttribute(Utf8HtmlName name) => true;
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) => Attribute(name.Verbatim, value);
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value, bool valueMayContainReferences) =>
+            Attribute(name.Verbatim, AttributeValueDecoding.Decode(value, valueMayContainReferences));
 
         public void Attribute(ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
         {

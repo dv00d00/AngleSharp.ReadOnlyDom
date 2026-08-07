@@ -307,7 +307,7 @@ public sealed class StreamingLimitsTests
 
         public bool WantsAttribute(Utf8HtmlName name) => true;
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) { }
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value, bool valueMayContainReferences) { }
 
         public void StartTagEnd(bool selfClosing) { }
 
