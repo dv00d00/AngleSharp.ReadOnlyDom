@@ -500,7 +500,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 else if (_state == State.TagName)
                 {
                     var remaining = utf8.Slice(index);
-                    var run = IndexOfCaptureStop<TTrust>(remaining, TagNameTerminators, TagNameArbitraryAllowed);
+                    var run = IndexOfTagNameStop<TTrust>(remaining);
                     run = run < 0 ? remaining.Length : run;
 
                     if (run > 0)
