@@ -422,6 +422,19 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     // nothing and would double the code for the per-byte state machine.
     private void RecordState(Int32 state, Int32 count) => _stateMetrics?.Record(state, count);
 
+    // Metrics for the fused '<' + tag-open transfer, kept out of the hot scan arm; records the
+    // same states the surrendered per-byte path would have walked.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void RecordFusedTagOpen(Boolean isEndTag)
+    {
+        _stateMetrics!.Record((Int32)State.Data, 1);
+        _stateMetrics.Record((Int32)State.TagOpen, 1);
+        if (isEndTag)
+        {
+            _stateMetrics.Record((Int32)State.EndTagOpen, 1);
+        }
+    }
+
     public Utf8HtmlTokenizerCounters Counters => GetCounters(_inputBytesConsumed);
 
     internal Utf8HtmlTokenizerCounters GetCounters(Int64 sourceBytesConsumed) =>
@@ -692,8 +705,54 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         if (_captureText)
                         {
                             EmitText(utf8.Slice(index, run));
+                            if (yieldOnRequest && _yieldRequested)
+                            {
+                                index += run;
+                                return index;
+                            }
                         }
                         index += run;
+                        continue;
+                    }
+                    // Stop-byte fusion: a '<' followed by an ASCII letter (or "/" + letter) in
+                    // data state always begins a tag, so consume through the first name byte here
+                    // instead of surrendering '<', the follower, and the letter to three per-byte
+                    // dispatcher round-trips. Only data state qualifies: raw text, RCDATA, and
+                    // script data route '<' through the end-tag candidate machinery below. All
+                    // fused bytes are ASCII by test, so the trust policy is satisfied.
+                    if (_state == State.Data && remaining[0] == (Byte)'<' && remaining.Length >= 2)
+                    {
+                        Int32 fused;
+                        Boolean isEndTag;
+                        if (IsAsciiLetter(remaining[1]))
+                        {
+                            fused = 2;
+                            isEndTag = false;
+                        }
+                        else if (
+                            remaining[1] == (Byte)'/'
+                            && remaining.Length >= 3
+                            && IsAsciiLetter(remaining[2])
+                        )
+                        {
+                            fused = 3;
+                            isEndTag = true;
+                        }
+                        else
+                        {
+                            goto PerByte;
+                        }
+                        if (TMetrics.Enabled)
+                        {
+                            RecordFusedTagOpen(isEndTag);
+                        }
+                        index += fused;
+                        if (trackSourceRanges)
+                        {
+                            _currentSourceOffset = sourceBase + index;
+                            _lastLessThanSourceOffset = sourceBase + index - fused;
+                        }
+                        BeginTag(isEndTag, remaining[fused - 1]);
                         continue;
                     }
                     // A lone '<' in raw text or script data only opens a tag when '/' (or '!'
@@ -726,6 +785,7 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         continue;
                     }
                 }
+                PerByte:
                 var value = utf8[index];
                 if (TTrust.StopAtNonAscii && value >= 0x80)
                 {
