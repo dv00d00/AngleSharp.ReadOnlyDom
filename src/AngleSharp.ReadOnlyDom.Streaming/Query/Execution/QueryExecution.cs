@@ -43,10 +43,13 @@ internal class QueryExecution<TState, TResourceLimits>
     private readonly int _maximumNestingDepth;
     private readonly long _maximumQueryCaptureBytes;
     private readonly RewriteHandler<TState>? _rewriteHandler;
-    private readonly IStartTagEditCollector? _rewriteCollector;
+    private readonly IHtmlRewriteCollector? _rewriteCollector;
     private readonly Utf8StreamingRewriteCollector? _streamingRewriteCollector;
     private long _startTagSourceStart = -1;
     private long _startTagSourceEnd = -1;
+    private long _endTagSourceStart = -1;
+    private long _endTagSourceEnd = -1;
+    private long _observedUtf8End;
     private long _queryCaptureBytes;
     private int _activeTextNodes;
     private int _activeCompletedTextCaptures;
@@ -56,7 +59,7 @@ internal class QueryExecution<TState, TResourceLimits>
         TState state,
         HtmlStreamingLimits limits,
         RewriteHandler<TState>? rewriteHandler = null,
-        IStartTagEditCollector? rewriteCollector = null
+        IHtmlRewriteCollector? rewriteCollector = null
     )
     {
         ArgumentNullException.ThrowIfNull(limits);
@@ -87,8 +90,13 @@ internal class QueryExecution<TState, TResourceLimits>
 
     public bool WantsStartTagSourceRanges => _rewriteHandler is not null;
 
-    public void ObserveNormalizedUtf8End(long sourceStart, ReadOnlySpan<byte> utf8, long publishableOffset) =>
+    public bool WantsEndTagSourceRanges => _rewriteCollector?.NeedsEndTagSourceRanges == true;
+
+    public void ObserveNormalizedUtf8End(long sourceStart, ReadOnlySpan<byte> utf8, long publishableOffset)
+    {
+        _observedUtf8End = sourceStart + utf8.Length;
         _streamingRewriteCollector?.PublishWindow(sourceStart, utf8, publishableOffset);
+    }
 
     public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
     {
@@ -238,13 +246,22 @@ internal class QueryExecution<TState, TResourceLimits>
             var element = CreateElement(node.RequestedAttributeMask);
             node.Start.Invoke(ref _state, in element);
         }
+        var rewriteScopeId = -1;
         if (_rewriteHandler is not null && (matches & _plan.TerminalNodeMask) != 0)
         {
             if (sourceStart < 0 || sourceEnd <= sourceStart)
                 throw new InvalidOperationException("The tokenizer did not provide a valid start-tag source range.");
             var element = CreateElement(GetRequestedAttributeMask(matches & _plan.TerminalNodeMask));
-            var editor = new StartTagEditor(_rewriteCollector!, sourceStart, sourceEnd, selfClosing);
+            var editor = new ElementRewriter(
+                _rewriteCollector!,
+                sourceStart,
+                sourceEnd,
+                !closesImmediately,
+                selfClosing
+            );
             _rewriteHandler.Invoke(ref _state, in element, ref editor);
+            editor.Commit();
+            rewriteScopeId = editor.ScopeId;
         }
         StartCompletedCaptures(matches);
 
@@ -252,6 +269,7 @@ internal class QueryExecution<TState, TResourceLimits>
         {
             try
             {
+                _rewriteCollector?.EndElement(rewriteScopeId, sourceEnd, sourceEnd, hasExplicitEndTag: false);
                 CloseMatches(matches);
             }
             finally
@@ -266,7 +284,8 @@ internal class QueryExecution<TState, TResourceLimits>
             _pendingTagIdentity,
             _pendingTagIdentityLength,
             _pendingFallbackTagNameUtf8,
-            matches
+            matches,
+            rewriteScopeId
         );
         _pendingFallbackTagNameUtf8 = null;
         IncrementActive(matches);
@@ -324,6 +343,12 @@ internal class QueryExecution<TState, TResourceLimits>
 
     void IUtf8HtmlStreamingCommentSink.EndComment() { }
 
+    public void EndTagSourceRange(long sourceStart, long sourceEnd)
+    {
+        _endTagSourceStart = sourceStart;
+        _endTagSourceEnd = sourceEnd;
+    }
+
     public void EndTag(Utf8HtmlName name)
     {
         var identityLength = 0;
@@ -346,10 +371,15 @@ internal class QueryExecution<TState, TResourceLimits>
                 var frame = _frames[popped];
                 _frames[popped] = default;
                 _frameCount = popped;
-                CloseFrame(frame);
+                var explicitEnd = popped == index;
+                CloseFrame(frame, _endTagSourceStart, explicitEnd ? _endTagSourceEnd : _endTagSourceStart, explicitEnd);
             }
+            _endTagSourceStart = -1;
+            _endTagSourceEnd = -1;
             return;
         }
+        _endTagSourceStart = -1;
+        _endTagSourceEnd = -1;
     }
 
     private ulong FindTagCandidates(ulong identity, int identityLength)
@@ -381,7 +411,7 @@ internal class QueryExecution<TState, TResourceLimits>
             var frame = _frames[index];
             _frames[index] = default;
             _frameCount = index;
-            CloseFrame(frame);
+            CloseFrame(frame, _observedUtf8End, _observedUtf8End, hasExplicitEndTag: false);
         }
     }
 
@@ -481,10 +511,11 @@ internal class QueryExecution<TState, TResourceLimits>
         return _attributeValues.AsSpan(_attributeStarts[index], decoded.Length);
     }
 
-    private void CloseFrame(QueryFrame frame)
+    private void CloseFrame(QueryFrame frame, long sourceStart, long sourceEnd, bool hasExplicitEndTag)
     {
         try
         {
+            _rewriteCollector?.EndElement(frame.RewriteScopeId, sourceStart, sourceEnd, hasExplicitEndTag);
             CloseMatches(frame.Matches);
             DecrementActive(frame.Matches);
         }
@@ -776,7 +807,7 @@ internal sealed class QueryExecution<TState> : QueryExecution<TState, EnforcedRe
         TState state,
         HtmlStreamingLimits limits,
         RewriteHandler<TState>? rewriteHandler = null,
-        IStartTagEditCollector? rewriteCollector = null
+        IHtmlRewriteCollector? rewriteCollector = null
     )
         : base(plan, state, limits, rewriteHandler, rewriteCollector) { }
 }

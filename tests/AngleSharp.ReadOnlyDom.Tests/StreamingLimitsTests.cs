@@ -250,7 +250,7 @@ public sealed class StreamingLimitsTests
             "<a href='long value'>text</a>"u8,
             output,
             new TestState(),
-            static (ref TestState _, in Element _, ref StartTagEditor tag) =>
+            static (ref TestState _, in Element _, ref ElementRewriter tag) =>
                 tag.AppendAttribute("data-value"u8, "more than one byte"u8),
             limits: DisabledPolicyProbe
         );

@@ -492,10 +492,8 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     internal Boolean TracksStartTagSourceRanges => _startTagSourceRangeSink is not null;
 
     /// <summary>
-    /// The normalized-input offset before which no future start-tag edit can land. Only an
-    /// unterminated start tag can still receive an insertion at its eventual close, so while one is
-    /// open the offset pins to its '&lt;'; every insertion point and separator look-back of any
-    /// future <see cref="IUtf8HtmlStartTagSourceRangeSink.StartTagSourceRange"/> sits at or above
+    /// The normalized-input offset before which no future tag edit can land. While a tag is open,
+    /// the offset pins to its '&lt;'; every insertion, replacement, and separator look-back sits at or above
     /// the returned value. Meaningful only while <see cref="TracksStartTagSourceRanges"/> is set,
     /// and only at quiescent points (between <see cref="Write"/> calls).
     /// </summary>
@@ -507,11 +505,20 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             {
                 return _normalizedBytesConsumed;
             }
+            var wantsEndTagRange = _startTagSourceRangeSink?.WantsEndTagSourceRanges == true;
             switch (_state)
             {
                 case State.TagOpen:
-                    // Could still become a start tag; its '<' is already consumed.
                     return _lastLessThanSourceOffset;
+                case State.EndTagOpen:
+                case State.RawLessThan:
+                case State.RawEndTagOpen:
+                case State.RawEndTagName:
+                case State.ScriptLessThan:
+                case State.ScriptEndTagName:
+                case State.ScriptEscapedLessThan:
+                case State.ScriptEscapedEndTagName:
+                    return wantsEndTagRange ? _lastLessThanSourceOffset : _currentSourceOffset;
                 case State.TagName:
                 case State.BeforeAttributeName:
                 case State.AttributeName:
@@ -522,14 +529,14 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 case State.AttributeValueUnquoted:
                 case State.AfterAttributeValueQuoted:
                 case State.SelfClosingStartTag:
-                    return _isEndTag ? _normalizedBytesConsumed : _currentTagSourceOffset;
+                    return _isEndTag && !wantsEndTagRange ? _currentSourceOffset : _currentTagSourceOffset;
                 case State.CharacterReference:
                     // A reference inside a captured attribute value keeps the start tag open.
-                    return !_isEndTag && IsTagTailState(_returnState)
+                    return IsTagTailState(_returnState) && (!_isEndTag || wantsEndTagRange)
                         ? _currentTagSourceOffset
-                        : _normalizedBytesConsumed;
+                        : _currentSourceOffset;
                 default:
-                    // End tags, comments, doctypes, raw text, and script data never produce edits.
+                    // Comments, doctypes, raw text, and script data never produce edits.
                     return _normalizedBytesConsumed;
             }
         }
@@ -610,8 +617,18 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 )
                 {
                     var consumed = _captureText
-                        ? ScanRawTextContent<TMetrics, TTrust, CaptureOn>(utf8[index..], yieldOnRequest)
-                        : ScanRawTextContent<TMetrics, TTrust, CaptureOff>(utf8[index..], yieldOnRequest);
+                        ? ScanRawTextContent<TMetrics, TTrust, CaptureOn>(
+                            utf8[index..],
+                            sourceBase + index,
+                            trackSourceRanges,
+                            yieldOnRequest
+                        )
+                        : ScanRawTextContent<TMetrics, TTrust, CaptureOff>(
+                            utf8[index..],
+                            sourceBase + index,
+                            trackSourceRanges,
+                            yieldOnRequest
+                        );
                     if (consumed > 0)
                     {
                         index += consumed;

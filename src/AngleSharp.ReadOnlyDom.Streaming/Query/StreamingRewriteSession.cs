@@ -8,8 +8,8 @@ namespace AngleSharp.ReadOnlyDom.Streaming.Query;
 /// <summary>
 /// A push-style streaming rewrite: feed input chunks with <see cref="Write"/> as they arrive and
 /// finish with <see cref="Complete"/>. Every byte is published to the output as soon as it can no
-/// longer be touched by a start-tag edit, so only the currently open start tag is ever buffered -
-/// peak memory is independent of document size, bounded by
+/// longer be touched by a tag edit. Only the currently open tag is buffered; descendants removed
+/// or replaced by an element mutation are discarded as they arrive, so peak memory is independent of document size and bounded by
 /// <see cref="HtmlStreamingLimits.MaximumBufferedTokenBytes"/> plus the caller's chunk size.
 /// Output is byte-identical to
 /// <see cref="QueryPlan{TState}.Rewrite(ReadOnlySpan{byte}, IBufferWriter{byte}, TState, RewriteHandler{TState}, Utf8InputContract, HtmlStreamingLimits?)"/>
