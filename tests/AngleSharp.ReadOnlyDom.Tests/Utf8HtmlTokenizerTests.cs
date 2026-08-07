@@ -55,6 +55,27 @@ public sealed class Utf8HtmlTokenizerTests
     }
 
     [Test]
+    public async Task YieldRequestedByTextStopsBeforeTheFollowingTagCallback()
+    {
+        var sink = new YieldingTextSink();
+        var tokenizer = new Utf8HtmlTokenizer(sink);
+        sink.Tokenizer = tokenizer;
+        var utf8 = Encoding.UTF8.GetBytes("text<a first=1>tail");
+
+        var consumed = tokenizer.WriteUntilYield(utf8);
+
+        await Assert.That(consumed).IsLessThan(utf8.Length);
+        await Assert.That(sink.StartTags).IsEqualTo(0);
+
+        var resumed = tokenizer.WriteUntilYield(utf8.AsSpan(consumed));
+        tokenizer.Complete();
+
+        await Assert.That(consumed + resumed).IsEqualTo(utf8.Length);
+        await Assert.That(sink.StartTags).IsEqualTo(1);
+        await Assert.That(sink.StartTagEnded).IsTrue();
+    }
+
+    [Test]
     public async Task PipeReaderConsumesUtf8WithoutMaterializingWholeResponse()
     {
         var utf8 = Encoding.UTF8.GetBytes(Html);
@@ -571,6 +592,51 @@ public sealed class Utf8HtmlTokenizerTests
         public void StartTagEnd(Boolean selfClosing) => StartTagEnded = true;
 
         public void Text(ReadOnlySpan<Byte> utf8) { }
+
+        public void EndTag(Utf8HtmlName name) { }
+
+        public void Comment(ReadOnlySpan<Byte> utf8) { }
+
+        public void ProcessingInstruction(ReadOnlySpan<Byte> utf8) { }
+
+        public void Doctype(in Utf8DoctypeToken token) { }
+
+        public void EndOfFile() { }
+    }
+
+    private sealed class YieldingTextSink : IUtf8HtmlTokenSink
+    {
+        private Boolean _requested;
+
+        public Utf8HtmlTokenizer Tokenizer { get; set; } = null!;
+
+        public Int32 StartTags { get; private set; }
+
+        public Boolean StartTagEnded { get; private set; }
+
+        public Utf8HtmlTokenCapture Capture => Utf8HtmlTokenCapture.Text;
+
+        public void Text(ReadOnlySpan<Byte> utf8)
+        {
+            if (_requested)
+            {
+                return;
+            }
+            _requested = true;
+            Tokenizer.RequestYield();
+        }
+
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
+        {
+            StartTags++;
+            return Utf8HtmlStartTagCapture.None;
+        }
+
+        public Boolean WantsAttribute(Utf8HtmlName name) => false;
+
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<Byte> value) { }
+
+        public void StartTagEnd(Boolean selfClosing) => StartTagEnded = true;
 
         public void EndTag(Utf8HtmlName name) { }
 

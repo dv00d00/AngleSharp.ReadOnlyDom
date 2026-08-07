@@ -705,6 +705,11 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         if (_captureText)
                         {
                             EmitText(utf8.Slice(index, run));
+                            if (yieldOnRequest && _yieldRequested)
+                            {
+                                index += run;
+                                return index;
+                            }
                         }
                         index += run;
                         continue;
