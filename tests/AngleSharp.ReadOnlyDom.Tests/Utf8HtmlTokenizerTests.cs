@@ -325,6 +325,21 @@ public sealed class Utf8HtmlTokenizerTests
     }
 
     [Test]
+    [Property("Issue", "76")]
+    [Arguments("<script>a<")]
+    [Arguments("<script>a</scr")]
+    [Arguments("<script><!--a<")]
+    [Arguments("<script><!--a</scr")]
+    public async Task PendingScriptCandidatesAreFlushedAtEof(string html)
+    {
+        var utf8 = Encoding.UTF8.GetBytes(html);
+        var expected = TokenizeWithAngleSharp(html);
+
+        foreach (var segmentSize in new[] { 1, 2, 3, utf8.Length })
+            await Assert.That(Tokenize(utf8, segmentSize).Events).IsEquivalentTo(expected);
+    }
+
+    [Test]
     public async Task InvalidUtf8IsReplacedBeforeBorrowedCallbacks()
     {
         byte[][] cases =
