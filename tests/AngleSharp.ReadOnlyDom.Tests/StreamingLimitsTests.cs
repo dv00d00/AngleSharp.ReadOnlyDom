@@ -18,10 +18,7 @@ public sealed class StreamingLimitsTests
         maximumInputBytes: 1_000_000,
         maximumQueryCaptureBytes: 1_000_000
     );
-    private static readonly HtmlStreamingLimits DisabledPolicyProbe = new(1, 1, 1, 1)
-    {
-        EnforcesLimits = false,
-    };
+    private static readonly HtmlStreamingLimits DisabledPolicyProbe = new(1, 1, 1, 1) { EnforcesLimits = false };
 
     public static IEnumerable<string> DegenerateTokens()
     {

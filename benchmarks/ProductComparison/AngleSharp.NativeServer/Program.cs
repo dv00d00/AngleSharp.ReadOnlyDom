@@ -8,11 +8,11 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 var port = int.Parse(Environment.GetEnvironmentVariable("BENCHMARK_PORT") ?? "5081");
 var query = CreateUrlQuery();
 var rewriteQuery = CreateRewriteQuery();
+
 // Default bounded limits are the realistic serving posture; the unlimited switch exists for
 // apples-to-apples lanes against lol-html, which performs no resource accounting.
-var rewriteLimits = Environment.GetEnvironmentVariable("BENCHMARK_UNLIMITED") == "1"
-    ? HtmlStreamingLimits.Unlimited
-    : null;
+var rewriteLimits =
+    Environment.GetEnvironmentVariable("BENCHMARK_UNLIMITED") == "1" ? HtmlStreamingLimits.Unlimited : null;
 var builder = WebApplication.CreateSlimBuilder(args);
 builder.Logging.ClearProviders();
 builder.WebHost.ConfigureKestrel(options =>
@@ -27,11 +27,7 @@ app.MapPost(
     "/extract",
     async context =>
     {
-        var state = await query.ExecuteAsync(
-            context.Request.BodyReader,
-            new UrlState(),
-            context.RequestAborted
-        );
+        var state = await query.ExecuteAsync(context.Request.BodyReader, new UrlState(), context.RequestAborted);
         var output = new ArrayBufferWriter<byte>(state.OutputLength);
         foreach (var url in state.Urls)
         {
@@ -116,9 +112,7 @@ static QueryPlan<UrlState> CreateUrlQuery()
 {
     var list = StreamQuery.For<UrlState>("ul").Class("news-list");
     var card = list.Descendant("li").Attribute("dt-eid", "em_item_article");
-    card.Descendant("a")
-        .Attribute("href")
-        .OnStart(static (ref state, in element) => state.Add(element), "href");
+    card.Descendant("a").Attribute("href").OnStart(static (ref state, in element) => state.Add(element), "href");
     return list.Compile();
 }
 

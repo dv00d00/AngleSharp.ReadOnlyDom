@@ -210,11 +210,7 @@ internal class QueryExecution<TState, TResourceLimits>
             matches |= 1UL << node.Index;
         }
 
-        var closesImmediately = IsVoidTag(
-            _pendingTagIdentity,
-            _pendingTagIdentityLength,
-            _pendingTagNameLength
-        );
+        var closesImmediately = IsVoidTag(_pendingTagIdentity, _pendingTagIdentityLength, _pendingTagNameLength);
         if (TResourceLimits.Enabled && !closesImmediately && _frameCount >= _maximumNestingDepth)
             throw new HtmlStreamingLimitExceededException(
                 HtmlStreamingLimit.NestingDepth,

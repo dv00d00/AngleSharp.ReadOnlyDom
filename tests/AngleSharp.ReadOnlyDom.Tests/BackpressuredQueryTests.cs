@@ -11,10 +11,7 @@ namespace AngleSharp.Readonly.Tests;
 
 public sealed class BackpressuredQueryTests
 {
-    private static readonly HtmlStreamingLimits DisabledPolicyProbe = new(1, 1, 1, 1)
-    {
-        EnforcesLimits = false,
-    };
+    private static readonly HtmlStreamingLimits DisabledPolicyProbe = new(1, 1, 1, 1) { EnforcesLimits = false };
 
     [Test]
     [Arguments(false, false)]

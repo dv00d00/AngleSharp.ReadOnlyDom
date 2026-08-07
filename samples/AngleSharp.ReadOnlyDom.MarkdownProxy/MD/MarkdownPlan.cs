@@ -27,7 +27,8 @@ namespace AngleSharp.ReadOnlyDom.MarkdownProxy.MD
             html.Descendant("li").AsInlineBlock("- "u8);
             html.Descendant("blockquote").AsInlineBlock("> "u8);
             html.Descendant("a").Attribute("href").AsInlineLink();
-            html.Descendant("pre").OnTextContent(static (ref output, in element) => output.FencedCode(element.TextUtf8));
+            html.Descendant("pre")
+                .OnTextContent(static (ref output, in element) => output.FencedCode(element.TextUtf8));
             html.Descendant("hr").OnClose(static (ref output, in _) => output.Block("---"u8, default));
             html.Descendant("img")
                 .OnClose(

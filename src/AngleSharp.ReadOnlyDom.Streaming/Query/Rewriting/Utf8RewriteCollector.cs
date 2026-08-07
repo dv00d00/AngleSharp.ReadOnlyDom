@@ -154,7 +154,10 @@ internal sealed class Utf8RewriteCollector : IStartTagEditCollector
                         Current = " "u8;
                         return true;
                     default:
-                        Current = _collector._payload.WrittenSpan.Slice(insertion.PayloadStart, insertion.PayloadLength);
+                        Current = _collector._payload.WrittenSpan.Slice(
+                            insertion.PayloadStart,
+                            insertion.PayloadLength
+                        );
                         _cursor = _position;
                         _insertionIndex++;
                         _phase = 0;

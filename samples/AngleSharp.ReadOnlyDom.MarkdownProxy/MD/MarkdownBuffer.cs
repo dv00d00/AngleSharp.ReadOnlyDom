@@ -32,7 +32,8 @@ namespace AngleSharp.ReadOnlyDom.MarkdownProxy.MD
 
         public void AdvancePublished(int bytes) => _output.AdvancePublished(bytes);
 
-        private bool AcceptsContent => !_preferredArticleFound || !_preferredArticleComplete && _preferredArticleDepth != 0;
+        private bool AcceptsContent =>
+            !_preferredArticleFound || !_preferredArticleComplete && _preferredArticleDepth != 0;
 
         internal void DocumentTitle(ReadOnlySpan<byte> title)
         {

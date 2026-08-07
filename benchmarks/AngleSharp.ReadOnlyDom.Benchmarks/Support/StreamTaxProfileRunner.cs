@@ -110,14 +110,16 @@ internal static class StreamTaxProfileRunner
 
         var chunks = (input.Length + chunkSize - 1) / chunkSize;
         var baseline = totals[0] / iterations[0];
-        Console.WriteLine($"file={Path.GetFileName(args[0])} bytes={input.Length} chunk={chunkSize} chunks/doc={chunks}");
+        Console.WriteLine(
+            $"file={Path.GetFileName(args[0])} bytes={input.Length} chunk={chunkSize} chunks/doc={chunks}"
+        );
         for (var variant = 0; variant < variants.Length; variant++)
         {
             var perDocument = totals[variant] / iterations[variant];
             var mbPerSecond = input.Length / perDocument / (1024 * 1024);
             var taxPerChunk = (perDocument - baseline) / chunks * 1e9;
             Console.WriteLine(
-                $"{variants[variant].Name,-12} {mbPerSecond,9:F1} MB/s  {perDocument * 1e6,8:F2} us/doc  vs buffer {taxPerChunk,7:F1} ns/chunk"
+                $"{variants[variant].Name, -12} {mbPerSecond, 9:F1} MB/s  {perDocument * 1e6, 8:F2} us/doc  vs buffer {taxPerChunk, 7:F1} ns/chunk"
             );
         }
         return 0;

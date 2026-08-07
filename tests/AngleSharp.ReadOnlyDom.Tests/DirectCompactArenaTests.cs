@@ -979,10 +979,7 @@ internal sealed class CompactParserTests
     public async Task DisposedDocumentRejectsPublicReadsAndDisposeRemainsIdempotent(CompactDocumentLayout layout)
     {
         var document = CompactParser
-            .CreateParser(
-                CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations,
-                layout: layout
-            )
+            .CreateParser(CompactMetadataOptions.ParentLinks | CompactMetadataOptions.SourceLocations, layout: layout)
             .ParseCompactDocument("<main id=content class='selected'><p>x</p></main>");
         var root = document.Root();
         var main = document.Elements("main").First();

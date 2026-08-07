@@ -30,12 +30,14 @@ internal static class Utf8StateProfileRunner
             tokenizer.Write(utf8);
             tokenizer.Complete();
 
-            Console.WriteLine($"## {Path.GetFileName(path)} bytes={utf8.Length:N0} nonAscii={100.0 * nonAscii / utf8.Length:F1}%");
+            Console.WriteLine(
+                $"## {Path.GetFileName(path)} bytes={utf8.Length:N0} nonAscii={100.0 * nonAscii / utf8.Length:F1}%"
+            );
             foreach (var metric in tokenizer.GetStateMetrics())
             {
                 var mean = metric.Runs == 0 ? 0 : (double)metric.ByteVisits / metric.Runs;
                 Console.WriteLine(
-                    $"  {metric.State,-28} {metric.ByteVisits,10:N0} ({100.0 * metric.ByteVisits / utf8.Length,5:F1}%)  runs={metric.Runs,7:N0} meanRun={mean,8:N1}"
+                    $"  {metric.State, -28} {metric.ByteVisits, 10:N0} ({100.0 * metric.ByteVisits / utf8.Length, 5:F1}%)  runs={metric.Runs, 7:N0} meanRun={mean, 8:N1}"
                 );
             }
         }

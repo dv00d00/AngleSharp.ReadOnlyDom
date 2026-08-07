@@ -90,7 +90,7 @@ internal static class StreamingQueryExamples
         var summary = page.Compile().Execute(Html, new PageSummary());
         Console.WriteLine(
             $"aggregate        : {summary.Links} links ({summary.ExternalLinks} external), "
-            + $"{summary.LinkTextCharacters} link-text chars, {summary.ParagraphWords} paragraph words"
+                + $"{summary.LinkTextCharacters} link-text chars, {summary.ParagraphWords} paragraph words"
         );
     }
 

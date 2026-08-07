@@ -68,11 +68,7 @@ public static class BackpressuredQueryExecution
 
         limits ??= HtmlStreamingLimits.Default;
         using var execution = plan.CreateResourceAwareExecution(state, limits);
-        var input = Utf8HtmlTokenizerPipeline.CreateInput(
-            execution,
-            Utf8InputContract.ArbitraryBytes,
-            limits
-        );
+        var input = Utf8HtmlTokenizerPipeline.CreateInput(execution, Utf8InputContract.ArbitraryBytes, limits);
 
         while (true)
         {
