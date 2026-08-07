@@ -6,9 +6,12 @@ namespace AngleSharp.ReadOnlyDom.Streaming.Query.Execution;
 
 internal sealed class CapturedElementBuffer : IDisposable
 {
-    private byte[] _utf8 = ArrayPool<byte>.Shared.Rent(256);
-    private int[] _attributeStarts = ArrayPool<int>.Shared.Rent(1);
-    private int[] _attributeLengths = ArrayPool<int>.Shared.Rent(1);
+    // All buffers are rented lazily: the attribute arrays on the first Reset that actually captures
+    // attributes, the UTF-8 buffer on the first appended byte. Elements without attributes or text
+    // never rent at all.
+    private byte[] _utf8 = [];
+    private int[] _attributeStarts = [];
+    private int[] _attributeLengths = [];
     private CompletedTextMode _textMode;
     private int _length;
     private int _textStart;
@@ -94,9 +97,15 @@ internal sealed class CapturedElementBuffer : IDisposable
         if (_disposed)
             return;
         _disposed = true;
-        ArrayPool<byte>.Shared.Return(_utf8);
-        ArrayPool<int>.Shared.Return(_attributeStarts, clearArray: true);
-        ArrayPool<int>.Shared.Return(_attributeLengths, clearArray: true);
+        if (_utf8.Length != 0)
+            ArrayPool<byte>.Shared.Return(_utf8);
+        if (_attributeStarts.Length != 0)
+        {
+            // Returned dirty on purpose: Reset re-fills the lengths prefix it reads with -1, and
+            // starts are only read where the matching length is non-negative.
+            ArrayPool<int>.Shared.Return(_attributeStarts);
+            ArrayPool<int>.Shared.Return(_attributeLengths);
+        }
         _utf8 = [];
         _attributeStarts = [];
         _attributeLengths = [];
@@ -119,9 +128,10 @@ internal sealed class CapturedElementBuffer : IDisposable
     {
         if (_length + additional <= _utf8.Length)
             return;
-        var replacement = ArrayPool<byte>.Shared.Rent(Math.Max(_utf8.Length * 2, _length + additional));
+        var replacement = ArrayPool<byte>.Shared.Rent(Math.Max(Math.Max(256, _utf8.Length * 2), _length + additional));
         _utf8.AsSpan(0, _length).CopyTo(replacement);
-        ArrayPool<byte>.Shared.Return(_utf8);
+        if (_utf8.Length != 0)
+            ArrayPool<byte>.Shared.Return(_utf8);
         _utf8 = replacement;
     }
 
@@ -129,8 +139,11 @@ internal sealed class CapturedElementBuffer : IDisposable
     {
         if (count <= _attributeStarts.Length)
             return;
-        ArrayPool<int>.Shared.Return(_attributeStarts, clearArray: true);
-        ArrayPool<int>.Shared.Return(_attributeLengths, clearArray: true);
+        if (_attributeStarts.Length != 0)
+        {
+            ArrayPool<int>.Shared.Return(_attributeStarts);
+            ArrayPool<int>.Shared.Return(_attributeLengths);
+        }
         _attributeStarts = ArrayPool<int>.Shared.Rent(count);
         _attributeLengths = ArrayPool<int>.Shared.Rent(count);
     }
