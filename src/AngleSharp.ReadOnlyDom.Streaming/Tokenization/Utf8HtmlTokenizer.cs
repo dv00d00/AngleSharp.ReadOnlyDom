@@ -877,6 +877,14 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             case State.RawEndTagName:
                 EmitText(_candidate.WrittenSpan);
                 break;
+            case State.ScriptLessThan:
+            case State.ScriptEscapedLessThan:
+                EmitText("<"u8);
+                break;
+            case State.ScriptEndTagName:
+            case State.ScriptEscapedEndTagName:
+                EmitText(_candidate.WrittenSpan);
+                break;
             case State.CommentStart:
             case State.CommentStartDash:
             case State.Comment:
