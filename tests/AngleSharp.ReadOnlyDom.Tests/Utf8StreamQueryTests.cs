@@ -864,6 +864,39 @@ public sealed class QueryTests
         await Assert.That(output.WrittenCount).IsEqualTo(0);
     }
 
+    [Test]
+    public async Task UnwantedAttributesAreFilteredWithoutDisturbingWantedCaptureAcrossChunkSizes()
+    {
+        var root = StreamQuery
+            .For<QueryState>("a")
+            .Attribute("href")
+            .OnStart(
+                static (ref QueryState state, in Element element) =>
+                    state.Events.Add(Encoding.UTF8.GetString(Get(element, "href"))),
+                "href"
+            );
+        var plan = root.Compile();
+        // Unwanted names in both identity shapes (compact 'rel', fallback 'data-long-attribute-name'),
+        // duplicates of wanted and unwanted names, and a respelled wanted duplicate: the
+        // query-directed fast reject must not disturb first-occurrence-wins capture for 'href',
+        // including when names and values straddle every chunk boundary.
+        var document = Encoding.UTF8.GetBytes(
+            "<a rel=one rel=two href='first' title=t HREF=second "
+                + "data-long-attribute-name=v data-long-attribute-name=w href=third>x</a>"
+        );
+
+        foreach (var chunkSize in new[] { 1, 2, 3, 7, document.Length })
+        {
+            using var session = plan.CreateSession(new QueryState());
+            for (var offset = 0; offset < document.Length; offset += chunkSize)
+            {
+                session.Write(document.AsSpan(offset, Math.Min(chunkSize, document.Length - offset)));
+            }
+
+            await Assert.That(session.Complete().Events).IsEquivalentTo(["first"]);
+        }
+    }
+
     private static ReadOnlySpan<byte> Get(in Element element, string name)
     {
         if (!element.TryGetAttribute(name, out var value))

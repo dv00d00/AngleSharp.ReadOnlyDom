@@ -38,6 +38,15 @@ internal static class Utf8NameHash
         return hash;
     }
 
+    /// <summary>
+    /// Maps a semantic name hash to its single bit in the 64-bit attribute-name pre-filter
+    /// (see <see cref="IUtf8HtmlTokenSink.StartTagAttributeFilter"/>). The low hash bits are
+    /// used: every input byte reaches them through an odd multiplier, whereas FNV-1a's high
+    /// bits barely avalanche for short inputs (measured: all three-letter names sharing a
+    /// first letter land on one top-six-bit value).
+    /// </summary>
+    internal static UInt64 AttributeFilterBit(UInt64 semanticHash) => 1UL << (Int32)(semanticHash & 63);
+
     internal static UInt64 ComputeSemanticWithUppercasePrescan(ReadOnlySpan<Byte> value)
     {
         if (value.IndexOfAnyInRange((Byte)'A', (Byte)'Z') < 0)
