@@ -297,8 +297,11 @@ public sealed class Html5LibTokenizerTests
 
         public bool WantsAttribute(Utf8HtmlName name) => true;
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value) =>
-            _startTag!.Attributes!.Add(DecodeSemanticName(name), Encoding.UTF8.GetString(value));
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value, bool valueMayContainReferences) =>
+            _startTag!.Attributes!.Add(
+                DecodeSemanticName(name),
+                Encoding.UTF8.GetString(TestAttributeValueDecoding.Decode(value, valueMayContainReferences))
+            );
 
         public void StartTagEnd(bool selfClosing)
         {

@@ -144,7 +144,7 @@ public class Utf8TokenizerBaselineBenchmark
 
         public bool WantsAttribute(Utf8HtmlName name) => true;
 
-        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value)
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value, bool valueMayContainReferences)
         {
             AddSemanticToken(3, name);
             Add(value);
