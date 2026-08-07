@@ -27,6 +27,50 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
 
     private static readonly SearchValues<Byte> TagNameTerminators = SearchValues.Create("\0\t\n\f\r />"u8);
     private static readonly SearchValues<Byte> TagNameArbitraryAllowed = CreateArbitraryAllowed("\0\t\n\f\r />"u8);
+
+    // Every tag-name terminator is a byte value below 64, so a single 64-bit mask plus a
+    // shift-and-test classifies a byte in two ALU instructions — the same shape as the
+    // scalar loop in lol-html's tag_name_state, that parser's single hottest function.
+    private const UInt64 TagNameTerminatorMask =
+        1UL << '\0' | 1UL << '\t' | 1UL << '\n' | 1UL << '\f' | 1UL << '\r' | 1UL << ' ' | 1UL << '/' | 1UL << '>';
+
+    // Names still unterminated after this many bytes fall through to the vectorized scan.
+    private const Int32 TagNameScalarScanLimit = 16;
+
+    /// <summary>
+    /// Tag-name variant of <see cref="IndexOfCaptureStop{TTrust}"/> with identical
+    /// classification (same terminator set; the untrusted instantiation additionally stops at
+    /// non-ASCII), but the first <see cref="TagNameScalarScanLimit"/> bytes are scanned with a
+    /// plain byte loop. Typical tag names are 3-6 bytes, for which the vectorized searcher's
+    /// per-call setup costs more than the entire scan; only a name that outruns the peel pays
+    /// for the vector machinery, on the bytes past it.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Int32 IndexOfTagNameStop<TTrust>(ReadOnlySpan<Byte> utf8)
+        where TTrust : struct, IInputTrustPolicy
+    {
+        var scan = utf8.Length <= TagNameScalarScanLimit ? utf8 : utf8[..TagNameScalarScanLimit];
+        var index = 0;
+        while ((UInt32)index < (UInt32)scan.Length)
+        {
+            UInt32 value = scan[index];
+            if (value < 64 && (TagNameTerminatorMask & (1UL << (Int32)value)) != 0)
+            {
+                return index;
+            }
+            if (TTrust.StopAtNonAscii && value >= 0x80)
+            {
+                return index;
+            }
+            index++;
+        }
+        if (index >= utf8.Length)
+        {
+            return -1;
+        }
+        var stop = IndexOfCaptureStop<TTrust>(utf8[index..], TagNameTerminators, TagNameArbitraryAllowed);
+        return stop < 0 ? -1 : index + stop;
+    }
     private static readonly SearchValues<Byte> AttributeNameTerminators = SearchValues.Create("\0\t\n\f\r /=>"u8);
     private static readonly SearchValues<Byte> DiscardedAttributeNameTerminators = SearchValues.Create(
         "\t\n\f\r /=>"u8
