@@ -1,21 +1,7 @@
-#pragma warning disable CS1591 // Experimental API surface; shape is intentionally unsettled.
-
 using System.Buffers;
-using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
-
-internal interface IUtf8HtmlTokenizer
-{
-    Utf8HtmlTokenizerCounters Counters { get; }
-
-    void Write(ReadOnlyMemory<Byte> utf8);
-
-    void Write(ReadOnlySpan<Byte> utf8);
-
-    void Complete();
-}
 
 internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     where TResourceLimits : struct, IResourceLimitPolicy
@@ -114,26 +100,19 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         Duplicate,
     }
 
-    private static readonly SearchValues<Byte> HtmlSpaces = SearchValues.Create("\t\n\f\r "u8);
     private static readonly SearchValues<Byte> DataTextTerminators = SearchValues.Create("<&\0\r"u8);
     private static readonly SearchValues<Byte> RawTextTerminators = SearchValues.Create("<\0\r"u8);
     private static readonly SearchValues<Byte> PlaintextTerminators = SearchValues.Create("\0\r"u8);
     private static readonly SearchValues<Byte> TagNameTerminators = SearchValues.Create("\0\t\n\f\r />"u8);
     private static readonly SearchValues<Byte> AttributeNameTerminators = SearchValues.Create("\0\t\n\f\r /=>"u8);
-    private static readonly SearchValues<Byte> DiscardedAttributeNameTerminators = SearchValues.Create(
-        "\t\n\f\r /=>"u8
-    );
+    private static readonly SearchValues<Byte> DiscardedAttributeNameTerminators = SearchValues.Create("\t\n\f\r /=>"u8);
     // '&' never terminates a captured value scan: a character reference inside an attribute
     // value cannot affect tokenization, so references are decoded once over the contiguous
     // buffered value when the attribute commits instead of per byte during the scan.
     private static readonly SearchValues<Byte> DoubleQuotedAttributeValueTerminators = SearchValues.Create("\"\0\r"u8);
     private static readonly SearchValues<Byte> SingleQuotedAttributeValueTerminators = SearchValues.Create("'\0\r"u8);
-    private static readonly SearchValues<Byte> UnquotedAttributeValueTerminators = SearchValues.Create(
-        "\0>\t\n\f\r "u8
-    );
-    private static readonly SearchValues<Byte> DiscardedUnquotedAttributeValueTerminators = SearchValues.Create(
-        ">\t\n\f\r "u8
-    );
+    private static readonly SearchValues<Byte> UnquotedAttributeValueTerminators = SearchValues.Create("\0>\t\n\f\r "u8);
+    private static readonly SearchValues<Byte> DiscardedUnquotedAttributeValueTerminators = SearchValues.Create(">\t\n\f\r "u8);
     private static readonly SearchValues<Byte> EscapedScriptTextTerminators = SearchValues.Create("<-\0\r"u8);
     private static readonly SearchValues<Byte> CommentTerminators = SearchValues.Create("<-\0\r"u8);
 
@@ -148,22 +127,63 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     private static readonly SearchValues<Byte> RawTextArbitraryAllowed = CreateArbitraryAllowed("<\0\r"u8);
     private static readonly SearchValues<Byte> PlaintextArbitraryAllowed = CreateArbitraryAllowed("\0\r"u8);
     private static readonly SearchValues<Byte> TagNameArbitraryAllowed = CreateArbitraryAllowed("\0\t\n\f\r />"u8);
-    private static readonly SearchValues<Byte> AttributeNameArbitraryAllowed = CreateArbitraryAllowed(
-        "\0\t\n\f\r /=>"u8
-    );
-    private static readonly SearchValues<Byte> DoubleQuotedAttributeValueArbitraryAllowed = CreateArbitraryAllowed(
-        "\"\0\r"u8
-    );
-    private static readonly SearchValues<Byte> SingleQuotedAttributeValueArbitraryAllowed = CreateArbitraryAllowed(
-        "'\0\r"u8
-    );
-    private static readonly SearchValues<Byte> UnquotedAttributeValueArbitraryAllowed = CreateArbitraryAllowed(
-        "\0>\t\n\f\r "u8
-    );
+    private static readonly SearchValues<Byte> AttributeNameArbitraryAllowed = CreateArbitraryAllowed("\0\t\n\f\r /=>"u8);
+    private static readonly SearchValues<Byte> DoubleQuotedAttributeValueArbitraryAllowed = CreateArbitraryAllowed("\"\0\r"u8);
+    private static readonly SearchValues<Byte> SingleQuotedAttributeValueArbitraryAllowed = CreateArbitraryAllowed("'\0\r"u8);
+    private static readonly SearchValues<Byte> UnquotedAttributeValueArbitraryAllowed = CreateArbitraryAllowed("\0>\t\n\f\r "u8);
     private static readonly SearchValues<Byte> CommentArbitraryAllowed = CreateArbitraryAllowed("<-\0\r"u8);
     private static readonly SearchValues<Byte> EscapedScriptTextArbitraryAllowed = CreateArbitraryAllowed("<-\0\r"u8);
     private static readonly String[] StateNames = Enum.GetNames<State>();
 
+    private readonly Utf8HtmlTokenizerStateMetrics? _stateMetrics;
+    private readonly Utf8TokenBuffer _name = new(32);
+    private readonly Utf8TokenBuffer _attributeName = new(32);
+    private Utf8TokenBuffer? _attributeValue;
+    private Utf8TokenBuffer? _decodedAttributeValue;
+    private Utf8TokenBuffer? _seenAttributeNames;
+    private readonly Utf8TokenBuffer _candidate = new(64);
+    private Utf8TokenBuffer? _doctypePublic;
+    private Utf8TokenBuffer? _doctypeSystem;
+    private State _state;
+    private State _returnState;
+    private Boolean _isEndTag;
+    private Boolean _startTagEmitted;
+    private Boolean _captureStartTagAttributes;
+    private UInt64 _attributeNameFilter;
+    private Boolean _captureText;
+    private Boolean _pendingCarriageReturn;
+    private String? _rawEndTag;
+    private Int64 _segments;
+    private Int64 _reconsumes;
+    private Int64 _bufferedTokenBytes;
+    private Int32 _maximumBufferedTokenBytes;
+    private Int32 _textUtf8CarryLength;
+    private Int32 _textUtf8ExpectedLength;
+    private UInt32 _textUtf8Carry;
+    private Boolean _numericReferenceOverflow;
+    private Boolean _numericReferenceHasDigits;
+    private UInt32 _numericReferenceValue;
+    private Boolean _yieldRequested;
+    private Boolean _completed;
+    private Utf8HtmlNameIdentityCache _tagNameIdentityCache;
+    private Utf8HtmlNameIdentityCache _attributeNameIdentityCache;
+    private Utf8CompactAttributeNameSet? _seenCompactAttributeNames;
+    private Utf8AttributeNameIndex.Entry[]? _seenAttributeIndex;
+    private Int32 _seenFallbackAttributeCount;
+    private AttributeCapture _attributeCapture;
+    private readonly Int32 _maximumBufferedTokenBytesAllowed;
+    private readonly Int64 _maximumInputBytesAllowed;
+    private readonly IUtf8HtmlTokenSink _sink;
+    private readonly IUtf8HtmlStreamingCommentSink? _streamingCommentSink;
+    private IUtf8HtmlStartTagSourceRangeSink? _startTagSourceRangeSink;
+    private Boolean _streamingCommentStarted;
+    private Boolean _captureStreamingComment;
+    private Int64 _normalizedBytesConsumed;
+    private Int64 _inputBytesConsumed;
+    private Int64 _currentSourceOffset;
+    private Int64 _lastLessThanSourceOffset;
+    private Int64 _currentTagSourceOffset;
+    
     private static SearchValues<Byte> CreateArbitraryAllowed(ReadOnlySpan<Byte> terminators)
     {
         Span<Byte> allowed = stackalloc Byte[128];
@@ -178,11 +198,7 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         return SearchValues.Create(allowed[..count]);
     }
 
-    private static Int32 IndexOfCaptureStop<TTrust>(
-        ReadOnlySpan<Byte> utf8,
-        SearchValues<Byte> terminators,
-        SearchValues<Byte> arbitraryAllowed
-    )
+    private static Int32 IndexOfCaptureStop<TTrust>(ReadOnlySpan<Byte> utf8, SearchValues<Byte> terminators, SearchValues<Byte> arbitraryAllowed)
         where TTrust : struct, IInputTrustPolicy =>
         TTrust.StopAtNonAscii ? utf8.IndexOfAnyExcept(arbitraryAllowed) : utf8.IndexOfAny(terminators);
 
@@ -259,55 +275,6 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             offset = position + 3;
         }
     }
-
-    private readonly Utf8HtmlTokenizerStateMetrics? _stateMetrics;
-    private readonly Utf8TokenBuffer _name = new(32);
-    private readonly Utf8TokenBuffer _attributeName = new(32);
-    private Utf8TokenBuffer? _attributeValue;
-    private Utf8TokenBuffer? _decodedAttributeValue;
-    private Utf8TokenBuffer? _seenAttributeNames;
-    private readonly Utf8TokenBuffer _candidate = new(64);
-    private Utf8TokenBuffer? _doctypePublic;
-    private Utf8TokenBuffer? _doctypeSystem;
-    private State _state;
-    private State _returnState;
-    private Boolean _isEndTag;
-    private Boolean _startTagEmitted;
-    private Boolean _captureStartTagAttributes;
-    private UInt64 _attributeNameFilter;
-    private Boolean _captureText;
-    private Boolean _pendingCarriageReturn;
-    private String? _rawEndTag;
-    private Int64 _segments;
-    private Int64 _reconsumes;
-    private Int64 _bufferedTokenBytes;
-    private Int32 _maximumBufferedTokenBytes;
-    private Int32 _textUtf8CarryLength;
-    private Int32 _textUtf8ExpectedLength;
-    private UInt32 _textUtf8Carry;
-    private Boolean _numericReferenceOverflow;
-    private Boolean _numericReferenceHasDigits;
-    private UInt32 _numericReferenceValue;
-    private Boolean _yieldRequested;
-    private Boolean _completed;
-    private Utf8HtmlNameIdentityCache _tagNameIdentityCache;
-    private Utf8HtmlNameIdentityCache _attributeNameIdentityCache;
-    private Utf8CompactAttributeNameSet? _seenCompactAttributeNames;
-    private Utf8AttributeNameIndex.Entry[]? _seenAttributeIndex;
-    private Int32 _seenFallbackAttributeCount;
-    private AttributeCapture _attributeCapture;
-    private readonly Int32 _maximumBufferedTokenBytesAllowed;
-    private readonly Int64 _maximumInputBytesAllowed;
-    private readonly IUtf8HtmlTokenSink _sink;
-    private readonly IUtf8HtmlStreamingCommentSink? _streamingCommentSink;
-    private IUtf8HtmlStartTagSourceRangeSink? _startTagSourceRangeSink;
-    private Boolean _streamingCommentStarted;
-    private Boolean _captureStreamingComment;
-    private Int64 _normalizedBytesConsumed;
-    private Int64 _inputBytesConsumed;
-    private Int64 _currentSourceOffset;
-    private Int64 _lastLessThanSourceOffset;
-    private Int64 _currentTagSourceOffset;
 
     private Utf8TokenBuffer AttributeValue => _attributeValue ??= new(128);
 
@@ -3889,34 +3856,3 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     }
 }
 
-internal sealed class Utf8HtmlTokenizer : Utf8HtmlTokenizer<EnforcedResourceLimits>
-{
-    public static ValueTask<Utf8HtmlTokenizerCounters> TokenizeAsync(
-        PipeReader reader,
-        IUtf8HtmlTokenSink sink,
-        CancellationToken cancellationToken = default,
-        HtmlStreamingLimits? limits = null,
-        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes
-    )
-    {
-        limits ??= HtmlStreamingLimits.Default;
-        return Utf8HtmlTokenizerPipeline.TokenizeAsync(reader, sink, cancellationToken, limits, inputContract);
-    }
-
-    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink)
-        : base(sink) { }
-
-    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink, HtmlStreamingLimits limits)
-        : base(sink, limits) { }
-
-    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink, Utf8HtmlTokenizerStateMetrics? stateMetrics)
-        : base(sink, stateMetrics) { }
-
-    public Utf8HtmlTokenizer(
-        IUtf8HtmlTokenSink sink,
-        Utf8HtmlTokenizerStateMetrics? stateMetrics,
-        HtmlStreamingLimits limits,
-        Boolean countInputBytes
-    )
-        : base(sink, stateMetrics, limits, countInputBytes) { }
-}
