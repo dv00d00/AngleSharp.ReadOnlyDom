@@ -193,6 +193,25 @@ public sealed class QueryTests
     }
 
     [Test]
+    [Property("Issue", "78")]
+    public async Task MalformedEndTagTailStillClosesTheActiveStreamingMatch()
+    {
+        var plan = StreamQuery
+            .For<QueryState>("a")
+            .OnText(
+                static (ref QueryState state, ReadOnlySpan<byte> text) =>
+                    state.Text.Append(Encoding.UTF8.GetString(text))
+            )
+            .OnEnd(static (ref QueryState state) => state.Events.Add("end"))
+            .Compile();
+
+        var state = plan.Execute("<a>inside</a/=\"><p>outside</p>"u8, new QueryState());
+
+        await Assert.That(state.Text.ToString()).IsEqualTo("inside");
+        await Assert.That(state.Events).IsEquivalentTo(["end"]);
+    }
+
+    [Test]
     public async Task PipeReaderFeedsTheSameCompiledPlanIncrementally()
     {
         var root = StreamQuery

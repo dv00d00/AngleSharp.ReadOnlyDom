@@ -3125,8 +3125,11 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 Clear(_attributeValue);
                 _attributeNameIdentityCache.Reset();
                 Append(_attributeName, value);
-                index++;
             }
+            // CaptureOff still has to consume the byte that starts the discarded name. Leaving
+            // it for AttributeName changes its meaning when the byte is also a scanner delimiter
+            // (notably '=' after an unexpected solidus on an end tag).
+            index++;
             if (yieldAfterTransition)
             {
                 _state = State.AttributeName;
