@@ -54,6 +54,11 @@ internal static class QueryPlanCompiler
             .ToArray();
         var attributeNamesUtf8 = attributeNames.Select(Encoding.UTF8.GetBytes).ToArray();
         var attributeIdentities = attributeNamesUtf8.Select(CompileAttributeIdentity).ToArray();
+        // One tokenizer pre-filter bit per wanted attribute name; a node's filter is the union
+        // over its requested attributes (see IUtf8HtmlTokenSink.StartTagAttributeFilter).
+        var attributeFilterBits = attributeNamesUtf8
+            .Select(static name => Utf8NameHash.AttributeFilterBit(Utf8NameHash.ComputeSemantic(name)))
+            .ToArray();
         var compactAttributeMask = 0UL;
         for (var index = 0; index < attributeIdentities.Length; index++)
         {
@@ -86,6 +91,7 @@ internal static class QueryPlanCompiler
                 .Selector.Attributes.Select(static predicate => predicate.Name)
                 .Concat(source.ProjectedAttributes)
                 .Aggregate(0UL, (bits, name) => bits | (1UL << attributeIndexes[name]));
+            var requestedAttributeFilter = ComputeAttributeFilter(requiredAttributeBits, attributeFilterBits);
             var completedAttributeNames = source.CompletedHandler is null
                 ? []
                 : source
@@ -101,6 +107,7 @@ internal static class QueryPlanCompiler
                 tagIdentity.Value,
                 tagIdentity.Length,
                 requiredAttributeBits,
+                requestedAttributeFilter,
                 predicates,
                 source.StartHandler,
                 source.TextHandler,
@@ -129,6 +136,18 @@ internal static class QueryPlanCompiler
             compactAttributeMask,
             tagDispatch
         );
+    }
+
+    private static ulong ComputeAttributeFilter(ulong attributeBits, ulong[] filterBits)
+    {
+        var filter = 0UL;
+        while (attributeBits != 0)
+        {
+            var index = System.Numerics.BitOperations.TrailingZeroCount(attributeBits);
+            attributeBits &= attributeBits - 1;
+            filter |= filterBits[index];
+        }
+        return filter;
     }
 
     private static CompiledNameIdentity CompileAttributeIdentity(byte[] name)

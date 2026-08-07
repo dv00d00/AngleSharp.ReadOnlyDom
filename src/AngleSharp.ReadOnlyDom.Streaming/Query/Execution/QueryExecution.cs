@@ -33,6 +33,7 @@ internal class QueryExecution<TState, TResourceLimits>
     private byte[]? _pendingFallbackTagNameUtf8;
     private ulong _pendingCandidateBits;
     private ulong _pendingAttributeBits;
+    private ulong _pendingAttributeFilter;
     private int _pendingAttributeIndex = -1;
     private ulong _seenAttributeBits;
     private bool _disposed;
@@ -102,6 +103,7 @@ internal class QueryExecution<TState, TResourceLimits>
         _pendingTagNameLength = name.Verbatim.Length;
         _pendingCandidateBits = 0;
         _pendingAttributeBits = 0;
+        _pendingAttributeFilter = 0;
         _pendingAttributeIndex = -1;
         var candidates = FindTagCandidates(identity, identityLength);
         while (candidates != 0)
@@ -113,10 +115,19 @@ internal class QueryExecution<TState, TResourceLimits>
                 continue;
             _pendingCandidateBits |= 1UL << node.Index;
             _pendingAttributeBits |= node.RequestedAttributeMask;
+            _pendingAttributeFilter |= node.RequestedAttributeFilter;
         }
         ResetAttributes();
         return _pendingAttributeBits == 0 ? Utf8HtmlStartTagCapture.None : Utf8HtmlStartTagCapture.Attributes;
     }
+
+    /// <summary>
+    /// Bloom of the semantic hashes of every attribute name any candidate node on the current
+    /// tag requests. WantsAttribute is a pure function of the semantic name for the duration of
+    /// the tag (it only consults _pendingAttributeBits, fixed at StartTag), so the tokenizer may
+    /// reject filter-missed names without calling back.
+    /// </summary>
+    public ulong StartTagAttributeFilter => _pendingAttributeFilter;
 
     public bool WantsAttribute(Utf8HtmlName name)
     {
