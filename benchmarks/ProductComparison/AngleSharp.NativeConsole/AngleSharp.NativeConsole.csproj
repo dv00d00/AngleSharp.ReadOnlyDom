@@ -2,6 +2,13 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
+    <!-- .NET 11 preview lane (runtime-async experiments): build with -p:Net11Lane=true
+         using the preview SDK at artifacts/dotnet11; -p:Net11Async=true opts the
+         compilation into runtime-handled async. -->
+    <TargetFramework Condition="'$(Net11Lane)' == 'true'">net11.0</TargetFramework>
+    <UseRuntimeAsync Condition="'$(Net11Async)' == 'true'">true</UseRuntimeAsync>
+    <Features Condition="'$(Net11Async)' == 'true'">$(Features);runtime-async=on</Features>
+    <LangVersion Condition="'$(Net11Async)' == 'true'">preview</LangVersion>
     <PublishAot>true</PublishAot>
     <OptimizationPreference>Speed</OptimizationPreference>
     <InvariantGlobalization>true</InvariantGlobalization>

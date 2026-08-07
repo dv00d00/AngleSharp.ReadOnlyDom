@@ -129,6 +129,21 @@ dotnet run --project benchmarks/AngleSharp.ReadOnlyDom.Benchmarks -c Release -f 
 dotnet run --project benchmarks/AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- --utf8-dom-check
 ```
 
+For tokenizer regression discovery, run the coverage-guided differential mutator. It compares every candidate with
+AngleSharp, then replays it bytewise and under fixed and jittered chunk layouts. Divergences are minimized and written
+to `artifacts/fuzz` together with the seed and both token streams:
+
+```powershell
+dotnet run --project benchmarks/AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- --utf8-tokenizer-fuzz --iterations 10000 --seed 12345
+dotnet run --project benchmarks/AngleSharp.ReadOnlyDom.Benchmarks -c Release -f net10.0 -- --utf8-tokenizer-fuzz --repro artifacts/fuzz/<run>/<case>.html
+```
+
+Use `--corpus <file-or-directory>` to seed mutations from a PR-specific corpus, `--max-failures` to control unique
+findings, and `--output` to select the reproducer directory. A non-zero exit code means at least one differential or
+chunking-invariance failure was found. Differential findings are review candidates rather than automatic proof that the
+streaming side is wrong: minimize and check the HTML tokenizer specification when the AngleSharp oracle itself has an
+edge-case discrepancy.
+
 The UTF-8 baseline tier also writes a diagnostics report containing maximum buffered token bytes and per-state byte
 visits. Diagnostic visits may exceed source length because bytes reprocessed by multiple states are counted each time.
 

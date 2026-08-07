@@ -870,6 +870,14 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             case State.RawEndTagName:
                 EmitText(_candidate.WrittenSpan);
                 break;
+            case State.ScriptLessThan:
+            case State.ScriptEscapedLessThan:
+                EmitText("<"u8);
+                break;
+            case State.ScriptEndTagName:
+            case State.ScriptEscapedEndTagName:
+                EmitText(_candidate.WrittenSpan);
+                break;
             case State.CommentStart:
             case State.CommentStartDash:
             case State.Comment:
@@ -3144,8 +3152,11 @@ internal class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 Clear(_attributeValue);
                 _attributeNameIdentityCache.Reset();
                 Append(_attributeName, value);
-                index++;
             }
+            // CaptureOff still has to consume the byte that starts the discarded name. Leaving
+            // it for AttributeName changes its meaning when the byte is also a scanner delimiter
+            // (notably '=' after an unexpected solidus on an end tag).
+            index++;
             if (yieldAfterTransition)
             {
                 _state = State.AttributeName;
