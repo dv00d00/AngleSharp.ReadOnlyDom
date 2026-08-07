@@ -209,7 +209,13 @@ public sealed class StreamingRewriteSessionTests
 
         foreach (var size in (int[])[1, 3, source.Length])
         {
-            var actual = RewriteStreaming(plan, source, Repeat(size), out var matches, Utf8InputContract.ArbitraryBytes);
+            var actual = RewriteStreaming(
+                plan,
+                source,
+                Repeat(size),
+                out var matches,
+                Utf8InputContract.ArbitraryBytes
+            );
             await Assert.That(actual.SequenceEqual(expected)).IsTrue();
             await Assert.That(matches).IsEqualTo(1);
         }

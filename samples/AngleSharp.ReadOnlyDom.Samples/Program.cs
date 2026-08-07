@@ -8,17 +8,17 @@ using AngleSharp.ReadOnlyDom.Compact.Query;
 using AngleSharp.ReadOnlyDom.Samples;
 
 const string Html = """
-                    <!doctype html>
-                    <html>
-                      <body>
-                        <article id="content" class="guide" data-kind="sample">
-                          <h1>Parsing <em>real</em> HTML </h1>
-                          <p>Use the <a href="/parser">HTML parser</a>, not regex. </p>
-                          <ul><li>Correct tables </li><li>Malformed markup</li></ul>
-                        </article>
-                      </body>
-                    </html>
-                    """;
+    <!doctype html>
+    <html>
+      <body>
+        <article id="content" class="guide" data-kind="sample">
+          <h1>Parsing <em>real</em> HTML </h1>
+          <p>Use the <a href="/parser">HTML parser</a>, not regex. </p>
+          <ul><li>Correct tables </li><li>Malformed markup</li></ul>
+        </article>
+      </body>
+    </html>
+    """;
 
 RunReadOnlyDom();
 RunCompactDom();

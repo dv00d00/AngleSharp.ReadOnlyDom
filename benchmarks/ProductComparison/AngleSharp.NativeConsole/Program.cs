@@ -93,8 +93,8 @@ static async ValueTask<BenchmarkResult> Parse(
         };
         long checksum = 17;
         foreach (var url in state.Urls)
-            foreach (var value in url)
-                checksum = unchecked(checksum * 31 + value);
+        foreach (var value in url)
+            checksum = unchecked(checksum * 31 + value);
         return new BenchmarkResult(state.Urls.Count, checksum);
     }
 
@@ -172,7 +172,12 @@ static BenchmarkResult RewriteSink(QueryPlan<CountState> plan, byte[] input, Htm
 // sink output chunks by reference. Matching that lane exactly, the first pass checksums (and
 // optionally dumps) the published segments and later passes discard them, so both engines
 // measure rewriting and publishing rather than memcpy.
-static BenchmarkResult RewriteStream(QueryPlan<CountState> plan, byte[] input, int chunkSize, HtmlStreamingLimits? limits)
+static BenchmarkResult RewriteStream(
+    QueryPlan<CountState> plan,
+    byte[] input,
+    int chunkSize,
+    HtmlStreamingLimits? limits
+)
 {
     var checksumThisPass = RewriteScratch.Checksum is null;
     var capture = checksumThisPass && RewriteScratch.DumpPath is not null ? new ArrayBufferWriter<byte>() : null;
@@ -234,9 +239,7 @@ static QueryPlan<UrlState> CreateUrlQuery(string query)
     }
     var list = StreamQuery.For<UrlState>("ul").Class("news-list");
     var card = list.Descendant("li").Attribute("dt-eid", "em_item_article");
-    card.Descendant("a")
-        .Attribute("href")
-        .OnStart(static (ref state, in element) => state.Add(element), "href");
+    card.Descendant("a").Attribute("href").OnStart(static (ref state, in element) => state.Add(element), "href");
     return list.Compile();
 }
 
@@ -250,9 +253,7 @@ static QueryPlan<CountState> CreateMatchQuery(string query)
     }
     var list = StreamQuery.For<CountState>("ul").Class("news-list");
     var card = list.Descendant("li").Attribute("dt-eid", "em_item_article");
-    card.Descendant("a")
-        .Attribute("href")
-        .OnStart(static (ref state, in _) => state.Count++);
+    card.Descendant("a").Attribute("href").OnStart(static (ref state, in _) => state.Count++);
     return list.Compile();
 }
 
@@ -345,6 +346,7 @@ sealed class ChunkedMemoryPipeReader(byte[] source, int chunkSize) : PipeReader
     }
 
     public override void CancelPendingRead() { }
+
     public override void Complete(Exception? exception = null) { }
 }
 

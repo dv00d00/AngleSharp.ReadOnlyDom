@@ -165,6 +165,7 @@ public class MalformedHtmlPropertyTests
 
         Check.One(Config.QuickThrowOnFailure.WithMaxTest(10_000), property);
     }
+
     [Test]
     public void GeneratedNestedDivTextTotalsMatchAngleSharpMutableDomAcrossActiveDepth()
     {

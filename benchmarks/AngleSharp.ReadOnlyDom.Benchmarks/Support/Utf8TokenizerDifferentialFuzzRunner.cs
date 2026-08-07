@@ -241,8 +241,7 @@ internal static class Utf8TokenizerDifferentialFuzzRunner
         // AngleSharp lowercases the temporary end-tag buffer at EOF. The HTML algorithm keeps
         // the original input bytes when an RCDATA/RAWTEXT candidate does not become a token.
         if (
-            expectedText.Equals(actualText, StringComparison.OrdinalIgnoreCase)
-            && HasUppercaseIncompleteRawEndTag(html)
+            expectedText.Equals(actualText, StringComparison.OrdinalIgnoreCase) && HasUppercaseIncompleteRawEndTag(html)
         )
         {
             return true;
@@ -308,8 +307,8 @@ internal static class Utf8TokenizerDifferentialFuzzRunner
 
     private static bool HasUppercaseIncompleteRawEndTag(string html)
     {
-        return new[] { "title", "textarea", "style", "xmp", "iframe", "noembed", "noframes" }.Any(
-            name => html.Contains($"<{name}", StringComparison.OrdinalIgnoreCase)
+        return new[] { "title", "textarea", "style", "xmp", "iframe", "noembed", "noframes" }.Any(name =>
+            html.Contains($"<{name}", StringComparison.OrdinalIgnoreCase)
         );
     }
 
@@ -406,48 +405,52 @@ internal static class Utf8TokenizerDifferentialFuzzRunner
             switch (random.Next(8))
             {
                 case 0 when value.Count != 0:
-                    {
-                        var start = random.Next(value.Count);
-                        var length = random.Next(1, Math.Min(64, value.Count - start) + 1);
-                        value.RemoveRange(start, length);
-                        break;
-                    }
+                {
+                    var start = random.Next(value.Count);
+                    var length = random.Next(1, Math.Min(64, value.Count - start) + 1);
+                    value.RemoveRange(start, length);
+                    break;
+                }
                 case 1:
-                    Insert(value, random.Next(value.Count + 1), InterestingFragments[random.Next(InterestingFragments.Length)]);
+                    Insert(
+                        value,
+                        random.Next(value.Count + 1),
+                        InterestingFragments[random.Next(InterestingFragments.Length)]
+                    );
                     break;
                 case 2 when value.Count != 0:
                     value[random.Next(value.Count)] = (byte)random.Next(128);
                     break;
                 case 3 when value.Count != 0:
-                    {
-                        var start = random.Next(value.Count);
-                        var length = random.Next(1, Math.Min(64, value.Count - start) + 1);
-                        Insert(value, random.Next(value.Count + 1), value.GetRange(start, length));
-                        break;
-                    }
+                {
+                    var start = random.Next(value.Count);
+                    var length = random.Next(1, Math.Min(64, value.Count - start) + 1);
+                    Insert(value, random.Next(value.Count + 1), value.GetRange(start, length));
+                    break;
+                }
                 case 4 when value.Count != 0:
-                    {
-                        var start = random.Next(value.Count);
-                        value.RemoveRange(start, value.Count - start);
-                        break;
-                    }
+                {
+                    var start = random.Next(value.Count);
+                    value.RemoveRange(start, value.Count - start);
+                    break;
+                }
                 case 5 when value.Count != 0:
-                    {
-                        var index = random.Next(value.Count);
-                        var b = value[index];
-                        value[index] = (byte)(b is >= (byte)'a' and <= (byte)'z' ? b - 32 : b | 0x20);
-                        break;
-                    }
+                {
+                    var index = random.Next(value.Count);
+                    var b = value[index];
+                    value[index] = (byte)(b is >= (byte)'a' and <= (byte)'z' ? b - 32 : b | 0x20);
+                    break;
+                }
                 case 6:
-                    {
-                        var donor = corpus[random.Next(corpus.Count)];
-                        if (donor.Length == 0)
-                            break;
-                        var start = random.Next(donor.Length);
-                        var length = random.Next(1, Math.Min(128, donor.Length - start) + 1);
-                        Insert(value, random.Next(value.Count + 1), donor.AsSpan(start, length));
+                {
+                    var donor = corpus[random.Next(corpus.Count)];
+                    if (donor.Length == 0)
                         break;
-                    }
+                    var start = random.Next(donor.Length);
+                    var length = random.Next(1, Math.Min(128, donor.Length - start) + 1);
+                    Insert(value, random.Next(value.Count + 1), donor.AsSpan(start, length));
+                    break;
+                }
                 default:
                     Insert(value, random.Next(value.Count + 1), [(byte)random.Next(256)]);
                     break;
@@ -510,28 +513,32 @@ internal static class Utf8TokenizerDifferentialFuzzRunner
                     sink.Text(Encoding.UTF8.GetBytes(token.Data.ToString()));
                     break;
                 case HtmlTokenType.StartTag:
+                {
+                    var name = token.Name.ToString();
+                    sink.StartTag(Encoding.UTF8.GetBytes(name));
+                    for (var index = 0; index < token.Attributes.Count; index++)
                     {
-                        var name = token.Name.ToString();
-                        sink.StartTag(Encoding.UTF8.GetBytes(name));
-                        for (var index = 0; index < token.Attributes.Count; index++)
-                        {
-                            var attribute = token.Attributes[index];
-                            sink.Attribute(
-                                Encoding.UTF8.GetBytes(attribute.Name.ToString()),
-                                Encoding.UTF8.GetBytes(attribute.Value.ToString())
-                            );
-                        }
-                        sink.StartTagEnd(token.IsSelfClosing);
-                        tokenizer.State = name.ToLowerInvariant() switch
-                        {
-                            "title" or "textarea" => AngleSharp.Html.Parser.HtmlParseMode.RCData,
-                            "style" or "xmp" or "iframe" or "noembed" or "noframes" => AngleSharp.Html.Parser.HtmlParseMode.Rawtext,
-                            "script" => AngleSharp.Html.Parser.HtmlParseMode.Script,
-                            "plaintext" => AngleSharp.Html.Parser.HtmlParseMode.Plaintext,
-                            _ => tokenizer.State,
-                        };
-                        break;
+                        var attribute = token.Attributes[index];
+                        sink.Attribute(
+                            Encoding.UTF8.GetBytes(attribute.Name.ToString()),
+                            Encoding.UTF8.GetBytes(attribute.Value.ToString())
+                        );
                     }
+                    sink.StartTagEnd(token.IsSelfClosing);
+                    tokenizer.State = name.ToLowerInvariant() switch
+                    {
+                        "title" or "textarea" => AngleSharp.Html.Parser.HtmlParseMode.RCData,
+                        "style" or "xmp" or "iframe" or "noembed" or "noframes" => AngleSharp
+                            .Html
+                            .Parser
+                            .HtmlParseMode
+                            .Rawtext,
+                        "script" => AngleSharp.Html.Parser.HtmlParseMode.Script,
+                        "plaintext" => AngleSharp.Html.Parser.HtmlParseMode.Plaintext,
+                        _ => tokenizer.State,
+                    };
+                    break;
+                }
                 case HtmlTokenType.EndTag:
                     sink.EndTag(Encoding.UTF8.GetBytes(token.Name.ToString()));
                     break;
@@ -575,15 +582,12 @@ internal static class Utf8TokenizerDifferentialFuzzRunner
         }
     }
 
-    private static void WriteFailure(
-        Options options,
-        int iteration,
-        byte[] original,
-        byte[] minimized,
-        Failure failure
-    )
+    private static void WriteFailure(Options options, int iteration, byte[] original, byte[] minimized, Failure failure)
     {
-        var prefix = Path.Combine(options.OutputDirectory, $"seed-{options.Seed}-iter-{iteration}-{failure.Kind.ToString().ToLowerInvariant()}");
+        var prefix = Path.Combine(
+            options.OutputDirectory,
+            $"seed-{options.Seed}-iter-{iteration}-{failure.Kind.ToString().ToLowerInvariant()}"
+        );
         File.WriteAllBytes(prefix + ".html", minimized);
         File.WriteAllBytes(prefix + ".original.html", original);
         File.WriteAllText(
@@ -592,11 +596,13 @@ internal static class Utf8TokenizerDifferentialFuzzRunner
                 + $"kind={failure.Kind}{Environment.NewLine}layout={failure.Layout}{Environment.NewLine}"
                 + $"chunkSeed={failure.ChunkSeed}{Environment.NewLine}input={Escape(minimized)}{Environment.NewLine}"
                 + $"difference={failure.DescribeDifference()}{Environment.NewLine}{Environment.NewLine}"
-                + "AngleSharp / contiguous oracle:" + Environment.NewLine
+                + "AngleSharp / contiguous oracle:"
+                + Environment.NewLine
                 + String.Join(Environment.NewLine, failure.Expected.Select(static token => token.ToString()))
                 + Environment.NewLine
                 + Environment.NewLine
-                + "ReadOnlyDom / chunked result:" + Environment.NewLine
+                + "ReadOnlyDom / chunked result:"
+                + Environment.NewLine
                 + String.Join(Environment.NewLine, failure.Actual.Select(static token => token.ToString()))
                 + Environment.NewLine
         );
@@ -716,14 +722,15 @@ internal static class Utf8TokenizerDifferentialFuzzRunner
 
     private readonly record struct Token(string Kind, string Name, string Value, bool Flag)
     {
-        public override string ToString() => Kind switch
-        {
-            "text" or "comment" => $"{Kind}:{Escape(Encoding.UTF8.GetBytes(Value))}",
-            "attribute" => $"attribute:{Name}={Escape(Encoding.UTF8.GetBytes(Value))}",
-            "start-end" => Flag ? "start-end:/" : "start-end",
-            "doctype" => $"doctype:{Name}|{Value}|quirks={Flag}",
-            _ => String.IsNullOrEmpty(Name) ? Kind : $"{Kind}:{Name}",
-        };
+        public override string ToString() =>
+            Kind switch
+            {
+                "text" or "comment" => $"{Kind}:{Escape(Encoding.UTF8.GetBytes(Value))}",
+                "attribute" => $"attribute:{Name}={Escape(Encoding.UTF8.GetBytes(Value))}",
+                "start-end" => Flag ? "start-end:/" : "start-end",
+                "doctype" => $"doctype:{Name}|{Value}|quirks={Flag}",
+                _ => String.IsNullOrEmpty(Name) ? Kind : $"{Kind}:{Name}",
+            };
     }
 
     private sealed class TokenSink : IUtf8HtmlTokenSink
@@ -776,18 +783,23 @@ internal static class Utf8TokenizerDifferentialFuzzRunner
 
         public void EndTag(Utf8HtmlName name) => EndTag(name.Verbatim);
 
-        public void EndTag(ReadOnlySpan<byte> name) =>
-            _tokens.Add(new Token("end", DecodeName(name), "", false));
+        public void EndTag(ReadOnlySpan<byte> name) => _tokens.Add(new Token("end", DecodeName(name), "", false));
 
         public void Comment(ReadOnlySpan<byte> utf8) =>
             _tokens.Add(new Token("comment", "", Encoding.UTF8.GetString(utf8), false));
 
         public void Doctype(in Utf8DoctypeToken token)
         {
-            var identifiers = $"{token.IsPublicIdentifierMissing}:{Encoding.UTF8.GetString(token.PublicIdentifier)}|"
+            var identifiers =
+                $"{token.IsPublicIdentifierMissing}:{Encoding.UTF8.GetString(token.PublicIdentifier)}|"
                 + $"{token.IsSystemIdentifierMissing}:{Encoding.UTF8.GetString(token.SystemIdentifier)}";
             _tokens.Add(
-                new Token("doctype", Encoding.UTF8.GetString(token.Name).ToLowerInvariant(), identifiers, token.IsQuirksForced)
+                new Token(
+                    "doctype",
+                    Encoding.UTF8.GetString(token.Name).ToLowerInvariant(),
+                    identifiers,
+                    token.IsQuirksForced
+                )
             );
         }
 
@@ -833,9 +845,10 @@ internal static class Utf8TokenizerDifferentialFuzzRunner
 
             for (var index = 0; index < args.Length; index++)
             {
-                string Next() => index + 1 < args.Length
-                    ? args[++index]
-                    : throw new ArgumentException($"Missing value after {args[index]}.");
+                string Next() =>
+                    index + 1 < args.Length
+                        ? args[++index]
+                        : throw new ArgumentException($"Missing value after {args[index]}.");
                 switch (args[index])
                 {
                     case "--iterations":

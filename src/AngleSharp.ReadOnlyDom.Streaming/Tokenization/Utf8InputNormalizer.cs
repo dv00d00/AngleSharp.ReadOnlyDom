@@ -51,11 +51,7 @@ internal struct Utf8InputNormalizer<TResourceLimits>
 
     internal readonly Int64 BytesConsumed => _bytesConsumed;
 
-    internal Int32 Write(
-        Utf8HtmlTokenizer<TResourceLimits> tokenizer,
-        ReadOnlySpan<Byte> utf8,
-        Boolean yieldOnRequest
-    )
+    internal Int32 Write(Utf8HtmlTokenizer<TResourceLimits> tokenizer, ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
     {
         var previousBytesConsumed = 0L;
         if (TResourceLimits.Enabled)

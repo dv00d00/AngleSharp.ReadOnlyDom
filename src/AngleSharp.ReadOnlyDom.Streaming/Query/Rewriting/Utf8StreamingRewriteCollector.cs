@@ -88,7 +88,9 @@ internal sealed class Utf8StreamingRewriteCollector : IStartTagEditCollector, ID
         _publishedThrough = limit;
 
         // Carry [limit, observedEnd) - at most the open start tag - into the holdback buffer.
-        var pendingCarry = (int)(Math.Max(limit, pendingBase) < chunkStart ? chunkStart - Math.Max(limit, pendingBase) : 0);
+        var pendingCarry = (int)(
+            Math.Max(limit, pendingBase) < chunkStart ? chunkStart - Math.Max(limit, pendingBase) : 0
+        );
         var chunkCarryStart = (int)(Math.Max(limit, chunkStart) - chunkStart);
         var chunkCarry = chunk.Length - chunkCarryStart;
         var carry = pendingCarry + chunkCarry;

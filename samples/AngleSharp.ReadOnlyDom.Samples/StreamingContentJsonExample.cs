@@ -81,11 +81,11 @@ internal static class StreamingContentJsonExample
         resource
             .Child("h2")
             .OnNormalizedText(static (ref output, in heading) => output.WriteResourceTitle(heading.TextUtf8));
-        
+
         resource.Child("p").OnNormalizedText(static (ref output, in summary) => output.WriteSummary(summary.TextUtf8));
-        
+
         resource.Child("a").Attribute("href").OnClose(static (ref output, in link) => output.WriteUrl(link), "href");
-        
+
         resource
             .Child("span")
             .Class("reading-time")

@@ -648,9 +648,7 @@ public sealed class QueryTests
                     state.Events.Add($"b:{Encoding.UTF8.GetString(text)}")
             );
 
-        var state = StreamQuery
-            .Observe(first, second)
-            .Execute("<a>first</a><b>second</b>"u8, new QueryState());
+        var state = StreamQuery.Observe(first, second).Execute("<a>first</a><b>second</b>"u8, new QueryState());
 
         await Assert.That(string.Join('|', state.Events)).IsEqualTo("a:first|b:second");
     }
@@ -671,9 +669,7 @@ public sealed class QueryTests
             .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("img:start"))
             .OnEnd(static (ref QueryState state) => state.Events.Add("img:end"));
 
-        var state = StreamQuery
-            .Observe(div, image)
-            .Execute("<div/>content</div><img/>"u8, new QueryState());
+        var state = StreamQuery.Observe(div, image).Execute("<div/>content</div><img/>"u8, new QueryState());
 
         await Assert
             .That(string.Join('|', state.Events))

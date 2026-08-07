@@ -46,7 +46,14 @@ internal static class Utf8NormalizerFuzzRunner
             // through the trusted contract must produce the identical token stream.
             var normalized = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(document));
 
-            foreach (var mode in new[] { SinkMode.CaptureTextAndAttributes, SinkMode.CaptureAttributesOnly, SinkMode.DiscardEverything })
+            foreach (
+                var mode in new[]
+                {
+                    SinkMode.CaptureTextAndAttributes,
+                    SinkMode.CaptureAttributesOnly,
+                    SinkMode.DiscardEverything,
+                }
+            )
             {
                 var reference = Fingerprint(document, Utf8InputContract.ArbitraryBytes, mode, [document.Length]);
 
@@ -60,11 +67,18 @@ internal static class Utf8NormalizerFuzzRunner
 
                 foreach (var chunkSize in ChunkSizes)
                 {
-                    var chunked = Fingerprint(document, Utf8InputContract.ArbitraryBytes, mode, Chunks(document.Length, chunkSize, random));
+                    var chunked = Fingerprint(
+                        document,
+                        Utf8InputContract.ArbitraryBytes,
+                        mode,
+                        Chunks(document.Length, chunkSize, random)
+                    );
                     if (chunked != reference)
                     {
                         failures++;
-                        Console.WriteLine($"CHUNKING MISMATCH iter={iteration} mode={mode} chunk={chunkSize} bytes={document.Length}");
+                        Console.WriteLine(
+                            $"CHUNKING MISMATCH iter={iteration} mode={mode} chunk={chunkSize} bytes={document.Length}"
+                        );
                         DumpRepro(document, iteration);
                         break;
                     }
@@ -72,7 +86,9 @@ internal static class Utf8NormalizerFuzzRunner
             }
         }
 
-        Console.WriteLine(failures == 0 ? $"OK: {iterations} documents, no divergence." : $"FAILED: {failures} divergences.");
+        Console.WriteLine(
+            failures == 0 ? $"OK: {iterations} documents, no divergence." : $"FAILED: {failures} divergences."
+        );
         return failures == 0 ? 0 : 1;
     }
 
@@ -88,7 +104,12 @@ internal static class Utf8NormalizerFuzzRunner
         }
     }
 
-    private static ulong Fingerprint(byte[] document, Utf8InputContract contract, SinkMode mode, IEnumerable<int> chunkSizes)
+    private static ulong Fingerprint(
+        byte[] document,
+        Utf8InputContract contract,
+        SinkMode mode,
+        IEnumerable<int> chunkSizes
+    )
     {
         var sink = new FuzzSink(mode);
         var tokenizer = new Utf8HtmlTokenizer(sink);
@@ -116,7 +137,9 @@ internal static class Utf8NormalizerFuzzRunner
             switch (random.Next(13))
             {
                 case 0:
-                    builder.AddRange(Encoding.UTF8.GetBytes($"<div class=\"a{random.Next(100)}\" data-x='v{random.Next(100)}'>"));
+                    builder.AddRange(
+                        Encoding.UTF8.GetBytes($"<div class=\"a{random.Next(100)}\" data-x='v{random.Next(100)}'>")
+                    );
                     break;
                 case 1:
                     builder.AddRange(Encoding.UTF8.GetBytes("</div>"));
@@ -203,21 +226,25 @@ internal static class Utf8NormalizerFuzzRunner
                     builder.AddRange("中"u8);
                     break;
                 case 3:
-                    builder.AddRange(random.Next(3) switch
-                    {
-                        0 => "é"u8.ToArray(),
-                        1 => "😀"u8.ToArray(),
-                        _ => " край"u8.ToArray(),
-                    });
+                    builder.AddRange(
+                        random.Next(3) switch
+                        {
+                            0 => "é"u8.ToArray(),
+                            1 => "😀"u8.ToArray(),
+                            _ => " край"u8.ToArray(),
+                        }
+                    );
                     break;
                 case 4:
                     // Malformed: lone continuation, bare lead, or an invalid byte.
-                    builder.Add(random.Next(3) switch
-                    {
-                        0 => (byte)random.Next(0x80, 0xC0),
-                        1 => (byte)random.Next(0xC2, 0xF5),
-                        _ => (byte)0xFF,
-                    });
+                    builder.Add(
+                        random.Next(3) switch
+                        {
+                            0 => (byte)random.Next(0x80, 0xC0),
+                            1 => (byte)random.Next(0xC2, 0xF5),
+                            _ => (byte)0xFF,
+                        }
+                    );
                     break;
                 default:
                     builder.Add(0xE4);

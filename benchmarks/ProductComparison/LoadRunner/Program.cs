@@ -7,11 +7,7 @@ using System.Text;
 
 var options = Options.Parse(args);
 var qq = await File.ReadAllBytesAsync(options.CorpusPath);
-var corpora = new[]
-{
-    new Corpus("qq", qq, 16),
-    new Corpus("qq-x4", RepeatBody(qq, 4), 64),
-};
+var corpora = new[] { new Corpus("qq", qq, 16), new Corpus("qq-x4", RepeatBody(qq, 4), 64) };
 
 using var angle = ServerProcess.Start("AngleSharp NativeAOT", options.AngleServer, 5081);
 using var lol = ServerProcess.Start("lol-html Rust", options.LolServer, 5082);
@@ -47,9 +43,8 @@ try
             if (!expected.AsSpan().SequenceEqual(actual))
                 throw new InvalidOperationException($"{service.Name} returned different output for {corpus.Name}.");
         }
-        var observed = options.Endpoint == "rewrite"
-            ? CountOccurrences(expected, "data-q=\"1\""u8)
-            : CountLines(expected);
+        var observed =
+            options.Endpoint == "rewrite" ? CountOccurrences(expected, "data-q=\"1\""u8) : CountLines(expected);
         if (observed != corpus.ExpectedUrls)
             throw new InvalidOperationException($"Unexpected match count for {corpus.Name}: {observed}.");
 
@@ -66,10 +61,10 @@ try
                     var result = await Measure(service, corpus, concurrency, options.Duration, round, expected);
                     results.Add(result);
                     Console.WriteLine(
-                        $"{corpus.Name,-6} c={concurrency} round={round} {service.Name,-20} "
-                            + $"{result.Requests / result.Elapsed.TotalSeconds,9:N1} req/s, "
-                            + $"p50 {Percentile(result.Latencies, 0.50),7:N1} us, "
-                            + $"p95 {Percentile(result.Latencies, 0.95),7:N1} us"
+                        $"{corpus.Name, -6} c={concurrency} round={round} {service.Name, -20} "
+                            + $"{result.Requests / result.Elapsed.TotalSeconds, 9:N1} req/s, "
+                            + $"p50 {Percentile(result.Latencies, 0.50), 7:N1} us, "
+                            + $"p95 {Percentile(result.Latencies, 0.95), 7:N1} us"
                     );
                 }
             }
@@ -110,12 +105,14 @@ static async Task WarmUp(Service service, Corpus corpus, int concurrency, int re
 {
     var perWorker = Math.Max(1, requests / concurrency);
     await Task.WhenAll(
-        Enumerable.Range(0, concurrency).Select(async worker =>
-        {
-            _ = worker;
-            for (var index = 0; index < perWorker; index++)
-                _ = await SendOnce(service.Client, service.Target, corpus.Bytes);
-        })
+        Enumerable
+            .Range(0, concurrency)
+            .Select(async worker =>
+            {
+                _ = worker;
+                for (var index = 0; index < perWorker; index++)
+                    _ = await SendOnce(service.Client, service.Target, corpus.Bytes);
+            })
     );
 }
 
@@ -194,20 +191,33 @@ static string BuildReport(
     output.AppendLine($"- Timestamp: `{DateTimeOffset.Now:O}`");
     output.AppendLine($"- Endpoint: `/{options.Endpoint}`");
     output.AppendLine("- Input: HTTP/1.1 keep-alive, chunked request body written in 4 KiB chunks");
-    output.AppendLine($"- Measurement: {options.Rounds} alternating rounds x {options.Duration.TotalSeconds:N0} seconds");
+    output.AppendLine(
+        $"- Measurement: {options.Rounds} alternating rounds x {options.Duration.TotalSeconds:N0} seconds"
+    );
     output.AppendLine($"- Warmup: {options.WarmupRequests} requests per lane");
     output.AppendLine("- Servers: Rust release binary and .NET NativeAOT/Kestrel binary");
     if (angle.PeakWorkingSet64 > 0 && lol.PeakWorkingSet64 > 0)
     {
-        output.AppendLine($"- AngleSharp NativeAOT peak working set: {angle.PeakWorkingSet64 / 1024.0 / 1024.0:N1} MiB");
+        output.AppendLine(
+            $"- AngleSharp NativeAOT peak working set: {angle.PeakWorkingSet64 / 1024.0 / 1024.0:N1} MiB"
+        );
         output.AppendLine($"- lol-html peak working set: {lol.PeakWorkingSet64 / 1024.0 / 1024.0:N1} MiB");
         if (angleJit is not null)
-            output.AppendLine($"- AngleSharp JIT peak working set: {angleJit.PeakWorkingSet64 / 1024.0 / 1024.0:N1} MiB");
+            output.AppendLine(
+                $"- AngleSharp JIT peak working set: {angleJit.PeakWorkingSet64 / 1024.0 / 1024.0:N1} MiB"
+            );
     }
     output.AppendLine();
     output.AppendLine("| Corpus | Concurrency | Service | Requests | Req/s | p50 | p95 | p99 | CPU ms/request |");
     output.AppendLine("| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |");
-    foreach (var group in runs.GroupBy(run => new { run.Corpus, run.Concurrency, run.Service }))
+    foreach (
+        var group in runs.GroupBy(run => new
+        {
+            run.Corpus,
+            run.Concurrency,
+            run.Service,
+        })
+    )
     {
         var requests = group.Sum(run => run.Requests);
         var elapsed = group.Aggregate(TimeSpan.Zero, (sum, run) => sum + run.Elapsed);
@@ -305,6 +315,7 @@ sealed class ServerProcess : IDisposable
     public Uri HealthUri { get; }
 
     public Uri EndpointUri(string endpoint) => new($"http://127.0.0.1:{_port}/{endpoint}");
+
     public long PeakWorkingSet64
     {
         get
@@ -362,7 +373,9 @@ sealed class ServerProcess : IDisposable
 }
 
 sealed record Service(string Name, ServerProcess Process, HttpClient Client, Uri Target);
+
 sealed record Corpus(string Name, byte[] Bytes, int ExpectedUrls);
+
 sealed record LaneRun(
     string Service,
     string Corpus,
@@ -389,9 +402,7 @@ sealed record Options(
 {
     public static Options Parse(string[] args)
     {
-        var values = args
-            .Chunk(2)
-            .ToDictionary(pair => pair[0], pair => pair.Length == 2 ? pair[1] : string.Empty);
+        var values = args.Chunk(2).ToDictionary(pair => pair[0], pair => pair.Length == 2 ? pair[1] : string.Empty);
         var endpoint = values.GetValueOrDefault("--endpoint", "extract");
         if (endpoint is not ("extract" or "rewrite"))
             throw new ArgumentException($"Unknown endpoint: {endpoint}");
