@@ -371,6 +371,39 @@ public sealed class QueryTests
     }
 
     [Test]
+    public async Task DiscardedScriptCandidateScanHandlesDenseFalsePrefixesAtWideBoundaries()
+    {
+        var plan = StreamQuery
+            .For<QueryState>("div")
+            .OnStart(static (ref QueryState state, in Element _) => state.Events.Add("div"))
+            .Compile();
+        var hostile = string.Concat(Enumerable.Repeat("<x<!x<!-x<0< <</not-script>", 24));
+        int[] chunkSizes = [15, 16, 31, 32, 33, 63, 64, 65, 127, 128, 129, 4095, 4096, 4097];
+
+        // Prefixes place the first false '<' in every AVX2 lane. The dense body then exercises
+        // multiple set bits per vector, false "<!" / "<!-" prefixes, and false end tags; the
+        // real comment and script end must still transition through the ordinary state machine.
+        for (var prefix = 0; prefix < 32; prefix++)
+        {
+            var document = Encoding.UTF8.GetBytes(
+                $"<script>{new string('x', prefix)}{hostile}<!-- escaped <x -->tail</script><div></div>"
+            );
+            await Assert.That(plan.Execute(document, new QueryState()).Events.Count).IsEqualTo(1);
+
+            foreach (var chunkSize in chunkSizes.Append(document.Length))
+            {
+                using var session = plan.CreateSession(new QueryState());
+                for (var offset = 0; offset < document.Length; offset += chunkSize)
+                {
+                    session.Write(document.AsSpan(offset, Math.Min(chunkSize, document.Length - offset)));
+                }
+
+                await Assert.That(session.Complete().Events.Count).IsEqualTo(1);
+            }
+        }
+    }
+
+    [Test]
     public async Task PushSessionAcceptsByteArraysWithoutOverloadAmbiguity()
     {
         var root = StreamQuery
