@@ -1,5 +1,9 @@
 using System.Buffers;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
@@ -106,7 +110,69 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
 
     private static Int32 IndexOfDiscardedScriptDataStop(ReadOnlySpan<Byte> utf8)
     {
-        var offset = 0;
+        if (Avx2.IsSupported && utf8.Length >= Vector256<Byte>.Count)
+        {
+            ref var source = ref MemoryMarshal.GetReference(utf8);
+            var lessThan = Vector256.Create((Byte)'<');
+            var wideEnd = utf8.Length - 4 * Vector256<Byte>.Count;
+            var vectorEnd = utf8.Length - Vector256<Byte>.Count;
+            var offset = 0;
+            while (offset <= wideEnd)
+            {
+                var input0 = Vector256.LoadUnsafe(ref source, (UIntPtr)offset);
+                var input1 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 32));
+                var input2 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 64));
+                var input3 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 96));
+                var candidates =
+                    (UInt32)Avx2.MoveMask(Avx2.CompareEqual(input0, lessThan))
+                    | ((UInt64)(UInt32)Avx2.MoveMask(Avx2.CompareEqual(input1, lessThan)) << 32);
+                while (candidates != 0)
+                {
+                    var position = offset + BitOperations.TrailingZeroCount(candidates);
+                    if (IsDiscardedScriptDataStop(utf8, position))
+                    {
+                        return position;
+                    }
+                    candidates &= candidates - 1;
+                }
+                candidates =
+                    (UInt32)Avx2.MoveMask(Avx2.CompareEqual(input2, lessThan))
+                    | ((UInt64)(UInt32)Avx2.MoveMask(Avx2.CompareEqual(input3, lessThan)) << 32);
+                while (candidates != 0)
+                {
+                    var position = offset + 64 + BitOperations.TrailingZeroCount(candidates);
+                    if (IsDiscardedScriptDataStop(utf8, position))
+                    {
+                        return position;
+                    }
+                    candidates &= candidates - 1;
+                }
+                offset += 4 * Vector256<Byte>.Count;
+            }
+            while (offset <= vectorEnd)
+            {
+                var input = Vector256.LoadUnsafe(ref source, (UIntPtr)offset);
+                var candidates = (UInt32)Avx2.MoveMask(Avx2.CompareEqual(input, lessThan));
+                while (candidates != 0)
+                {
+                    var position = offset + BitOperations.TrailingZeroCount(candidates);
+                    if (IsDiscardedScriptDataStop(utf8, position))
+                    {
+                        return position;
+                    }
+                    candidates &= candidates - 1;
+                }
+                offset += Vector256<Byte>.Count;
+            }
+
+            return IndexOfDiscardedScriptDataStopScalar(utf8, offset);
+        }
+
+        return IndexOfDiscardedScriptDataStopScalar(utf8, 0);
+    }
+
+    private static Int32 IndexOfDiscardedScriptDataStopScalar(ReadOnlySpan<Byte> utf8, Int32 offset)
+    {
         while (true)
         {
             var found = utf8[offset..].IndexOf((Byte)'<');
@@ -129,8 +195,6 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 offset = position + 1;
                 continue;
             }
-            // "<!" only matters when it completes "<!--"; a split candidate defers to the
-            // per-byte machine, which can wait for the next chunk.
             if (position + 2 == utf8.Length)
             {
                 return position;
@@ -150,6 +214,35 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             }
             offset = position + 3;
         }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Boolean IsDiscardedScriptDataStop(ReadOnlySpan<Byte> utf8, Int32 position)
+    {
+        if (position + 1 == utf8.Length)
+        {
+            return true;
+        }
+        var next = utf8[position + 1];
+        if (next == (Byte)'/')
+        {
+            return true;
+        }
+        if (next != (Byte)'!')
+        {
+            return false;
+        }
+        // "<!" only matters when it completes "<!--"; a split candidate defers to the
+        // per-byte machine, which can wait for the next chunk.
+        if (position + 2 == utf8.Length)
+        {
+            return true;
+        }
+        if (utf8[position + 2] != (Byte)'-')
+        {
+            return false;
+        }
+        return position + 3 == utf8.Length || utf8[position + 3] == (Byte)'-';
     }
 
     private Utf8TokenBuffer AttributeValue => _attributeValue ??= new(128);
