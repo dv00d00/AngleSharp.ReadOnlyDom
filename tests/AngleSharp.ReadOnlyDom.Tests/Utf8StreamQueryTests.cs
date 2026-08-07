@@ -926,6 +926,69 @@ public sealed class QueryTests
         }
     }
 
+    [Test]
+    [Arguments("<div>a</div><div>b</div>", "a b", "block siblings")]
+    [Arguments("<p>Ltd<br>1 Way<br>Town</p>", "Ltd 1 Way Town", "line breaks")]
+    [Arguments("<table><tr><td>12</td><td>34</td></tr></table>", "12 34", "table cells")]
+    [Arguments("<ul><li>one</li><li>two</li></ul>", "one two", "list items")]
+    [Arguments("<blockquote>quoted</blockquote>tail", "quoted tail", "name longer than eight bytes")]
+    [Arguments("<h1>Title</h1>Body", "Title Body", "heading")]
+    [Arguments("a<hr>b", "a b", "void boundary element")]
+    [Arguments("<b>Hel</b><i>lo</i>", "Hello", "inline elements do not separate")]
+    [Arguments("<span>Details:</span><span>Managed</span>", "Details:Managed", "inline spans do not separate")]
+    [Arguments("<a href=x>link</a>text", "linktext", "anchors do not separate")]
+    [Arguments("<div>only</div>", "only", "boundaries at the edges add nothing")]
+    [Arguments("<div>a</div> <div>b</div>", "a b", "a boundary beside whitespace stays one space")]
+    [Arguments("<div>a</div>\n\n<div>b</div>", "a b", "a boundary beside a whitespace run stays one space")]
+    [Arguments("<div><div><div>deep</div></div></div>", "deep", "nested boundaries add nothing")]
+    public async Task NormalizedTextSeparatesWordsAtRenderedBoundaries(string body, string expected, string because)
+    {
+        var text = string.Empty;
+        var query = StreamQuery
+            .For<QueryState>("main")
+            .OnNormalizedText((ref QueryState _, in CompletedElement element) => text = element.GetText())
+            .Compile();
+
+        query.Execute(Encoding.UTF8.GetBytes($"<main>{body}</main>"), new QueryState());
+
+        await Assert.That(text).IsEqualTo(expected).Because(because);
+    }
+
+    [Test]
+    public async Task RawTextContentIgnoresRenderedBoundaries()
+    {
+        var text = string.Empty;
+        var query = StreamQuery
+            .For<QueryState>("main")
+            .OnTextContent((ref QueryState _, in CompletedElement element) => text = element.GetText())
+            .Compile();
+
+        query.Execute("<main><div>a</div><div>b</div></main>"u8, new QueryState());
+
+        await Assert.That(text).IsEqualTo("ab").Because("raw capture reproduces source text and invents no bytes");
+    }
+
+    [Test]
+    public async Task NormalizedTextBoundariesSurviveChunkSplits()
+    {
+        const string Html = "<main><table><tr><td>12</td><td>34</td></tr></table><p>tail</p></main>";
+        var utf8 = Encoding.UTF8.GetBytes(Html);
+        var query = StreamQuery
+            .For<QueryState>("main")
+            .OnNormalizedText(static (ref QueryState state, in CompletedElement element) => state.Events.Add(element.GetText()))
+            .Compile();
+
+        for (var split = 1; split < utf8.Length; split++)
+        {
+            using var session = query.CreateSession(new QueryState());
+            session.Write(utf8.AsSpan(0, split));
+            session.Write(utf8.AsSpan(split));
+            var state = session.Complete();
+
+            await Assert.That(state.Events).IsEquivalentTo(["12 34 tail"]).Because($"split at {split}");
+        }
+    }
+
     private static ReadOnlySpan<byte> Get(in Element element, string name)
     {
         if (!element.TryGetAttribute(name, out var value))
