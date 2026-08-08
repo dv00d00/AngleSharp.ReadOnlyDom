@@ -17,6 +17,7 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
     private long _publishedThrough;
     private long _observedEnd;
     private int _outputSuppressionScope = -1;
+    private HtmlTextMutation? _availableTextMutations;
 
     internal Utf8StreamingRewriteCollector(IBufferWriter<byte> output, HtmlStreamingLimits limits)
         : this(limits)
@@ -87,7 +88,7 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
     }
 
     protected override HtmlTextMutation CreateTextMutation(long sourceStart, long sourceEnd) =>
-        HtmlTextMutationPool.Rent(sourceStart, sourceEnd);
+        RentTextMutation(sourceStart, sourceEnd);
 
     internal void PublishWindow(long chunkStart, ReadOnlySpan<byte> chunk, long watermark)
     {
@@ -123,7 +124,7 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
             for (var index = 0; index < processedEvents; index++)
             {
                 if (_events[index].TextMutation is not null)
-                    HtmlTextMutationPool.Return(_events[index].TextMutation!);
+                    RecycleTextMutation(_events[index].TextMutation!);
             }
             _events.RemoveRange(0, processedEvents);
         }
@@ -165,12 +166,19 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
         foreach (var rewriteEvent in _events)
         {
             if (rewriteEvent.TextMutation is not null)
-                HtmlTextMutationPool.Return(rewriteEvent.TextMutation);
+                RecycleTextMutation(rewriteEvent.TextMutation);
         }
         _events.Clear();
         foreach (var mutation in TextMutations)
-            HtmlTextMutationPool.Return(mutation);
+            RecycleTextMutation(mutation);
         TextMutations.Clear();
+
+        while (_availableTextMutations is not null)
+        {
+            var mutation = _availableTextMutations;
+            _availableTextMutations = mutation.NextPooled;
+            HtmlTextMutationPool.Return(mutation);
+        }
 
         var pending = _pending;
         _pending = [];
@@ -361,6 +369,24 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
         Array.Copy(_pending, grown, _pendingLength);
         ArrayPool<byte>.Shared.Return(_pending);
         _pending = grown;
+    }
+
+    private HtmlTextMutation RentTextMutation(long sourceStart, long sourceEnd)
+    {
+        var mutation = _availableTextMutations;
+        if (mutation is null)
+            return HtmlTextMutationPool.Rent(sourceStart, sourceEnd);
+
+        _availableTextMutations = mutation.NextPooled;
+        mutation.Reset(sourceStart, sourceEnd);
+        return mutation;
+    }
+
+    private void RecycleTextMutation(HtmlTextMutation mutation)
+    {
+        mutation.Reset(0, 0);
+        mutation.NextPooled = _availableTextMutations;
+        _availableTextMutations = mutation;
     }
 
     private enum RewriteEventKind : byte
