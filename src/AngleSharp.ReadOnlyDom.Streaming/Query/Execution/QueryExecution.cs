@@ -221,12 +221,13 @@ internal class QueryExecution<TState, TResourceLimits>
 
     private void StartTagEndCore(bool selfClosing, long sourceStart, long sourceEnd)
     {
-        // Classified once here and carried to the close in the frame's sign bit. Plans that never
-        // capture normalized text short-circuit on the mask and never reach the lookup.
+        // Classify only inside an open normalized capture, then carry the result to the close in
+        // the frame's sign bit. A frame opened before the outermost capture cannot close while that
+        // capture is active: lexical recovery closes inner frames first.
         var isTextBoundary =
-            _normalizedTextMask != 0
+            _activeNormalizedTextCaptures != 0
             && HtmlTextBoundaryElements.IsBoundary(_pendingTagIdentity, _pendingTagIdentityLength);
-        if (isTextBoundary && _activeNormalizedTextCaptures != 0)
+        if (isTextBoundary)
             MarkTextBoundary();
         var matches = 0UL;
         var candidates = _pendingCandidateBits;
@@ -765,7 +766,10 @@ internal class QueryExecution<TState, TResourceLimits>
 
     private long GetCompletedTextUpperBound(int textLength)
     {
-        var captureCount = 0L;
+        if (textLength == 0)
+            return 0;
+
+        var total = 0L;
         var completed = _plan.CompletedHandlerMask;
         while (completed != 0)
         {
@@ -773,11 +777,17 @@ internal class QueryExecution<TState, TResourceLimits>
             completed &= completed - 1;
             if (_plan.Nodes[index].CompletedTextMode == CompletedTextMode.None)
                 continue;
-            captureCount = SaturatingAdd(captureCount, _completedCaptures[index]?.Count ?? 0);
+            var captures = _completedCaptures[index];
+            if (captures is null)
+                continue;
+            foreach (var capture in captures)
+            {
+                total = SaturatingAdd(total, textLength);
+                if (capture.HasPendingNormalizedSpace)
+                    total = SaturatingAdd(total, 1);
+            }
         }
-        return captureCount == 0 || textLength == 0 ? 0
-            : captureCount > long.MaxValue / textLength ? long.MaxValue
-            : captureCount * textLength;
+        return total;
     }
 
     private void EnsureQueryCaptureCapacity(long additional)

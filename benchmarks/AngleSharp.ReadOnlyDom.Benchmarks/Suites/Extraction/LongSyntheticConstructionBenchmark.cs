@@ -46,14 +46,7 @@ public class LongSyntheticConstructionBenchmark
         AssertEqual("compact scan", readOnly, compact);
         AssertEqual("EOF projection", readOnly, projection);
         AssertEqual("native UTF-8 raw fold", readOnly, rawUtf8);
-        // The other three lanes reproduce textContent: they concatenate text across element
-        // boundaries. OnNormalizedText deliberately does not - it separates words wherever an
-        // element that is not laid out inline opens or closes, so <h1>a</h1><p>b</p> yields "a b"
-        // rather than "ab". The lanes therefore extract the same content under different
-        // specifications, and the cross-lane gate compares content with separators removed.
-        // Exact boundary placement is pinned by NormalizedTextSeparatesWordsAtRenderedBoundaries
-        // in the test suite, which is where that contract belongs.
-        AssertSameContent("native UTF-8 completed-element fold", readOnly, completedUtf8);
+        AssertEqual("native UTF-8 completed-element fold", CreateExpectedCompletedText(), completedUtf8);
 
         var counters = _projectionPlan.ExecuteWithDiagnostics(_html).Counters;
         Console.WriteLine(
@@ -154,6 +147,14 @@ public class LongSyntheticConstructionBenchmark
         return html.Append("</article></main></body></html>").ToString();
     }
 
+    private static string CreateExpectedCompletedText()
+    {
+        var text = new StringBuilder("Wanted result");
+        for (var index = 0; index < 32; index++)
+            text.Append(" Useful row ").Append(index).Append(": value.");
+        return text.ToString();
+    }
+
     private static string Normalize(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -176,13 +177,6 @@ public class LongSyntheticConstructionBenchmark
         }
         return output.ToString();
     }
-
-    /// <summary>
-    /// Compares two extractions that agree on content but not on word separation, by removing every
-    /// space before comparing. A lane that dropped or duplicated real text still fails.
-    /// </summary>
-    private static void AssertSameContent(string implementation, string expected, string actual) =>
-        AssertEqual(implementation, expected.Replace(" ", string.Empty), actual.Replace(" ", string.Empty));
 
     private static void AssertEqual(string implementation, string expected, string actual)
     {

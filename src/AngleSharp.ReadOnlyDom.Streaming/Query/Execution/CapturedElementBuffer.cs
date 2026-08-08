@@ -20,6 +20,12 @@ internal sealed class CapturedElementBuffer : IDisposable
 
     internal int BufferedByteCount => _length;
 
+    /// <summary>
+    /// Whether the next non-whitespace normalized run can materialize one byte that is not present
+    /// in that run. Resource-limit preflight includes this byte before mutating the capture.
+    /// </summary>
+    internal bool HasPendingNormalizedSpace => _textMode == CompletedTextMode.Normalized && _pendingSpace;
+
     internal void Reset(CompletedTextMode textMode, int attributeCount)
     {
         _textMode = textMode;

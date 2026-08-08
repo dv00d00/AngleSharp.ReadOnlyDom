@@ -150,6 +150,23 @@ public sealed class StreamingLimitsTests
     }
 
     [Test]
+    public async Task NormalizedBoundarySpaceCountsAgainstCaptureBudget()
+    {
+        var completed = 0;
+        var plan = StreamQuery
+            .For<TestState>("div")
+            .OnNormalizedText((ref TestState _, in CompletedElement _) => completed++)
+            .Compile();
+
+        var error = Capture(() => plan.Execute("<div>a<p>b</p></div>"u8, new TestState(), Limits(capture: 2)));
+
+        await Assert.That(error.Limit).IsEqualTo(HtmlStreamingLimit.QueryCaptureBytes);
+        await Assert.That(error.Allowed).IsEqualTo(2);
+        await Assert.That(error.Observed).IsEqualTo(3);
+        await Assert.That(completed).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task PendingAndCompletedAttributeCopiesAreBothBudgetedWhileLive()
     {
         var completed = 0;
