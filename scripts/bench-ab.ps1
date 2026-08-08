@@ -31,7 +31,7 @@ param(
     [int] $Rounds = 5,
     [int] $Warmup = 400,
     [Int32[]] $Copies = @(1),
-    [ValidateSet("passthrough", "match", "extract", "rewrite", "rewrite-sink", "rewrite-stream")]
+    [ValidateSet("passthrough", "match", "extract", "rewrite", "rewrite-sink", "rewrite-stream", "rewrite-text")]
     [string] $Workload = "extract",
     [ValidateSet("qq", "generic")]
     [string] $Query = "qq",

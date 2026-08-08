@@ -103,6 +103,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
 
     private void BeginTag(Boolean isEndTag, Byte firstByte)
     {
+        EndRawText(_lastLessThanSourceOffset);
         _isEndTag = isEndTag;
         if (_startTagSourceRangeSink is not null)
         {
@@ -383,11 +384,13 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 }
                 else if (value == (Byte)'!')
                 {
+                    EndRawText(_lastLessThanSourceOffset);
                     Clear(_candidate);
                     _state = State.MarkupDeclaration;
                 }
                 else if (value == (Byte)'?' && IsSupportingProcessingInstructions)
                 {
+                    EndRawText(_lastLessThanSourceOffset);
                     Clear(_candidate);
                     if (!SkipProcessingInstructions)
                     {
@@ -397,6 +400,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 }
                 else if (value == (Byte)'?')
                 {
+                    EndRawText(_lastLessThanSourceOffset);
                     Clear(_candidate);
                     Append(_candidate, value);
                     _state = State.BogusComment;
@@ -408,6 +412,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 else
                 {
                     EmitText("<"u8);
+                    EmitRawText(_currentSourceOffset - 2, "<"u8, Utf8HtmlTextType.Data);
                     Reconsume(ref reconsume, State.Data);
                 }
                 break;
@@ -418,10 +423,12 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 }
                 else if (value == (Byte)'>')
                 {
+                    EndRawText(_lastLessThanSourceOffset);
                     _state = State.Data;
                 }
                 else
                 {
+                    EndRawText(_lastLessThanSourceOffset);
                     Clear(_candidate);
                     Reconsume(ref reconsume, State.BogusComment);
                 }

@@ -14,6 +14,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 }
                 else
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.CDataSection);
                     EmitCDataByte(value);
                 }
 
@@ -26,6 +27,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 else
                 {
                     EmitCDataText("]"u8);
+                    EmitRawText(_currentSourceOffset - 2, "]"u8, Utf8HtmlTextType.CDataSection);
                     Reconsume(ref reconsume, State.CDataSection);
                 }
                 break;
@@ -33,14 +35,17 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 if (value == (Byte)']')
                 {
                     EmitCDataText("]"u8);
+                    EmitRawText(_currentSourceOffset - 3, "]"u8, Utf8HtmlTextType.CDataSection);
                 }
                 else if (value == (Byte)'>')
                 {
+                    EndRawText(_currentSourceOffset - 3);
                     _state = State.Data;
                 }
                 else
                 {
                     EmitCDataText("]]"u8);
+                    EmitRawText(_currentSourceOffset - 3, "]]"u8, Utf8HtmlTextType.CDataSection);
                     Reconsume(ref reconsume, State.CDataSection);
                 }
                 break;

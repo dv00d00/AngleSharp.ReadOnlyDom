@@ -10,12 +10,14 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         {
             if (source.Length == 1 && value is (Byte)'x' or (Byte)'X')
             {
+                EmitRawCharacterReferenceByte(value);
                 Append(_candidate, value);
                 return;
             }
 
             if (value == (Byte)';')
             {
+                EmitRawCharacterReferenceByte(value);
                 if (!_numericReferenceOverflow)
                 {
                     Append(_candidate, value);
@@ -32,6 +34,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 : (UInt32)(value - '0') <= 9;
             if (isDigit)
             {
+                EmitRawCharacterReferenceByte(value);
                 var digit = (UInt32)(value - '0') <= 9 ? (UInt32)(value - '0') : (UInt32)(AsciiLower(value) - 'a' + 10);
                 var radix = isHex ? 16u : 10u;
                 _numericReferenceHasDigits = true;
@@ -59,6 +62,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
 
         if (value == (Byte)';')
         {
+            EmitRawCharacterReferenceByte(value);
             Append(_candidate, value);
             ResolveCharacterReference();
             _state = _returnState;
@@ -74,11 +78,18 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             )
         )
         {
+            EmitRawCharacterReferenceByte(value);
             Append(_candidate, value);
             return;
         }
         ResolveCharacterReference(value);
         Reconsume(ref reconsume, _returnState);
+    }
+
+    private void EmitRawCharacterReferenceByte(Byte value)
+    {
+        if (_returnState is State.Data or State.RawText)
+            EmitRawCurrentByte(value, CurrentRawTextType());
     }
 
     private void ResolveCharacterReference(Byte? nextInput = null)
@@ -175,5 +186,4 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         _returnState = returnState;
         _state = State.CharacterReference;
     }
-
 }
