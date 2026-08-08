@@ -2,7 +2,7 @@ param(
     [int] $Seconds = 10,
     [int] $Rounds = 3,
     [string] $Concurrency = "1,6",
-    [ValidateSet("extract", "rewrite")]
+    [ValidateSet("extract", "rewrite", "rewrite-full")]
     [string] $Endpoint = "extract",
     [int] $Warmup = 60
 )

@@ -26,7 +26,8 @@ internal readonly record struct QueryFrame(
     ulong TagIdentity,
     int TagIdentityLength,
     byte[]? FallbackTagNameUtf8,
-    ulong Matches
+    ulong Matches,
+    int RewriteScopeId
 );
 
 internal readonly record struct CompiledTagDispatch(ulong Identity, int IdentityLength, ulong CandidateBits);

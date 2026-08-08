@@ -417,6 +417,8 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         var candidate = _candidate.WrittenSpan;
         if (RawCandidateMatches() && IsTagDelimiter(value))
         {
+            if (_startTagSourceRangeSink is not null)
+                _currentTagSourceOffset = _currentSourceOffset - candidate.Length - 1;
             Clear(_name);
             _tagNameIdentityCache.Reset();
             AppendTagName(candidate.Slice(2));
@@ -470,7 +472,12 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
     // are declined - the scanner returns before their '<' - so the existing per-byte candidate
     // buffer carries them across the boundary unchanged; the escape-state family
     // (ScriptEscapeStart through ScriptDoubleEscapeEnd) likewise stays on the per-byte machine.
-    private Int32 ScanRawTextContent<TMetrics, TTrust, TCapture>(ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
+    private Int32 ScanRawTextContent<TMetrics, TTrust, TCapture>(
+        ReadOnlySpan<Byte> utf8,
+        Int64 sourceOffset,
+        Boolean trackSourceRanges,
+        Boolean yieldOnRequest
+    )
         where TMetrics : struct, IStateMetricsPolicy
         where TTrust : struct, IInputTrustPolicy
         where TCapture : struct, IAttributeCapturePolicy
@@ -551,7 +558,14 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 }
                 if (matched)
                 {
-                    return CompleteScannedRawEndTag<TMetrics>(utf8, index, resolution, State.ScriptEndTagName);
+                    return CompleteScannedRawEndTag<TMetrics>(
+                        utf8,
+                        index,
+                        resolution,
+                        State.ScriptEndTagName,
+                        sourceOffset,
+                        trackSourceRanges
+                    );
                 }
                 // Resolved mismatch: "</" and its letters are ordinary script text.
                 RecordState<TMetrics>((Int32)State.ScriptData, resolution - index);
@@ -630,7 +644,14 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 }
                 if (matched)
                 {
-                    return CompleteScannedRawEndTag<TMetrics>(utf8, index, resolution, State.RawEndTagName);
+                    return CompleteScannedRawEndTag<TMetrics>(
+                        utf8,
+                        index,
+                        resolution,
+                        State.RawEndTagName,
+                        sourceOffset,
+                        trackSourceRanges
+                    );
                 }
                 RecordState<TMetrics>((Int32)State.RawText, resolution - index);
                 if (TCapture.Enabled)
@@ -708,7 +729,9 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         ReadOnlySpan<Byte> utf8,
         Int32 candidateStart,
         Int32 delimiterIndex,
-        State matchState
+        State matchState,
+        Int64 sourceOffset,
+        Boolean trackSourceRanges
     )
         where TMetrics : struct, IStateMetricsPolicy
     {
@@ -723,6 +746,11 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         _rawEndTag = null;
         var delimiter = utf8[delimiterIndex];
         var index = delimiterIndex + 1;
+        if (trackSourceRanges)
+        {
+            _currentTagSourceOffset = sourceOffset + candidateStart;
+            _currentSourceOffset = sourceOffset + index;
+        }
         if (delimiter == (Byte)'>')
         {
             // FinishTagCore rewrites any non-text state to Data; the candidate state mirrors

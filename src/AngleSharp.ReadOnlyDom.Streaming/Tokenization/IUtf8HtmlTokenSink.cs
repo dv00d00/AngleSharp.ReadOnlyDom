@@ -71,19 +71,23 @@ internal interface IUtf8HtmlTokenSink
 }
 
 /// <summary>
-/// Opt-in capability for sinks that need the half-open normalized UTF-8 byte range of each start tag.
-/// The range callback immediately precedes <see cref="IUtf8HtmlTokenSink.StartTagEnd"/>.
+/// Opt-in capability for sinks that need the half-open normalized UTF-8 byte ranges of tags.
+/// Each range callback immediately precedes the corresponding token callback.
 /// </summary>
 internal interface IUtf8HtmlStartTagSourceRangeSink
 {
     Boolean WantsStartTagSourceRanges { get; }
 
+    Boolean WantsEndTagSourceRanges => false;
+
     void StartTagSourceRange(Int64 sourceStart, Int64 sourceEnd);
+
+    void EndTagSourceRange(Int64 sourceStart, Int64 sourceEnd) { }
 
     /// <summary>
     /// Reports each consumed normalized span after the tokenizer processed it, while the span is
     /// still addressable. <paramref name="publishableOffset"/> is the offset before which no future
-    /// start-tag edit can land (see <c>Utf8HtmlTokenizer.RewritePublishableOffset</c>), so a
+    /// tag edit can land (see <c>Utf8HtmlTokenizer.RewritePublishableOffset</c>), so a
     /// streaming rewriter can publish everything below it straight from the borrowed span and only
     /// buffer the tail beyond it. Spans arrive contiguously in normalized-offset order.
     /// </summary>
