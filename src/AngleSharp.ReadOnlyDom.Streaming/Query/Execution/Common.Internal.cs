@@ -22,6 +22,12 @@ internal readonly record struct CompiledAttributePredicate(
 
 internal sealed record AttributePredicate(string Name, AttributePredicateKind Kind, string? Value);
 
+/// <summary>
+/// <paramref name="TagIdentityLength"/> carries the word-boundary classification in its sign bit so
+/// the close path does not repeat the lookup the open path already did without enlarging the frame.
+/// A boundary name is always compact-representable, so the flag is only ever set on a zero length;
+/// readers comparing the length must mask with <c>Int32.MaxValue</c>.
+/// </summary>
 internal readonly record struct QueryFrame(
     ulong TagIdentity,
     int TagIdentityLength,
