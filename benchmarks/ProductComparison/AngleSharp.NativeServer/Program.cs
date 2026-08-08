@@ -42,61 +42,77 @@ app.MapPost(
     }
 );
 
-app.MapPost(
-    "/rewrite",
-    async context =>
-    {
-        // Full-duplex streaming (#61): rewritten output leaves through the response while the
-        // request body is still arriving. Only the currently open start tag is ever buffered, so
-        // peak memory is independent of document size - the same profile as the lol-html lane.
-        context.Response.ContentType = "text/html; charset=utf-8";
-        var reader = context.Request.BodyReader;
-        var writer = context.Response.BodyWriter;
-        using var session = rewriteQuery.CreateRewriteSession(
-            new RewriteState(),
-            writer,
-            static (ref RewriteState state, in Element _, ref StartTagEditor tag) =>
-            {
-                state.Count++;
-                tag.AppendAttribute("data-q"u8, "1"u8);
-            },
-            Utf8InputContract.ArbitraryBytes,
-            rewriteLimits
-        );
-        try
-        {
-            while (true)
-            {
-                var read = await reader.ReadAsync(context.RequestAborted);
-                foreach (var segment in read.Buffer)
-                    session.Write(segment.Span);
-                reader.AdvanceTo(read.Buffer.End);
-                if (!writer.CanGetUnflushedBytes || writer.UnflushedBytes >= 16 * 1024)
-                    await writer.FlushAsync(context.RequestAborted);
-                if (read.IsCompleted)
-                    break;
-            }
-            session.Complete();
-        }
-        catch (HtmlStreamingLimitExceededException)
-        {
-            if (!context.Response.HasStarted && (!writer.CanGetUnflushedBytes || writer.UnflushedBytes == 0))
-            {
-                // The status line is still ours to change.
-                context.Response.Clear();
-                context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-                return;
-            }
-            // Output already left (or sits in the pipe); the only honest signal is a broken stream.
-            context.Abort();
-            return;
-        }
-        await writer.FlushAsync(context.RequestAborted);
-    }
-);
+app.MapPost("/rewrite", context => Rewrite(context, rewriteQuery, RewriteAttribute, rewriteLimits));
+app.MapPost("/rewrite-full", context => Rewrite(context, rewriteQuery, RewriteElement, rewriteLimits));
 
 Console.WriteLine($"READY http://127.0.0.1:{port}");
 await app.RunAsync();
+
+static async Task Rewrite(
+    HttpContext context,
+    QueryPlan<RewriteState> rewriteQuery,
+    RewriteHandler<RewriteState> handler,
+    HtmlStreamingLimits? rewriteLimits
+)
+{
+    // Full-duplex streaming (#61): rewritten output leaves through the response while the
+    // request body is still arriving. Removed content is discarded as it arrives; no element
+    // subtree is retained while waiting for its end tag.
+    context.Response.ContentType = "text/html; charset=utf-8";
+    var reader = context.Request.BodyReader;
+    var writer = context.Response.BodyWriter;
+    using var session = rewriteQuery.CreateRewriteSession(
+        new RewriteState(),
+        writer,
+        handler,
+        Utf8InputContract.ArbitraryBytes,
+        rewriteLimits
+    );
+    try
+    {
+        while (true)
+        {
+            var read = await reader.ReadAsync(context.RequestAborted);
+            foreach (var segment in read.Buffer)
+                session.Write(segment.Span);
+            reader.AdvanceTo(read.Buffer.End);
+            if (!writer.CanGetUnflushedBytes || writer.UnflushedBytes >= 16 * 1024)
+                await writer.FlushAsync(context.RequestAborted);
+            if (read.IsCompleted)
+                break;
+        }
+        session.Complete();
+    }
+    catch (HtmlStreamingLimitExceededException)
+    {
+        if (!context.Response.HasStarted && (!writer.CanGetUnflushedBytes || writer.UnflushedBytes == 0))
+        {
+            context.Response.Clear();
+            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            return;
+        }
+        context.Abort();
+        return;
+    }
+    await writer.FlushAsync(context.RequestAborted);
+}
+
+static void RewriteAttribute(ref RewriteState state, in Element _, ref ElementRewriter element)
+{
+    state.Count++;
+    element.AppendAttribute("data-q"u8, "1"u8);
+}
+
+static void RewriteElement(ref RewriteState state, in Element _, ref ElementRewriter element)
+{
+    state.Count++;
+    element.SetAttribute("data-q"u8, "1"u8);
+    element.RemoveAttribute("target"u8);
+    element.Before("<!--q-->"u8, HtmlRewriteContentType.Html);
+    element.Prepend("<span class=\"q-prefix\">[</span>"u8, HtmlRewriteContentType.Html);
+    element.Append("<span class=\"q-suffix\">]</span>"u8, HtmlRewriteContentType.Html);
+    element.After("<!--/q-->"u8, HtmlRewriteContentType.Html);
+}
 
 static QueryPlan<RewriteState> CreateRewriteQuery()
 {

@@ -765,7 +765,7 @@ public sealed class QueryTests
                 source,
                 output,
                 0,
-                static (ref int count, in Element _, ref StartTagEditor tag) =>
+                static (ref int count, in Element _, ref ElementRewriter tag) =>
                 {
                     count++;
                     tag.AppendAttribute("data-query-hit"u8, "1"u8);
@@ -795,7 +795,7 @@ public sealed class QueryTests
             source,
             buffered,
             new SegmentState(),
-            static (ref SegmentState state, in Element _, ref StartTagEditor tag) =>
+            static (ref SegmentState state, in Element _, ref ElementRewriter tag) =>
             {
                 state.Matches++;
                 tag.AppendAttribute("data-q"u8, "1"u8);
@@ -806,7 +806,7 @@ public sealed class QueryTests
         var sunk = plan.Rewrite(
             source,
             new SegmentState(),
-            static (ref SegmentState state, in Element _, ref StartTagEditor tag) =>
+            static (ref SegmentState state, in Element _, ref ElementRewriter tag) =>
             {
                 state.Matches++;
                 tag.AppendAttribute("data-q"u8, "1"u8);
@@ -847,7 +847,7 @@ public sealed class QueryTests
             source,
             output,
             0,
-            static (ref int count, in Element _, ref StartTagEditor tag) =>
+            static (ref int count, in Element _, ref ElementRewriter tag) =>
             {
                 count++;
                 tag.AppendAttribute("data-query-hit"u8, "1"u8);
@@ -869,7 +869,7 @@ public sealed class QueryTests
             "<a>"u8,
             output,
             0,
-            static (ref int _, in Element _, ref StartTagEditor tag) => tag.AppendAttribute("data-value"u8, "a&\"b"u8)
+            static (ref int _, in Element _, ref ElementRewriter tag) => tag.AppendAttribute("data-value"u8, "a&\"b"u8)
         );
         await Assert.That(Encoding.UTF8.GetString(output.WrittenSpan)).IsEqualTo("<a data-value=\"a&amp;&quot;b\">");
 
@@ -881,7 +881,7 @@ public sealed class QueryTests
                 [(byte)'<', (byte)'a', (byte)'>', 0xff],
                 output,
                 0,
-                static (ref int _, in Element _, ref StartTagEditor _) => { }
+                static (ref int _, in Element _, ref ElementRewriter _) => { }
             );
         }
         catch (DecoderFallbackException)

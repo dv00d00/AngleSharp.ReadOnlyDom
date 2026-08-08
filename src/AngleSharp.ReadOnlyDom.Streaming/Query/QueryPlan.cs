@@ -58,7 +58,7 @@ public sealed class QueryPlan<TState>
         TState state,
         HtmlStreamingLimits limits,
         RewriteHandler<TState>? rewriteHandler = null,
-        IStartTagEditCollector? rewriteCollector = null
+        IHtmlRewriteCollector? rewriteCollector = null
     )
         where TResourceLimits : struct, IResourceLimitPolicy =>
         new(this, state, limits, rewriteHandler, rewriteCollector);
@@ -83,7 +83,7 @@ public sealed class QueryPlan<TState>
     /// Begins a push-style streaming rewrite: call <see cref="StreamingRewriteSession{TState}.Write"/> per
     /// input chunk and <see cref="StreamingRewriteSession{TState}.Complete"/> at end of input. Bytes reach
     /// <paramref name="output"/> as soon as they can no longer be edited, so peak buffering is bounded by
-    /// the largest start tag instead of the document size. Select
+    /// the largest open tag instead of the document size. Select
     /// <see cref="Utf8InputContract.WellFormedUtf8"/> only when the complete input is guaranteed valid
     /// UTF-8; the default repairs malformed sequences, publishing the normalized stream.
     /// </summary>

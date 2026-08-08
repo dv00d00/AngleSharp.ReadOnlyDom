@@ -131,6 +131,39 @@ NDJSON `PipeWriter` content-feed transformation with no intermediate DOM or row 
 Independent query roots can be combined with `StreamQuery.Observe(...)`; after execution, caller-owned evidence can be
 resolved into success, empty-result, provider-error, or unexpected-response outcomes.
 
+## Rewrite HTML as a stream
+
+The same compiled selectors can mutate matched elements without constructing a DOM. Attribute edits, insertions around
+or inside an element, inner-content replacement, whole-element replacement/removal, and tag unwrapping are applied while
+untouched input is forwarded byte-for-byte. Removed descendants are discarded as they arrive rather than buffered until
+the closing tag.
+
+```csharp
+using System.Buffers;
+using AngleSharp.ReadOnlyDom.Streaming.Query;
+using AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
+
+var links = StreamQuery.For<int>("a").Attribute("href").Compile();
+var output = new ArrayBufferWriter<byte>();
+
+links.Rewrite(
+    htmlUtf8,
+    output,
+    0,
+    static (ref int count, in Element link, ref ElementRewriter element) =>
+    {
+        count++;
+        element.SetAttribute("rel"u8, "noopener noreferrer"u8);
+        element.Prepend("<span class=\"sr-only\">Story: </span>"u8, HtmlRewriteContentType.Html);
+        element.After("<!-- rewritten -->"u8, HtmlRewriteContentType.Html);
+    }
+);
+```
+
+`CreateRewriteSession` exposes the same operations for chunked input and a backpressured `IBufferWriter<byte>`. Content
+marked as `Text` is escaped; `Html` is trusted and emitted verbatim. Element matching and closure follow the lexical tag
+stack, so use a tree-building lane when browser-corrected topology is part of the rewrite policy.
+
 ## Run it
 
 The sample project walks through all representation lanes:

@@ -3,24 +3,21 @@ using System.Buffers;
 namespace AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
 
 /// <summary>
-/// Streaming counterpart of <see cref="Utf8RewriteCollector"/>. Edits recorded during a tokenizer
-/// write only capture payload bytes; when the write completes, <see cref="PublishWindow"/> receives
-/// the consumed span while it is still addressable and publishes everything below the tokenizer's
-/// rewrite watermark straight from that borrowed span - untouched bytes cross exactly once, into
-/// the output writer. Only the unpublishable tail (at most the currently open start tag) is copied
-/// into the pending holdback buffer, so peak memory is independent of document size.
+/// Applies element mutations while normalized input is still borrowed. Untouched bytes cross once;
+/// removed descendants are discarded as they arrive instead of being retained until the end tag.
 /// </summary>
-internal sealed class Utf8StreamingRewriteCollector : IStartTagEditCollector, IDisposable
+internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, IDisposable
 {
     private readonly IBufferWriter<byte>? _output;
     private readonly StreamingRewriteSegmentSink? _sink;
     private readonly int _maximumHoldbackBytes;
-    private readonly ArrayBufferWriter<byte> _payload = new(256);
-    private readonly List<Insertion> _insertions = [];
+    private readonly List<RewriteEvent> _events = [];
     private byte[] _pending;
     private int _pendingLength;
     private long _publishedThrough;
     private long _observedEnd;
+    private int _logicalSuppressionDepth;
+    private int _outputSuppressionScope = -1;
 
     internal Utf8StreamingRewriteCollector(IBufferWriter<byte> output, HtmlStreamingLimits limits)
         : this(limits)
@@ -42,32 +39,52 @@ internal sealed class Utf8StreamingRewriteCollector : IStartTagEditCollector, ID
         _pending = ArrayPool<byte>.Shared.Rent(4096);
     }
 
-    /// <summary>
-    /// Records the edit; source bytes are validated and interleaved later, in
-    /// <see cref="PublishWindow"/>, where they are addressable.
-    /// </summary>
-    public void AppendAttribute(
-        long sourceStart,
-        long sourceEnd,
-        bool selfClosing,
-        ReadOnlySpan<byte> name,
-        ReadOnlySpan<byte> value
-    )
+    public override void CommitElement(int scopeId)
     {
-        Utf8RewriteCollector.ValidateName(name);
-        var payloadStart = _payload.WrittenCount;
-        Utf8RewriteCollector.WriteAttributePayload(_payload, name, value);
-        _insertions.Add(
-            new Insertion(sourceStart, sourceEnd, selfClosing, payloadStart, _payload.WrittenCount - payloadStart)
-        );
+        base.CommitElement(scopeId);
+        if (scopeId < 0)
+            return;
+        var mutation = Mutation(scopeId);
+        mutation.Ignored = _logicalSuppressionDepth != 0;
+        if (mutation.Ignored)
+            return;
+        mutation.OpensSuppression =
+            mutation.CanHaveContent
+            && (
+                mutation.Disposition is ElementDisposition.Remove or ElementDisposition.Replace
+                || mutation.SuppressInnerContent
+            );
+        if (mutation.OpensSuppression)
+            _logicalSuppressionDepth++;
+        _events.Add(new RewriteEvent(scopeId, IsStart: true));
     }
 
-    /// <summary>
-    /// Consumes one tokenizer write window: the pending holdback covers
-    /// [<see cref="_publishedThrough"/>, chunkStart) and <paramref name="chunk"/> covers
-    /// [chunkStart, chunkStart + length). Applies the recorded edits, publishes everything below
-    /// <paramref name="watermark"/>, and carries the remainder into the holdback buffer.
-    /// </summary>
+    public override void EndElement(int scopeId, long sourceStart, long sourceEnd, bool hasExplicitEndTag)
+    {
+        if (scopeId < 0)
+            return;
+        var mutation = Mutation(scopeId);
+        base.EndElement(scopeId, sourceStart, sourceEnd, hasExplicitEndTag);
+        if (mutation.Ignored)
+            return;
+        if (mutation.OpensSuppression)
+            _logicalSuppressionDepth--;
+        if (
+            mutation.OpensSuppression
+            || (
+                hasExplicitEndTag
+                && (
+                    mutation.Append.Count != 0
+                    || mutation.After.Count != 0
+                    || mutation.Disposition == ElementDisposition.Unwrap
+                )
+            )
+        )
+        {
+            _events.Add(new RewriteEvent(scopeId, IsStart: false));
+        }
+    }
+
     internal void PublishWindow(long chunkStart, ReadOnlySpan<byte> chunk, long watermark)
     {
         if (chunkStart != _observedEnd)
@@ -76,18 +93,30 @@ internal sealed class Utf8StreamingRewriteCollector : IStartTagEditCollector, ID
 
         var pendingBase = chunkStart - _pendingLength;
         var limit = Math.Min(watermark, _observedEnd);
-
-        foreach (var insertion in _insertions)
+        var processedEvents = 0;
+        foreach (var rewriteEvent in _events)
         {
-            ApplyInsertion(insertion, pendingBase, chunkStart, chunk, limit);
+            var mutation = Mutation(rewriteEvent.ScopeId);
+            var eventEnd = rewriteEvent.IsStart ? mutation.SourceEnd : mutation.EndEnd;
+            if (eventEnd > limit)
+                break;
+            if (rewriteEvent.IsStart)
+                ApplyStart(rewriteEvent.ScopeId, mutation, pendingBase, chunkStart, chunk);
+            else
+                ApplyEnd(rewriteEvent.ScopeId, mutation, pendingBase, chunkStart, chunk);
+            processedEvents++;
         }
-        _insertions.Clear();
-        _payload.ResetWrittenCount();
+        if (processedEvents != 0)
+            _events.RemoveRange(0, processedEvents);
 
-        PublishRange(_publishedThrough, limit, pendingBase, chunkStart, chunk);
-        _publishedThrough = limit;
+        if (_outputSuppressionScope >= 0)
+            _publishedThrough = limit;
+        else
+        {
+            PublishRange(_publishedThrough, limit, pendingBase, chunkStart, chunk);
+            _publishedThrough = limit;
+        }
 
-        // Carry [limit, observedEnd) - at most the open start tag - into the holdback buffer.
         var pendingCarry = (int)(
             Math.Max(limit, pendingBase) < chunkStart ? chunkStart - Math.Max(limit, pendingBase) : 0
         );
@@ -104,18 +133,12 @@ internal sealed class Utf8StreamingRewriteCollector : IStartTagEditCollector, ID
         }
         EnsurePendingCapacity(carry);
         if (pendingCarry > 0)
-        {
-            // The surviving holdback tail is the suffix of the previous holdback; shift it home.
             Array.Copy(_pending, (int)(Math.Max(limit, pendingBase) - pendingBase), _pending, 0, pendingCarry);
-        }
         if (chunkCarry > 0)
-        {
             chunk[chunkCarryStart..].CopyTo(_pending.AsSpan(pendingCarry));
-        }
         _pendingLength = carry;
     }
 
-    /// <summary>Publishes everything still pending; call after the tokenizer has completed.</summary>
     internal void Finish() => PublishWindow(_observedEnd, [], _observedEnd);
 
     public void Dispose()
@@ -127,85 +150,150 @@ internal sealed class Utf8StreamingRewriteCollector : IStartTagEditCollector, ID
             ArrayPool<byte>.Shared.Return(pending);
     }
 
-    private void ApplyInsertion(
-        in Insertion insertion,
+    private void ApplyStart(
+        int scopeId,
+        HtmlElementMutation mutation,
         long pendingBase,
         long chunkStart,
-        ReadOnlySpan<byte> chunk,
-        long limit
+        ReadOnlySpan<byte> chunk
     )
     {
-        var sourceStart = insertion.SourceStart;
-        var sourceEnd = insertion.SourceEnd;
-        if (
-            sourceStart < 0
-            || sourceEnd <= sourceStart
-            || sourceEnd > limit
-            || (sourceStart >= _publishedThrough && ByteAt(sourceStart, pendingBase, chunkStart, chunk) != (byte)'<')
-        )
+        if (_outputSuppressionScope >= 0 || mutation.SourceStart < _publishedThrough)
+            throw new InvalidOperationException("Element rewrite events are not ordered.");
+        PublishRange(_publishedThrough, mutation.SourceStart, pendingBase, chunkStart, chunk);
+        _publishedThrough = mutation.SourceStart;
+        WriteForward(mutation.Before);
+
+        if (mutation.Disposition is ElementDisposition.Remove or ElementDisposition.Replace)
         {
-            throw new InvalidOperationException("A recorded start-tag source range is outside the input.");
+            if (mutation.Disposition == ElementDisposition.Replace)
+                Write(mutation.Replacement!);
+            _publishedThrough = mutation.SourceEnd;
+            if (mutation.CanHaveContent)
+                _outputSuppressionScope = scopeId;
+            else
+                WriteReverse(mutation.After);
+            return;
         }
 
-        var position = sourceEnd - 1;
-        if (position < _publishedThrough)
-            throw new InvalidOperationException("Start-tag rewrite ranges are not ordered.");
-        if (ByteAt(position, pendingBase, chunkStart, chunk) != (byte)'>')
-            throw new InvalidOperationException("A recorded start-tag source range does not end at a tag close.");
-        if (
-            insertion.SelfClosing
-            && position > sourceStart
-            && position > _publishedThrough
-            && ByteAt(position - 1, pendingBase, chunkStart, chunk) == (byte)'/'
-        )
+        if (mutation.Disposition != ElementDisposition.Unwrap)
         {
-            position--;
+            if (mutation.ChangesStartTag)
+            {
+                var sourceTag = CopyRange(mutation.SourceStart, mutation.SourceEnd, pendingBase, chunkStart, chunk);
+                Write(StartTagMutationWriter.Rewrite(sourceTag, mutation));
+            }
+            else
+            {
+                PublishRange(mutation.SourceStart, mutation.SourceEnd, pendingBase, chunkStart, chunk);
+            }
         }
-
-        // Mirrors Utf8RewriteCollector.SegmentEnumerator: _publishedThrough plays the cursor.
-        var needsSeparator =
-            position == _publishedThrough
-            || position == sourceStart
-            || !Utf8RewriteCollector.IsHtmlSpace(ByteAt(position - 1, pendingBase, chunkStart, chunk));
-        PublishRange(_publishedThrough, position, pendingBase, chunkStart, chunk);
-        _publishedThrough = position;
-        if (needsSeparator)
-        {
-            Write(" "u8);
-        }
-        Write(_payload.WrittenSpan.Slice(insertion.PayloadStart, insertion.PayloadLength));
+        _publishedThrough = mutation.SourceEnd;
+        WriteReverse(mutation.Prepend);
+        if (mutation.InnerReplacement is not null)
+            Write(mutation.InnerReplacement);
+        if (mutation.SuppressInnerContent)
+            _outputSuppressionScope = scopeId;
+        if (!mutation.CanHaveContent)
+            WriteReverse(mutation.After);
     }
 
-    private byte ByteAt(long offset, long pendingBase, long chunkStart, ReadOnlySpan<byte> chunk) =>
-        offset < chunkStart ? _pending[(int)(offset - pendingBase)] : chunk[(int)(offset - chunkStart)];
+    private void ApplyEnd(
+        int scopeId,
+        HtmlElementMutation mutation,
+        long pendingBase,
+        long chunkStart,
+        ReadOnlySpan<byte> chunk
+    )
+    {
+        if (mutation.OpensSuppression)
+        {
+            if (_outputSuppressionScope != scopeId)
+                throw new InvalidOperationException("Element suppression scopes are not nested correctly.");
+            _publishedThrough = mutation.Disposition is ElementDisposition.Remove or ElementDisposition.Replace
+                ? mutation.EndEnd
+                : mutation.EndStart;
+            _outputSuppressionScope = -1;
+            if (mutation.Disposition is ElementDisposition.Remove or ElementDisposition.Replace)
+            {
+                if (mutation.HasExplicitEndTag)
+                    WriteReverse(mutation.After);
+                return;
+            }
+        }
+        else
+        {
+            PublishRange(_publishedThrough, mutation.EndStart, pendingBase, chunkStart, chunk);
+            _publishedThrough = mutation.EndStart;
+        }
+
+        if (!mutation.HasExplicitEndTag)
+            return;
+        WriteForward(mutation.Append);
+        if (mutation.Disposition != ElementDisposition.Unwrap)
+            PublishRange(mutation.EndStart, mutation.EndEnd, pendingBase, chunkStart, chunk);
+        _publishedThrough = mutation.EndEnd;
+        WriteReverse(mutation.After);
+    }
+
+    private byte[] CopyRange(long from, long to, long pendingBase, long chunkStart, ReadOnlySpan<byte> chunk)
+    {
+        var length = checked((int)(to - from));
+        var output = new byte[length];
+        var written = 0;
+        if (from < chunkStart)
+        {
+            var pendingEnd = Math.Min(to, chunkStart);
+            var count = checked((int)(pendingEnd - from));
+            _pending.AsSpan(checked((int)(from - pendingBase)), count).CopyTo(output);
+            written += count;
+            from = pendingEnd;
+        }
+        if (from < to)
+            chunk.Slice(checked((int)(from - chunkStart)), checked((int)(to - from))).CopyTo(output.AsSpan(written));
+        return output;
+    }
 
     private void PublishRange(long from, long to, long pendingBase, long chunkStart, ReadOnlySpan<byte> chunk)
     {
         if (to <= from)
             return;
-
+        if (from < pendingBase || to > chunkStart + chunk.Length)
+            throw new InvalidOperationException(
+                $"Rewrite range [{from}, {to}) is outside [{pendingBase}, {chunkStart + chunk.Length}); "
+                    + $"published={_publishedThrough}, pending={_pendingLength}."
+            );
         if (from < chunkStart)
         {
             var pendingEnd = Math.Min(to, chunkStart);
-            Write(_pending.AsSpan((int)(from - pendingBase), (int)(pendingEnd - from)));
+            Write(_pending.AsSpan(checked((int)(from - pendingBase)), checked((int)(pendingEnd - from))));
             from = pendingEnd;
         }
         if (to > from)
-        {
-            Write(chunk[(int)(from - chunkStart)..(int)(to - chunkStart)]);
-        }
+            Write(chunk[checked((int)(from - chunkStart))..checked((int)(to - chunkStart))]);
+    }
+
+    private void WriteForward(List<byte[]> values)
+    {
+        foreach (var value in values)
+            Write(value);
+    }
+
+    private void WriteReverse(List<byte[]> values)
+    {
+        for (var index = values.Count - 1; index >= 0; index--)
+            Write(values[index]);
     }
 
     private void Write(ReadOnlySpan<byte> value)
     {
+        if (value.IsEmpty)
+            return;
         if (_sink is not null)
         {
-            // Borrowed segments reach the sink by reference; no byte is copied.
             _sink(value);
             return;
         }
-
-        // Bounded slices keep pipe-style writers on pooled segments instead of one huge rent.
         var output = _output!;
         while (!value.IsEmpty)
         {
@@ -220,18 +308,11 @@ internal sealed class Utf8StreamingRewriteCollector : IStartTagEditCollector, ID
     {
         if (required <= _pending.Length)
             return;
-
         var grown = ArrayPool<byte>.Shared.Rent(required);
         Array.Copy(_pending, grown, _pendingLength);
         ArrayPool<byte>.Shared.Return(_pending);
         _pending = grown;
     }
 
-    private readonly record struct Insertion(
-        long SourceStart,
-        long SourceEnd,
-        bool SelfClosing,
-        int PayloadStart,
-        int PayloadLength
-    );
+    private readonly record struct RewriteEvent(int ScopeId, bool IsStart);
 }

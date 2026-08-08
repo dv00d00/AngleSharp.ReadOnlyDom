@@ -71,6 +71,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         var stop = IndexOfCaptureStop<TTrust>(utf8[index..], TagNameTerminators, TagNameArbitraryAllowed);
         return stop < 0 ? -1 : index + stop;
     }
+
     private static readonly SearchValues<Byte> AttributeNameTerminators = SearchValues.Create("\0\t\n\f\r /=>"u8);
     private static readonly SearchValues<Byte> DiscardedAttributeNameTerminators = SearchValues.Create(
         "\t\n\f\r /=>"u8
@@ -307,6 +308,8 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
     {
         if (_isEndTag)
         {
+            if (_startTagSourceRangeSink?.WantsEndTagSourceRanges == true)
+                _startTagSourceRangeSink.EndTagSourceRange(_currentTagSourceOffset, _currentSourceOffset);
             _sink.EndTag(CurrentTagName());
             RefreshCapture();
             _rawEndTag = null;

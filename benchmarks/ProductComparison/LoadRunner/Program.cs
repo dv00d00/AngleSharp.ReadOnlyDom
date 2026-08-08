@@ -43,8 +43,9 @@ try
             if (!expected.AsSpan().SequenceEqual(actual))
                 throw new InvalidOperationException($"{service.Name} returned different output for {corpus.Name}.");
         }
-        var observed =
-            options.Endpoint == "rewrite" ? CountOccurrences(expected, "data-q=\"1\""u8) : CountLines(expected);
+        var observed = options.Endpoint.StartsWith("rewrite", StringComparison.Ordinal)
+            ? CountOccurrences(expected, "data-q=\"1\""u8)
+            : CountLines(expected);
         if (observed != corpus.ExpectedUrls)
             throw new InvalidOperationException($"Unexpected match count for {corpus.Name}: {observed}.");
 
@@ -404,7 +405,7 @@ sealed record Options(
     {
         var values = args.Chunk(2).ToDictionary(pair => pair[0], pair => pair.Length == 2 ? pair[1] : string.Empty);
         var endpoint = values.GetValueOrDefault("--endpoint", "extract");
-        if (endpoint is not ("extract" or "rewrite"))
+        if (endpoint is not ("extract" or "rewrite" or "rewrite-full"))
             throw new ArgumentException($"Unknown endpoint: {endpoint}");
         return new Options(
             Required("--angle"),

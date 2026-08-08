@@ -2,202 +2,205 @@ using System.Buffers;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
 
-/// <summary>Receives start-tag edits recorded through a <see cref="StartTagEditor"/>.</summary>
-internal interface IStartTagEditCollector
+/// <summary>Collects element mutations for a whole-buffer rewrite.</summary>
+internal sealed class Utf8RewriteCollector : HtmlRewriteCollectorBase
 {
-    void AppendAttribute(
-        long sourceStart,
-        long sourceEnd,
-        bool selfClosing,
-        ReadOnlySpan<byte> name,
-        ReadOnlySpan<byte> value
-    );
-}
-
-internal sealed class Utf8RewriteCollector : IStartTagEditCollector
-{
-    private readonly ArrayBufferWriter<byte> _payload = new(256);
-    private readonly List<Insertion> _insertions = [];
-
-    public void AppendAttribute(
-        long sourceStart,
-        long sourceEnd,
-        bool selfClosing,
-        ReadOnlySpan<byte> name,
-        ReadOnlySpan<byte> value
-    )
-    {
-        ValidateName(name);
-        var payloadStart = _payload.WrittenCount;
-        WriteAttributePayload(_payload, name, value);
-        _insertions.Add(
-            new Insertion(sourceStart, sourceEnd, selfClosing, payloadStart, _payload.WrittenCount - payloadStart)
-        );
-    }
-
-    internal static void WriteAttributePayload(
-        IBufferWriter<byte> output,
-        ReadOnlySpan<byte> name,
-        ReadOnlySpan<byte> value
-    )
-    {
-        Write(output, name);
-        Write(output, "=\""u8);
-        foreach (var item in value)
-        {
-            if (item == (byte)'&')
-                Write(output, "&amp;"u8);
-            else if (item == (byte)'"')
-                Write(output, "&quot;"u8);
-            else
-                WriteByte(output, item);
-        }
-        WriteByte(output, (byte)'"');
-    }
-
     internal void WriteTo(ReadOnlySpan<byte> source, IBufferWriter<byte> output)
     {
         var segments = GetSegments(source);
         while (segments.MoveNext())
-        {
             Write(output, segments.Current);
-        }
     }
 
     internal void WriteTo<TState>(ReadOnlySpan<byte> source, ref TState state, RewriteSegmentSink<TState> sink)
     {
         var segments = GetSegments(source);
         while (segments.MoveNext())
-        {
             sink(ref state, segments.Current);
-        }
     }
 
-    private SegmentEnumerator GetSegments(ReadOnlySpan<byte> source) => new(this, source);
+    private SegmentEnumerator GetSegments(ReadOnlySpan<byte> source) => new(BuildEdits(source), source);
 
-    /// <summary>
-    /// Walks the rewritten document as a sequence of segments, each either a borrowed slice of the
-    /// source, a separator, or a borrowed slice of the recorded payload - no byte is copied.
-    /// </summary>
-    internal ref struct SegmentEnumerator
+    private List<BufferedEdit> BuildEdits(ReadOnlySpan<byte> source)
     {
-        private readonly Utf8RewriteCollector _collector;
-        private readonly ReadOnlySpan<byte> _source;
-        private int _insertionIndex;
-        private int _cursor;
-        private int _phase;
-        private int _position;
-
-        internal SegmentEnumerator(Utf8RewriteCollector collector, ReadOnlySpan<byte> source)
+        var edits = new List<BufferedEdit>(Mutations.Count * 3);
+        var sequence = 0;
+        foreach (var mutation in Mutations)
         {
-            _collector = collector;
-            _source = source;
-        }
-
-        public ReadOnlySpan<byte> Current { get; private set; }
-
-        public bool MoveNext()
-        {
-            var source = _source;
-            while (true)
+            if (mutation.Ignored)
+                continue;
+            if (mutation.Disposition is ElementDisposition.Remove or ElementDisposition.Replace)
             {
-                if (_insertionIndex >= _collector._insertions.Count)
-                {
-                    if (_phase == 3 || _cursor == source.Length)
-                        return false;
-                    _phase = 3;
-                    Current = source[_cursor..];
-                    return true;
-                }
+                var end = mutation.CanHaveContent ? mutation.EndEnd : mutation.SourceEnd;
+                edits.Add(new BufferedEdit(mutation.SourceStart, end, BuildWholeReplacement(mutation), sequence++));
+                continue;
+            }
 
-                var insertion = _collector._insertions[_insertionIndex];
-                switch (_phase)
-                {
-                    case 0:
-                        var sourceStart = checked((int)insertion.SourceStart);
-                        var sourceEnd = checked((int)insertion.SourceEnd);
-                        if (
-                            sourceStart < 0
-                            || sourceEnd > source.Length
-                            || sourceEnd <= sourceStart
-                            || source[sourceStart] != '<'
-                        )
-                        {
-                            throw new InvalidOperationException(
-                                "A recorded start-tag source range is outside the input."
-                            );
-                        }
-                        _position = sourceEnd - 1;
-                        if (source[_position] != '>')
-                        {
-                            throw new InvalidOperationException(
-                                "A recorded start-tag source range does not end at a tag close."
-                            );
-                        }
-                        if (insertion.SelfClosing && _position > sourceStart && source[_position - 1] == '/')
-                            _position--;
-                        if (_position < _cursor)
-                            throw new InvalidOperationException("Start-tag rewrite ranges are not ordered.");
+            if (
+                mutation.Before.Count != 0
+                || (!mutation.CanHaveContent && mutation.After.Count != 0)
+                || mutation.Prepend.Count != 0
+                || mutation.InnerReplacement is not null
+                || mutation.Disposition == ElementDisposition.Unwrap
+                || mutation.ChangesStartTag
+            )
+            {
+                edits.Add(
+                    new BufferedEdit(
+                        mutation.SourceStart,
+                        mutation.SourceEnd,
+                        BuildStartReplacement(source, mutation),
+                        sequence++
+                    )
+                );
+            }
 
-                        var run = source[_cursor.._position];
-                        var needsSeparator =
-                            _position == _cursor || _position == sourceStart || !IsHtmlSpace(source[_position - 1]);
-                        _phase = needsSeparator ? 1 : 2;
-                        if (!run.IsEmpty)
-                        {
-                            Current = run;
-                            return true;
-                        }
-                        continue;
-                    case 1:
-                        _phase = 2;
-                        Current = " "u8;
-                        return true;
-                    default:
-                        Current = _collector._payload.WrittenSpan.Slice(
-                            insertion.PayloadStart,
-                            insertion.PayloadLength
-                        );
-                        _cursor = _position;
-                        _insertionIndex++;
-                        _phase = 0;
-                        return true;
-                }
+            if (mutation.SuppressInnerContent && mutation.EndStart >= mutation.SourceEnd)
+                edits.Add(new BufferedEdit(mutation.SourceEnd, mutation.EndStart, [], sequence++));
+
+            if (
+                mutation.HasExplicitEndTag
+                && (
+                    mutation.Append.Count != 0
+                    || mutation.After.Count != 0
+                    || mutation.Disposition == ElementDisposition.Unwrap
+                )
+            )
+            {
+                edits.Add(
+                    new BufferedEdit(
+                        mutation.EndStart,
+                        mutation.EndEnd,
+                        BuildEndReplacement(source, mutation),
+                        sequence++
+                    )
+                );
             }
         }
+        edits.Sort(
+            static (left, right) =>
+            {
+                var byStart = left.Start.CompareTo(right.Start);
+                return byStart != 0 ? byStart : left.Sequence.CompareTo(right.Sequence);
+            }
+        );
+        return edits;
+    }
+
+    private static byte[] BuildWholeReplacement(HtmlElementMutation mutation)
+    {
+        var output = new ArrayBufferWriter<byte>();
+        WriteForward(output, mutation.Before);
+        if (mutation.Disposition == ElementDisposition.Replace)
+            Write(output, mutation.Replacement!);
+        if (!mutation.CanHaveContent || mutation.HasExplicitEndTag)
+            WriteReverse(output, mutation.After);
+        return output.WrittenSpan.ToArray();
+    }
+
+    private static byte[] BuildStartReplacement(ReadOnlySpan<byte> source, HtmlElementMutation mutation)
+    {
+        var output = new ArrayBufferWriter<byte>();
+        WriteForward(output, mutation.Before);
+        if (mutation.Disposition != ElementDisposition.Unwrap)
+        {
+            var tag = source[checked((int)mutation.SourceStart)..checked((int)mutation.SourceEnd)];
+            if (mutation.ChangesStartTag)
+                Write(output, StartTagMutationWriter.Rewrite(tag, mutation));
+            else
+                Write(output, tag);
+        }
+        WriteReverse(output, mutation.Prepend);
+        if (mutation.InnerReplacement is not null)
+            Write(output, mutation.InnerReplacement);
+        if (!mutation.CanHaveContent)
+            WriteReverse(output, mutation.After);
+        return output.WrittenSpan.ToArray();
+    }
+
+    private static byte[] BuildEndReplacement(ReadOnlySpan<byte> source, HtmlElementMutation mutation)
+    {
+        var output = new ArrayBufferWriter<byte>();
+        WriteForward(output, mutation.Append);
+        if (mutation.Disposition != ElementDisposition.Unwrap)
+            Write(output, source[checked((int)mutation.EndStart)..checked((int)mutation.EndEnd)]);
+        WriteReverse(output, mutation.After);
+        return output.WrittenSpan.ToArray();
     }
 
     internal static bool IsHtmlSpace(byte value) =>
         value is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\f' or (byte)'\r';
 
-    internal static void ValidateName(ReadOnlySpan<byte> name)
+    internal static void WriteForward(IBufferWriter<byte> output, List<byte[]> values)
     {
-        if (name.IsEmpty)
-            throw new ArgumentException("An attribute name cannot be empty.", nameof(name));
-        foreach (var item in name)
-        {
-            if (item <= 0x20 || item is (byte)'"' or (byte)'\'' or (byte)'/' or (byte)'>' or (byte)'=')
-                throw new ArgumentException("The attribute name contains an HTML delimiter.", nameof(name));
-        }
+        foreach (var value in values)
+            Write(output, value);
     }
 
-    private static void WriteByte(IBufferWriter<byte> output, byte value)
+    internal static void WriteReverse(IBufferWriter<byte> output, List<byte[]> values)
     {
-        output.GetSpan(1)[0] = value;
-        output.Advance(1);
+        for (var index = values.Count - 1; index >= 0; index--)
+            Write(output, values[index]);
     }
 
-    private static void Write(IBufferWriter<byte> output, ReadOnlySpan<byte> value)
+    internal static void Write(IBufferWriter<byte> output, ReadOnlySpan<byte> value)
     {
         value.CopyTo(output.GetSpan(value.Length));
         output.Advance(value.Length);
     }
 
-    private readonly record struct Insertion(
-        long SourceStart,
-        long SourceEnd,
-        bool SelfClosing,
-        int PayloadStart,
-        int PayloadLength
-    );
+    private readonly record struct BufferedEdit(long Start, long End, byte[] Replacement, int Sequence);
+
+    private ref struct SegmentEnumerator(List<BufferedEdit> edits, ReadOnlySpan<byte> source)
+    {
+        private readonly List<BufferedEdit> _edits = edits;
+        private readonly ReadOnlySpan<byte> _source = source;
+        private int _index;
+        private int _cursor;
+        private byte[]? _pendingReplacement;
+        private bool _tailEmitted;
+
+        internal ReadOnlySpan<byte> Current { get; private set; }
+
+        internal bool MoveNext()
+        {
+            if (_pendingReplacement is not null)
+            {
+                Current = _pendingReplacement;
+                _pendingReplacement = null;
+                return true;
+            }
+
+            while (_index < _edits.Count)
+            {
+                var edit = _edits[_index++];
+                var start = checked((int)edit.Start);
+                var end = checked((int)edit.End);
+                if (start < _cursor || start > _source.Length || end < start || end > _source.Length)
+                    continue;
+
+                var untouched = _source[_cursor..start];
+                _cursor = end;
+                if (edit.Replacement.Length != 0)
+                    _pendingReplacement = edit.Replacement;
+                if (!untouched.IsEmpty)
+                {
+                    Current = untouched;
+                    return true;
+                }
+                if (_pendingReplacement is not null)
+                {
+                    Current = _pendingReplacement;
+                    _pendingReplacement = null;
+                    return true;
+                }
+            }
+
+            if (_tailEmitted || _cursor == _source.Length)
+                return false;
+            _tailEmitted = true;
+            Current = _source[_cursor..];
+            return true;
+        }
+    }
 }
