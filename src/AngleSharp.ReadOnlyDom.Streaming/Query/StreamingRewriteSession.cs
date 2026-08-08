@@ -34,7 +34,24 @@ public sealed class StreamingRewriteSession<TState> : IDisposable
         Utf8InputContract inputContract,
         HtmlStreamingLimits limits
     )
-        : this(plan, state, new Utf8StreamingRewriteCollector(output, limits), handler, inputContract, limits) { }
+        : this(
+            plan,
+            state,
+            new Utf8StreamingRewriteCollector(output, limits),
+            ElementHandlers(handler),
+            inputContract,
+            limits
+        ) { }
+
+    internal StreamingRewriteSession(
+        QueryPlan<TState> plan,
+        TState state,
+        IBufferWriter<byte> output,
+        HtmlRewriteHandlers<TState> handlers,
+        Utf8InputContract inputContract,
+        HtmlStreamingLimits limits
+    )
+        : this(plan, state, new Utf8StreamingRewriteCollector(output, limits), handlers, inputContract, limits) { }
 
     internal StreamingRewriteSession(
         QueryPlan<TState> plan,
@@ -44,18 +61,36 @@ public sealed class StreamingRewriteSession<TState> : IDisposable
         Utf8InputContract inputContract,
         HtmlStreamingLimits limits
     )
-        : this(plan, state, new Utf8StreamingRewriteCollector(sink, limits), handler, inputContract, limits) { }
+        : this(
+            plan,
+            state,
+            new Utf8StreamingRewriteCollector(sink, limits),
+            ElementHandlers(handler),
+            inputContract,
+            limits
+        ) { }
+
+    internal StreamingRewriteSession(
+        QueryPlan<TState> plan,
+        TState state,
+        StreamingRewriteSegmentSink sink,
+        HtmlRewriteHandlers<TState> handlers,
+        Utf8InputContract inputContract,
+        HtmlStreamingLimits limits
+    )
+        : this(plan, state, new Utf8StreamingRewriteCollector(sink, limits), handlers, inputContract, limits) { }
 
     private StreamingRewriteSession(
         QueryPlan<TState> plan,
         TState state,
         Utf8StreamingRewriteCollector collector,
-        RewriteHandler<TState> handler,
+        HtmlRewriteHandlers<TState> handlers,
         Utf8InputContract inputContract,
         HtmlStreamingLimits limits
     )
     {
-        ArgumentNullException.ThrowIfNull(handler);
+        if (handlers.IsEmpty)
+            throw new ArgumentException("At least one rewrite handler is required.", nameof(handlers));
         if (inputContract is not (Utf8InputContract.ArbitraryBytes or Utf8InputContract.WellFormedUtf8))
             throw new ArgumentOutOfRangeException(nameof(inputContract));
 
@@ -64,7 +99,13 @@ public sealed class StreamingRewriteSession<TState> : IDisposable
         {
             if (limits.EnforcesLimits)
             {
-                var execution = plan.CreateExecution<EnforcedResourceLimits>(state, limits, handler, _collector);
+                var execution = plan.CreateExecution<EnforcedResourceLimits>(
+                    state,
+                    limits,
+                    handlers.Element,
+                    handlers.Text,
+                    _collector
+                );
                 _execution = execution;
                 try
                 {
@@ -79,7 +120,13 @@ public sealed class StreamingRewriteSession<TState> : IDisposable
             }
             else
             {
-                var execution = plan.CreateExecution<UnboundedResources>(state, limits, handler, _collector);
+                var execution = plan.CreateExecution<UnboundedResources>(
+                    state,
+                    limits,
+                    handlers.Element,
+                    handlers.Text,
+                    _collector
+                );
                 _execution = execution;
                 try
                 {
@@ -153,4 +200,10 @@ public sealed class StreamingRewriteSession<TState> : IDisposable
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+
+    private static HtmlRewriteHandlers<TState> ElementHandlers(RewriteHandler<TState> handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        return new HtmlRewriteHandlers<TState>(element: handler);
+    }
 }

@@ -38,6 +38,8 @@ internal sealed class HtmlElementMutation(long sourceStart, long sourceEnd, bool
     internal bool Ignored { get; set; }
     internal bool OpensSuppression { get; set; }
     internal bool RequiresEndTagRange { get; set; }
+    internal int StartSequence { get; set; }
+    internal int EndSequence { get; set; }
 
     internal bool ChangesStartTag =>
         Attributes.Count != 0 || (SelfClosingSyntax && CanHaveContent && (Prepend.Count != 0 || SuppressInnerContent));

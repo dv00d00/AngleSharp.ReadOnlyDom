@@ -230,8 +230,8 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         {
             EnsureStreamingCommentStarted();
             _streamingCommentSink.EndComment();
-            _streamingCommentStarted = false;
-            _captureStreamingComment = false;
+            StreamingCommentStarted = false;
+            CapturesStreamingComment = false;
         }
         Clear(_candidate);
         _state = State.Data;
@@ -260,7 +260,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         }
 
         EnsureStreamingCommentStarted();
-        if (_captureStreamingComment)
+        if (CapturesStreamingComment)
         {
             _streamingCommentSink.CommentChunk(value);
         }
@@ -273,14 +273,14 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
 
     private void EnsureStreamingCommentStarted()
     {
-        if (_streamingCommentStarted)
+        if (StreamingCommentStarted)
         {
             return;
         }
 
-        _captureStreamingComment = _streamingCommentSink!.BeginComment();
-        _streamingCommentStarted = true;
-        if (_captureStreamingComment && _candidate.WrittenCount != 0)
+        CapturesStreamingComment = _streamingCommentSink!.BeginComment();
+        StreamingCommentStarted = true;
+        if (CapturesStreamingComment && _candidate.WrittenCount != 0)
         {
             _streamingCommentSink.CommentChunk(_candidate.WrittenSpan);
         }

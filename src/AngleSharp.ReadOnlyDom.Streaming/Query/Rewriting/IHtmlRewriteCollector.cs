@@ -4,6 +4,8 @@ internal interface IHtmlRewriteCollector
 {
     bool NeedsEndTagSourceRanges { get; }
 
+    bool IsSuppressingContent { get; }
+
     int BeginElement(long sourceStart, long sourceEnd, bool canHaveContent, bool selfClosingSyntax);
 
     void CommitElement(int scopeId);
@@ -31,15 +33,32 @@ internal interface IHtmlRewriteCollector
     void Remove(int scopeId);
 
     void RemoveAndKeepContent(int scopeId);
+
+    int BeginText(long sourceStart, long sourceEnd);
+
+    void CommitText(int scopeId);
+
+    void TextBefore(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType);
+
+    void TextAfter(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType);
+
+    void ReplaceText(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType);
+
+    void RemoveText(int scopeId);
 }
 
 internal abstract class HtmlRewriteCollectorBase : IHtmlRewriteCollector
 {
     private int _endTagRangeScopes;
+    private int _suppressionDepth;
+    private int _sequence;
 
     protected List<HtmlElementMutation> Mutations { get; } = [];
+    protected List<HtmlTextMutation> TextMutations { get; } = [];
 
     public bool NeedsEndTagSourceRanges => _endTagRangeScopes != 0;
+
+    public bool IsSuppressingContent => _suppressionDepth != 0;
 
     public int BeginElement(long sourceStart, long sourceEnd, bool canHaveContent, bool selfClosingSyntax)
     {
@@ -53,6 +72,10 @@ internal abstract class HtmlRewriteCollectorBase : IHtmlRewriteCollector
         if (scopeId < 0)
             return;
         var mutation = Mutation(scopeId);
+        mutation.Ignored = _suppressionDepth != 0;
+        if (mutation.Ignored)
+            return;
+        mutation.StartSequence = _sequence++;
         mutation.RequiresEndTagRange =
             mutation.CanHaveContent
             && (
@@ -66,6 +89,14 @@ internal abstract class HtmlRewriteCollectorBase : IHtmlRewriteCollector
             );
         if (mutation.RequiresEndTagRange)
             _endTagRangeScopes++;
+        mutation.OpensSuppression =
+            mutation.CanHaveContent
+            && (
+                mutation.Disposition is ElementDisposition.Remove or ElementDisposition.Replace
+                || mutation.SuppressInnerContent
+            );
+        if (mutation.OpensSuppression)
+            _suppressionDepth++;
     }
 
     public virtual void EndElement(int scopeId, long sourceStart, long sourceEnd, bool hasExplicitEndTag)
@@ -73,11 +104,16 @@ internal abstract class HtmlRewriteCollectorBase : IHtmlRewriteCollector
         if (scopeId < 0)
             return;
         var mutation = Mutations[scopeId];
+        if (mutation.Ignored)
+            return;
         if (mutation.RequiresEndTagRange)
             _endTagRangeScopes--;
         mutation.EndStart = sourceStart;
         mutation.EndEnd = sourceEnd;
         mutation.HasExplicitEndTag = hasExplicitEndTag;
+        mutation.EndSequence = _sequence++;
+        if (mutation.OpensSuppression)
+            _suppressionDepth--;
     }
 
     public void AppendAttribute(int scopeId, ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
@@ -158,5 +194,39 @@ internal abstract class HtmlRewriteCollectorBase : IHtmlRewriteCollector
         mutation.InnerReplacement = null;
     }
 
+    public int BeginText(long sourceStart, long sourceEnd)
+    {
+        TextMutations.Add(new HtmlTextMutation(sourceStart, sourceEnd));
+        return TextMutations.Count - 1;
+    }
+
+    public virtual void CommitText(int scopeId)
+    {
+        if (scopeId >= 0)
+            TextMutation(scopeId).Sequence = _sequence++;
+    }
+
+    public void TextBefore(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType) =>
+        TextMutation(scopeId).Before.Add(HtmlRewritePayload.CopyContent(content, contentType));
+
+    public void TextAfter(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType) =>
+        TextMutation(scopeId).After.Add(HtmlRewritePayload.CopyContent(content, contentType));
+
+    public void ReplaceText(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType)
+    {
+        var mutation = TextMutation(scopeId);
+        mutation.Replacement = HtmlRewritePayload.CopyContent(content, contentType);
+        mutation.Removed = true;
+    }
+
+    public void RemoveText(int scopeId)
+    {
+        var mutation = TextMutation(scopeId);
+        mutation.Replacement = null;
+        mutation.Removed = true;
+    }
+
     protected HtmlElementMutation Mutation(int scopeId) => Mutations[scopeId];
+
+    protected HtmlTextMutation TextMutation(int scopeId) => TextMutations[scopeId];
 }

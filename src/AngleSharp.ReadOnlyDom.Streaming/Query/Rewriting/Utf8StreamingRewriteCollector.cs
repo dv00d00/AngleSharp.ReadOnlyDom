@@ -16,7 +16,6 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
     private int _pendingLength;
     private long _publishedThrough;
     private long _observedEnd;
-    private int _logicalSuppressionDepth;
     private int _outputSuppressionScope = -1;
 
     internal Utf8StreamingRewriteCollector(IBufferWriter<byte> output, HtmlStreamingLimits limits)
@@ -45,18 +44,9 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
         if (scopeId < 0)
             return;
         var mutation = Mutation(scopeId);
-        mutation.Ignored = _logicalSuppressionDepth != 0;
         if (mutation.Ignored)
             return;
-        mutation.OpensSuppression =
-            mutation.CanHaveContent
-            && (
-                mutation.Disposition is ElementDisposition.Remove or ElementDisposition.Replace
-                || mutation.SuppressInnerContent
-            );
-        if (mutation.OpensSuppression)
-            _logicalSuppressionDepth++;
-        _events.Add(new RewriteEvent(scopeId, IsStart: true));
+        _events.Add(RewriteEvent.Element(scopeId, isStart: true));
     }
 
     public override void EndElement(int scopeId, long sourceStart, long sourceEnd, bool hasExplicitEndTag)
@@ -67,8 +57,6 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
         base.EndElement(scopeId, sourceStart, sourceEnd, hasExplicitEndTag);
         if (mutation.Ignored)
             return;
-        if (mutation.OpensSuppression)
-            _logicalSuppressionDepth--;
         if (
             mutation.OpensSuppression
             || (
@@ -81,8 +69,15 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
             )
         )
         {
-            _events.Add(new RewriteEvent(scopeId, IsStart: false));
+            _events.Add(RewriteEvent.Element(scopeId, isStart: false));
         }
+    }
+
+    public override void CommitText(int scopeId)
+    {
+        base.CommitText(scopeId);
+        if (scopeId >= 0)
+            _events.Add(RewriteEvent.Text(scopeId));
     }
 
     internal void PublishWindow(long chunkStart, ReadOnlySpan<byte> chunk, long watermark)
@@ -96,14 +91,22 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
         var processedEvents = 0;
         foreach (var rewriteEvent in _events)
         {
-            var mutation = Mutation(rewriteEvent.ScopeId);
-            var eventEnd = rewriteEvent.IsStart ? mutation.SourceEnd : mutation.EndEnd;
+            var eventEnd =
+                rewriteEvent.Kind == RewriteEventKind.Text ? TextMutation(rewriteEvent.ScopeId).SourceEnd
+                : rewriteEvent.Kind == RewriteEventKind.ElementStart ? Mutation(rewriteEvent.ScopeId).SourceEnd
+                : Mutation(rewriteEvent.ScopeId).EndEnd;
             if (eventEnd > limit)
                 break;
-            if (rewriteEvent.IsStart)
-                ApplyStart(rewriteEvent.ScopeId, mutation, pendingBase, chunkStart, chunk);
+            if (rewriteEvent.Kind == RewriteEventKind.Text)
+                ApplyText(TextMutation(rewriteEvent.ScopeId), pendingBase, chunkStart, chunk);
             else
-                ApplyEnd(rewriteEvent.ScopeId, mutation, pendingBase, chunkStart, chunk);
+            {
+                var mutation = Mutation(rewriteEvent.ScopeId);
+                if (rewriteEvent.Kind == RewriteEventKind.ElementStart)
+                    ApplyStart(rewriteEvent.ScopeId, mutation, pendingBase, chunkStart, chunk);
+                else
+                    ApplyEnd(rewriteEvent.ScopeId, mutation, pendingBase, chunkStart, chunk);
+            }
             processedEvents++;
         }
         if (processedEvents != 0)
@@ -196,6 +199,22 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
             _outputSuppressionScope = scopeId;
         if (!mutation.CanHaveContent)
             WriteReverse(mutation.After);
+    }
+
+    private void ApplyText(HtmlTextMutation mutation, long pendingBase, long chunkStart, ReadOnlySpan<byte> chunk)
+    {
+        if (_outputSuppressionScope >= 0 || mutation.SourceStart < _publishedThrough)
+            throw new InvalidOperationException(
+                $"Text rewrite [{mutation.SourceStart}, {mutation.SourceEnd}) follows {_publishedThrough}; suppression={_outputSuppressionScope}."
+            );
+        PublishRange(_publishedThrough, mutation.SourceStart, pendingBase, chunkStart, chunk);
+        WriteForward(mutation.Before);
+        if (mutation.Removed)
+            Write(mutation.Replacement ?? []);
+        else
+            PublishRange(mutation.SourceStart, mutation.SourceEnd, pendingBase, chunkStart, chunk);
+        WriteReverse(mutation.After);
+        _publishedThrough = mutation.SourceEnd;
     }
 
     private void ApplyEnd(
@@ -314,5 +333,18 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
         _pending = grown;
     }
 
-    private readonly record struct RewriteEvent(int ScopeId, bool IsStart);
+    private enum RewriteEventKind : byte
+    {
+        ElementStart,
+        Text,
+        ElementEnd,
+    }
+
+    private readonly record struct RewriteEvent(int ScopeId, RewriteEventKind Kind)
+    {
+        internal static RewriteEvent Element(int scopeId, bool isStart) =>
+            new(scopeId, isStart ? RewriteEventKind.ElementStart : RewriteEventKind.ElementEnd);
+
+        internal static RewriteEvent Text(int scopeId) => new(scopeId, RewriteEventKind.Text);
+    }
 }
