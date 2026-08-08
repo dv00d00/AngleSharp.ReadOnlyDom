@@ -21,15 +21,18 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 }
                 else if (value == (Byte)'&' && _captureText && !IsNotConsumingCharacterReferences)
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.Data);
                     BeginCharacterReference(State.Data);
                 }
                 else if (_captureText)
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.Data);
                     EmitByte(value);
                 }
 
                 break;
             case State.Plaintext:
+                EmitRawCurrentByte(value, Utf8HtmlTextType.PlainText);
                 if (value == 0)
                 {
                     EmitReplacementCharacter();

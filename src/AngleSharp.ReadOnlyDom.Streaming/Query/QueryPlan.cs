@@ -71,10 +71,11 @@ public sealed class QueryPlan<TState>
         TState state,
         HtmlStreamingLimits limits,
         RewriteHandler<TState>? rewriteHandler = null,
+        TextRewriteHandler<TState>? textRewriteHandler = null,
         IHtmlRewriteCollector? rewriteCollector = null
     )
         where TResourceLimits : struct, IResourceLimitPolicy =>
-        new(this, state, limits, rewriteHandler, rewriteCollector);
+        new(this, state, limits, rewriteHandler, textRewriteHandler, rewriteCollector);
 
     internal IQueryExecution<TState> CreateResourceAwareExecution(TState state, HtmlStreamingLimits limits) =>
         limits.EnforcesLimits
@@ -108,6 +109,15 @@ public sealed class QueryPlan<TState>
         HtmlStreamingLimits? limits = null
     ) => new(this, state, output, handler, inputContract, limits ?? HtmlStreamingLimits.Default);
 
+    /// <summary>Begins a push-style streaming rewrite with element and/or raw text handlers.</summary>
+    public StreamingRewriteSession<TState> CreateRewriteSession(
+        TState state,
+        IBufferWriter<byte> output,
+        HtmlRewriteHandlers<TState> handlers,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes,
+        HtmlStreamingLimits? limits = null
+    ) => new(this, state, output, handlers, inputContract, limits ?? HtmlStreamingLimits.Default);
+
     /// <summary>
     /// Streaming rewrite like
     /// <see cref="CreateRewriteSession(TState, IBufferWriter{byte}, RewriteHandler{TState}, Utf8InputContract, HtmlStreamingLimits?)"/>
@@ -121,6 +131,15 @@ public sealed class QueryPlan<TState>
         Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes,
         HtmlStreamingLimits? limits = null
     ) => new(this, state, sink, handler, inputContract, limits ?? HtmlStreamingLimits.Default);
+
+    /// <summary>Begins a borrowed-segment streaming rewrite with element and/or raw text handlers.</summary>
+    public StreamingRewriteSession<TState> CreateRewriteSession(
+        TState state,
+        StreamingRewriteSegmentSink sink,
+        HtmlRewriteHandlers<TState> handlers,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes,
+        HtmlStreamingLimits? limits = null
+    ) => new(this, state, sink, handlers, inputContract, limits ?? HtmlStreamingLimits.Default);
 
     /// <summary>Executes the plan over UTF-8, replacing malformed input with U+FFFD.</summary>
     public TState Execute(ReadOnlySpan<byte> utf8, TState state, HtmlStreamingLimits? limits = null) =>
@@ -177,6 +196,22 @@ public sealed class QueryPlan<TState>
         return execution.State;
     }
 
+    /// <summary>Rewrites matching elements and/or their raw text chunks.</summary>
+    public TState Rewrite(
+        ReadOnlySpan<byte> utf8,
+        IBufferWriter<byte> output,
+        TState state,
+        HtmlRewriteHandlers<TState> handlers,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes,
+        HtmlStreamingLimits? limits = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        using var execution = RewriteCore(utf8, state, handlers, inputContract, limits, out var collector);
+        collector.WriteTo(utf8, output);
+        return execution.State;
+    }
+
     /// <summary>
     /// Rewrites like <see cref="Rewrite(ReadOnlySpan{byte}, IBufferWriter{byte}, TState, RewriteHandler{TState}, Utf8InputContract, HtmlStreamingLimits?)"/>
     /// but publishes the result as borrowed segments instead of copying it: every untouched run of
@@ -198,6 +233,23 @@ public sealed class QueryPlan<TState>
         return finalState;
     }
 
+    /// <summary>Rewrites with element and/or raw text handlers and publishes borrowed output segments.</summary>
+    public TState Rewrite(
+        ReadOnlySpan<byte> utf8,
+        TState state,
+        HtmlRewriteHandlers<TState> handlers,
+        RewriteSegmentSink<TState> sink,
+        Utf8InputContract inputContract = Utf8InputContract.ArbitraryBytes,
+        HtmlStreamingLimits? limits = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(sink);
+        using var execution = RewriteCore(utf8, state, handlers, inputContract, limits, out var collector);
+        var finalState = execution.State;
+        collector.WriteTo(utf8, ref finalState, sink);
+        return finalState;
+    }
+
     private IQueryExecution<TState> RewriteCore(
         ReadOnlySpan<byte> utf8,
         TState state,
@@ -208,6 +260,27 @@ public sealed class QueryPlan<TState>
     )
     {
         ArgumentNullException.ThrowIfNull(handler);
+        return RewriteCore(
+            utf8,
+            state,
+            new HtmlRewriteHandlers<TState>(element: handler),
+            inputContract,
+            limits,
+            out collector
+        );
+    }
+
+    private IQueryExecution<TState> RewriteCore(
+        ReadOnlySpan<byte> utf8,
+        TState state,
+        HtmlRewriteHandlers<TState> handlers,
+        Utf8InputContract inputContract,
+        HtmlStreamingLimits? limits,
+        out Utf8RewriteCollector collector
+    )
+    {
+        if (handlers.IsEmpty)
+            throw new ArgumentException("At least one rewrite handler is required.", nameof(handlers));
         if (inputContract == Utf8InputContract.ArbitraryBytes && !System.Text.Unicode.Utf8.IsValid(utf8))
             throw new DecoderFallbackException("Query rewriting requires well-formed UTF-8 input.");
         if (inputContract is not (Utf8InputContract.ArbitraryBytes or Utf8InputContract.WellFormedUtf8))
@@ -216,8 +289,15 @@ public sealed class QueryPlan<TState>
         limits ??= HtmlStreamingLimits.Default;
         collector = new Utf8RewriteCollector();
         IQueryExecution<TState> execution = limits.EnforcesLimits
-            ? new QueryExecution<TState>(this, state, limits, handler, collector)
-            : new QueryExecution<TState, UnboundedResources>(this, state, limits, handler, collector);
+            ? new QueryExecution<TState>(this, state, limits, handlers.Element, handlers.Text, collector)
+            : new QueryExecution<TState, UnboundedResources>(
+                this,
+                state,
+                limits,
+                handlers.Element,
+                handlers.Text,
+                collector
+            );
         try
         {
             var tokenizer = Utf8HtmlTokenizerPipeline.CreateTokenizer(execution, limits);

@@ -50,8 +50,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     private readonly IUtf8HtmlTokenSink _sink;
     private readonly IUtf8HtmlStreamingCommentSink? _streamingCommentSink;
     private IUtf8HtmlStartTagSourceRangeSink? _startTagSourceRangeSink;
-    private Boolean _streamingCommentStarted;
-    private Boolean _captureStreamingComment;
+    private Byte _streamingFlags;
     private Int64 _normalizedBytesConsumed;
     private Int64 _inputBytesConsumed;
     private Int64 _currentSourceOffset;
@@ -273,6 +272,8 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         _sink = sink;
         RefreshCapture();
         _streamingCommentSink = sink as IUtf8HtmlStreamingCommentSink;
+        if (sink is IUtf8HtmlRawTextSink { IsRawTextEnabled: true })
+            _streamingFlags = RawTextEnabledFlag;
         RefreshStartTagSourceRangeSink();
         _stateMetrics = stateMetrics;
         _maximumBufferedTokenBytesAllowed = limits.MaximumBufferedTokenBytes;
@@ -669,6 +670,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         if (_captureText)
                         {
                             EmitText(utf8.Slice(index, run));
+                            EmitRawText(sourceBase + index, utf8.Slice(index, run), CurrentRawTextType());
                             if (yieldOnRequest && _yieldRequested)
                             {
                                 index += run;
@@ -706,6 +708,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         {
                             RecordFusedTagOpen(isEndTag);
                         }
+                        EndRawText(sourceBase + index);
                         index += fused;
                         if (trackSourceRanges)
                         {
@@ -751,6 +754,8 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                     _pendingCarriageReturn = false;
                     if (value == (Byte)'\n')
                     {
+                        if (IsRawTextInputState(_state))
+                            EmitRawCurrentByte(value, CurrentRawTextType());
                         continue;
                     }
                 }
@@ -799,31 +804,46 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         {
             case State.TagOpen:
                 EmitText("<"u8);
+                EmitRawText(_normalizedBytesConsumed - 1, "<"u8, Utf8HtmlTextType.Data);
                 break;
             case State.EndTagOpen:
                 EmitText("</"u8);
+                EmitRawText(_normalizedBytesConsumed - 2, "</"u8, Utf8HtmlTextType.Data);
                 break;
             case State.CharacterReference:
                 ResolveCharacterReference();
                 break;
             case State.CDataSectionBracket:
                 EmitCDataText("]"u8);
+                EmitRawText(_normalizedBytesConsumed - 1, "]"u8, Utf8HtmlTextType.CDataSection);
                 break;
             case State.CDataSectionEnd:
                 EmitCDataText("]]"u8);
+                EmitRawText(_normalizedBytesConsumed - 2, "]]"u8, Utf8HtmlTextType.CDataSection);
                 break;
             case State.RawLessThan:
             case State.RawEndTagOpen:
             case State.RawEndTagName:
                 EmitText(_candidate.WrittenSpan);
+                EmitRawText(
+                    _normalizedBytesConsumed - _candidate.WrittenCount,
+                    _candidate.WrittenSpan,
+                    CurrentRawTextType()
+                );
                 break;
             case State.ScriptLessThan:
             case State.ScriptEscapedLessThan:
                 EmitText("<"u8);
+                EmitRawText(_normalizedBytesConsumed - 1, "<"u8, Utf8HtmlTextType.ScriptData);
                 break;
             case State.ScriptEndTagName:
             case State.ScriptEscapedEndTagName:
                 EmitText(_candidate.WrittenSpan);
+                EmitRawText(
+                    _normalizedBytesConsumed - _candidate.WrittenCount,
+                    _candidate.WrittenSpan,
+                    Utf8HtmlTextType.ScriptData
+                );
                 break;
             case State.CommentStart:
             case State.CommentStartDash:
@@ -859,11 +879,97 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 break;
         }
 
+        EndRawText(_normalizedBytesConsumed);
         _sink.EndOfFile();
         _completed = true;
     }
 
     private void RefreshCapture() => _captureText = (_sink.Capture & Utf8HtmlTokenCapture.Text) != 0;
+
+    private void EmitRawCurrentByte(Byte value, Utf8HtmlTextType textType)
+    {
+        Span<Byte> source = stackalloc Byte[1];
+        source[0] = _pendingCarriageReturn ? (Byte)'\r' : value;
+        EmitRawText(_currentSourceOffset - 1, source, textType);
+    }
+
+    private void EmitRawText(Int64 sourceStart, ReadOnlySpan<Byte> utf8, Utf8HtmlTextType textType)
+    {
+        if (
+            utf8.IsEmpty
+            || (_streamingFlags & RawTextEnabledFlag) == 0
+            || _streamingCommentSink is not IUtf8HtmlRawTextSink { WantsRawText: true } rawTextSink
+        )
+            return;
+        rawTextSink.RawText(sourceStart, utf8, textType, isLastInTextNode: false);
+        _streamingFlags = (Byte)(
+            (_streamingFlags & (CommentStartedFlag | CaptureCommentFlag | RawTextEnabledFlag))
+            | RawTextNodeOpenFlag
+            | ((Byte)textType << RawTextTypeShift)
+        );
+    }
+
+    private void EndRawText(Int64 sourceOffset)
+    {
+        if ((_streamingFlags & RawTextNodeOpenFlag) == 0)
+            return;
+        ((IUtf8HtmlRawTextSink)_streamingCommentSink!).RawText(
+            sourceOffset,
+            [],
+            (Utf8HtmlTextType)((_streamingFlags & RawTextTypeMask) >> RawTextTypeShift),
+            isLastInTextNode: true
+        );
+        _streamingFlags &= CommentStartedFlag | CaptureCommentFlag | RawTextEnabledFlag;
+    }
+
+    private Utf8HtmlTextType CurrentRawTextType() =>
+        _state switch
+        {
+            State.Plaintext => Utf8HtmlTextType.PlainText,
+            >= State.ScriptData and <= State.ScriptDoubleEscapeEnd => Utf8HtmlTextType.ScriptData,
+            >= State.CDataSection and <= State.CDataSectionEnd => Utf8HtmlTextType.CDataSection,
+            >= State.RawText and <= State.RawEndTagName => IsRcData()
+                ? Utf8HtmlTextType.RcData
+                : Utf8HtmlTextType.RawText,
+            State.CharacterReference when _returnState == State.RawText => IsRcData()
+                ? Utf8HtmlTextType.RcData
+                : Utf8HtmlTextType.RawText,
+            _ => Utf8HtmlTextType.Data,
+        };
+
+    private static Boolean IsRawTextInputState(State state) =>
+        state
+            is State.Data
+                or State.Plaintext
+                or State.RawText
+                or State.CDataSection
+                or >= State.ScriptData
+                and <= State.ScriptDoubleEscapeEnd;
+
+    private Boolean StreamingCommentStarted
+    {
+        get => (_streamingFlags & CommentStartedFlag) != 0;
+        set =>
+            _streamingFlags = value
+                ? (Byte)(_streamingFlags | CommentStartedFlag)
+                : (Byte)(_streamingFlags & ~CommentStartedFlag);
+    }
+
+    private Boolean CapturesStreamingComment
+    {
+        get => (_streamingFlags & CaptureCommentFlag) != 0;
+        set =>
+            _streamingFlags = value
+                ? (Byte)(_streamingFlags | CaptureCommentFlag)
+                : (Byte)(_streamingFlags & ~CaptureCommentFlag);
+    }
+
+    private const Byte CommentStartedFlag = 0x01;
+    private const Byte CaptureCommentFlag = 0x02;
+    private const Byte RawTextEnabledFlag = 0x80;
+    private const Byte RawTextNodeOpenFlag = 0x40;
+    private const Byte RawTextTypeMask = 0x1C;
+    private const Int32 RawTextTypeShift = 2;
 
     private void EmitText(ReadOnlySpan<Byte> utf8)
     {
