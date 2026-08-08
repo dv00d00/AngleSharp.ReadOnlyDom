@@ -76,9 +76,18 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
     public override void CommitText(int scopeId)
     {
         base.CommitText(scopeId);
-        if (scopeId >= 0)
-            _events.Add(RewriteEvent.Text(scopeId));
+        if (scopeId < 0)
+            return;
+        if (scopeId != TextMutations.Count - 1)
+            throw new InvalidOperationException("Text rewrite scopes must commit in stack order.");
+
+        var mutation = TextMutation(scopeId);
+        TextMutations.RemoveAt(scopeId);
+        _events.Add(RewriteEvent.Text(mutation));
     }
+
+    protected override HtmlTextMutation CreateTextMutation(long sourceStart, long sourceEnd) =>
+        HtmlTextMutationPool.Rent(sourceStart, sourceEnd);
 
     internal void PublishWindow(long chunkStart, ReadOnlySpan<byte> chunk, long watermark)
     {
@@ -92,13 +101,13 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
         foreach (var rewriteEvent in _events)
         {
             var eventEnd =
-                rewriteEvent.Kind == RewriteEventKind.Text ? TextMutation(rewriteEvent.ScopeId).SourceEnd
+                rewriteEvent.Kind == RewriteEventKind.Text ? rewriteEvent.TextMutation!.SourceEnd
                 : rewriteEvent.Kind == RewriteEventKind.ElementStart ? Mutation(rewriteEvent.ScopeId).SourceEnd
                 : Mutation(rewriteEvent.ScopeId).EndEnd;
             if (eventEnd > limit)
                 break;
             if (rewriteEvent.Kind == RewriteEventKind.Text)
-                ApplyText(TextMutation(rewriteEvent.ScopeId), pendingBase, chunkStart, chunk);
+                ApplyText(rewriteEvent.TextMutation!, pendingBase, chunkStart, chunk);
             else
             {
                 var mutation = Mutation(rewriteEvent.ScopeId);
@@ -110,7 +119,14 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
             processedEvents++;
         }
         if (processedEvents != 0)
+        {
+            for (var index = 0; index < processedEvents; index++)
+            {
+                if (_events[index].TextMutation is not null)
+                    HtmlTextMutationPool.Return(_events[index].TextMutation!);
+            }
             _events.RemoveRange(0, processedEvents);
+        }
 
         if (_outputSuppressionScope >= 0)
             _publishedThrough = limit;
@@ -146,6 +162,16 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
 
     public void Dispose()
     {
+        foreach (var rewriteEvent in _events)
+        {
+            if (rewriteEvent.TextMutation is not null)
+                HtmlTextMutationPool.Return(rewriteEvent.TextMutation);
+        }
+        _events.Clear();
+        foreach (var mutation in TextMutations)
+            HtmlTextMutationPool.Return(mutation);
+        TextMutations.Clear();
+
         var pending = _pending;
         _pending = [];
         _pendingLength = 0;
@@ -344,11 +370,11 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
         ElementEnd,
     }
 
-    private readonly record struct RewriteEvent(int ScopeId, RewriteEventKind Kind)
+    private readonly record struct RewriteEvent(int ScopeId, RewriteEventKind Kind, HtmlTextMutation? TextMutation)
     {
         internal static RewriteEvent Element(int scopeId, bool isStart) =>
-            new(scopeId, isStart ? RewriteEventKind.ElementStart : RewriteEventKind.ElementEnd);
+            new(scopeId, isStart ? RewriteEventKind.ElementStart : RewriteEventKind.ElementEnd, null);
 
-        internal static RewriteEvent Text(int scopeId) => new(scopeId, RewriteEventKind.Text);
+        internal static RewriteEvent Text(HtmlTextMutation mutation) => new(-1, RewriteEventKind.Text, mutation);
     }
 }

@@ -234,6 +234,41 @@ public sealed class TextRewriteApiTests
         }
     }
 
+    [Test]
+    public async Task StreamingMutationStateIsClearedAfterHandlerFailure()
+    {
+        var plan = StreamQuery.For<int>("div").Compile();
+        var failingHandlers = new HtmlRewriteHandlers<int>(
+            text: static (ref int _, in TextChunk chunk, ref TextChunkRewriter text) =>
+            {
+                if (chunk.IsLastInTextNode)
+                    return;
+                text.Before("leaked"u8, HtmlRewriteContentType.Text);
+                throw new InvalidOperationException("handler failure");
+            }
+        );
+        using (
+            var session = plan.CreateRewriteSession(
+                0,
+                new ArrayBufferWriter<byte>(),
+                failingHandlers,
+                Utf8InputContract.WellFormedUtf8
+            )
+        )
+        {
+            await Assert.That(() => session.Write("<div>x</div>"u8)).Throws<InvalidOperationException>();
+        }
+
+        var removeHandlers = new HtmlRewriteHandlers<int>(
+            text: static (ref int _, in TextChunk chunk, ref TextChunkRewriter text) =>
+            {
+                if (!chunk.IsLastInTextNode)
+                    text.Remove();
+            }
+        );
+        await Assert.That(RewriteStreaming(plan, "<div>x</div>", removeHandlers, 16)).IsEqualTo("<div></div>");
+    }
+
     private static void Capture(ref CaptureState state, in TextChunk chunk, ref TextChunkRewriter _)
     {
         if (chunk.IsLastInTextNode)

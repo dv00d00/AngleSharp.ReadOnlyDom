@@ -709,7 +709,6 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         {
                             RecordFusedTagOpen(isEndTag);
                         }
-                        EndRawText(sourceBase + index);
                         index += fused;
                         if (trackSourceRanges)
                         {
