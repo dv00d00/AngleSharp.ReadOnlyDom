@@ -33,6 +33,13 @@ public sealed class QueryPlan<TState>
             0UL,
             static (bits, node) => node.Completed is null ? bits : bits | (1UL << node.Index)
         );
+        NormalizedTextHandlerMask = nodes.Aggregate(
+            0UL,
+            static (bits, node) =>
+                node.Completed is null || node.CompletedTextMode != CompletedTextMode.Normalized
+                    ? bits
+                    : bits | (1UL << node.Index)
+        );
         var parentMask = nodes.Aggregate(
             0UL,
             static (bits, node) => node.ParentIndex < 0 ? bits : bits | (1UL << node.ParentIndex)
@@ -49,6 +56,12 @@ public sealed class QueryPlan<TState>
     internal CompiledTagDispatch[] TagDispatch { get; }
     internal ulong TextHandlerMask { get; }
     internal ulong CompletedHandlerMask { get; }
+
+    /// <summary>
+    /// Nodes capturing normalized text. Zero for every plan that never asks for it, which lets the
+    /// execution skip word-boundary classification on the tag path entirely.
+    /// </summary>
+    internal ulong NormalizedTextHandlerMask { get; }
     internal ulong TerminalNodeMask { get; }
 
     internal QueryExecution<TState> CreateExecution(TState state, HtmlStreamingLimits? limits = null) =>

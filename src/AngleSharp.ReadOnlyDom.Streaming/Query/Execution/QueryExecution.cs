@@ -54,6 +54,14 @@ internal class QueryExecution<TState, TResourceLimits>
     private long _queryCaptureBytes;
     private int _activeTextNodes;
     private int _activeCompletedTextCaptures;
+    private int _activeNormalizedTextCaptures;
+    private readonly ulong _normalizedTextMask;
+
+    /// <summary>Set in <see cref="QueryFrame.TagIdentityLength"/> when the frame's tag separates words.</summary>
+    private const int TextBoundaryFrameFlag = Int32.MinValue;
+
+    /// <summary>Masks <see cref="TextBoundaryFrameFlag"/> off a frame's stored identity length.</summary>
+    private const int TagIdentityLengthMask = Int32.MaxValue;
 
     internal QueryExecution(
         QueryPlan<TState> plan,
@@ -70,6 +78,7 @@ internal class QueryExecution<TState, TResourceLimits>
         _maximumQueryCaptureBytes = limits.MaximumQueryCaptureBytes;
         _rewriteHandler = rewriteHandler;
         _rewriteCollector = rewriteCollector;
+        _normalizedTextMask = plan.NormalizedTextHandlerMask;
         _streamingRewriteCollector = rewriteCollector as Utf8StreamingRewriteCollector;
         _activeCounts = ArrayPool<int>.Shared.Rent(Math.Max(plan.Nodes.Length, 1));
         _activeCounts.AsSpan(0, plan.Nodes.Length).Clear();
@@ -212,8 +221,13 @@ internal class QueryExecution<TState, TResourceLimits>
 
     private void StartTagEndCore(bool selfClosing, long sourceStart, long sourceEnd)
     {
-        if (_activeCompletedTextCaptures != 0)
-            MarkTextBoundary(_pendingTagIdentity, _pendingTagIdentityLength);
+        // Classified once here and carried to the close in the frame's sign bit. Plans that never
+        // capture normalized text short-circuit on the mask and never reach the lookup.
+        var isTextBoundary =
+            _normalizedTextMask != 0
+            && HtmlTextBoundaryElements.IsBoundary(_pendingTagIdentity, _pendingTagIdentityLength);
+        if (isTextBoundary && _activeNormalizedTextCaptures != 0)
+            MarkTextBoundary();
         var matches = 0UL;
         var candidates = _pendingCandidateBits;
         while (candidates != 0)
@@ -285,7 +299,7 @@ internal class QueryExecution<TState, TResourceLimits>
         EnsureFrameCapacity();
         _frames[_frameCount++] = new QueryFrame(
             _pendingTagIdentity,
-            _pendingTagIdentityLength,
+            isTextBoundary ? _pendingTagIdentityLength | TextBoundaryFrameFlag : _pendingTagIdentityLength,
             _pendingFallbackTagNameUtf8,
             matches,
             rewriteScopeId
@@ -362,7 +376,10 @@ internal class QueryExecution<TState, TResourceLimits>
         }
         for (var index = _frameCount - 1; index >= 0; index--)
         {
-            if (_frames[index].TagIdentity != identity || _frames[index].TagIdentityLength != identityLength)
+            if (
+                _frames[index].TagIdentity != identity
+                || (_frames[index].TagIdentityLength & TagIdentityLengthMask) != identityLength
+            )
                 continue;
             if (
                 identityLength != 0
@@ -516,8 +533,8 @@ internal class QueryExecution<TState, TResourceLimits>
 
     private void CloseFrame(QueryFrame frame, long sourceStart, long sourceEnd, bool hasExplicitEndTag)
     {
-        if (_activeCompletedTextCaptures != 0)
-            MarkTextBoundary(frame.TagIdentity, frame.TagIdentityLength);
+        if (frame.TagIdentityLength < 0 && _activeNormalizedTextCaptures != 0)
+            MarkTextBoundary();
         try
         {
             _rewriteCollector?.EndElement(frame.RewriteScopeId, sourceStart, sourceEnd, hasExplicitEndTag);
@@ -583,21 +600,20 @@ internal class QueryExecution<TState, TResourceLimits>
             captures.Add(capture);
             if (node.CompletedTextMode != CompletedTextMode.None)
                 _activeCompletedTextCaptures++;
+            if (node.CompletedTextMode == CompletedTextMode.Normalized)
+                _activeNormalizedTextCaptures++;
         }
     }
 
     /// <summary>
-    /// Separates words in every open normalized capture when a non-inline element opens or closes.
-    /// Callers gate on <c>_activeCompletedTextCaptures</c> so plans that capture no text pay one
-    /// predictable branch and never reach this call.
+    /// Separates words in every open normalized capture. Callers have already established that this
+    /// tag is a boundary and that at least one normalized capture is open, so this walks only the
+    /// normalized nodes and never the raw ones.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void MarkTextBoundary(ulong identity, int identityLength)
+    private void MarkTextBoundary()
     {
-        if (!HtmlTextBoundaryElements.IsBoundary(identity, identityLength))
-            return;
-
-        var completed = _plan.CompletedHandlerMask;
+        var completed = _normalizedTextMask;
         while (completed != 0)
         {
             var index = BitOperations.TrailingZeroCount(completed);
@@ -645,6 +661,8 @@ internal class QueryExecution<TState, TResourceLimits>
         captures.RemoveAt(captureIndex);
         if (node.CompletedTextMode != CompletedTextMode.None)
             _activeCompletedTextCaptures--;
+        if (node.CompletedTextMode == CompletedTextMode.Normalized)
+            _activeNormalizedTextCaptures--;
         if (TResourceLimits.Enabled)
         {
             _queryCaptureBytes -= capture.BufferedByteCount;
