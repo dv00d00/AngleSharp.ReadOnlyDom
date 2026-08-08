@@ -46,7 +46,7 @@ public class LongSyntheticConstructionBenchmark
         AssertEqual("compact scan", readOnly, compact);
         AssertEqual("EOF projection", readOnly, projection);
         AssertEqual("native UTF-8 raw fold", readOnly, rawUtf8);
-        AssertEqual("native UTF-8 completed-element fold", readOnly, completedUtf8);
+        AssertEqual("native UTF-8 completed-element fold", CreateExpectedCompletedText(), completedUtf8);
 
         var counters = _projectionPlan.ExecuteWithDiagnostics(_html).Counters;
         Console.WriteLine(
@@ -145,6 +145,14 @@ public class LongSyntheticConstructionBenchmark
         for (var index = 0; index < 32; index++)
             html.Append("<p>Useful row ").Append(index).Append(": <span>value</span>.</p>");
         return html.Append("</article></main></body></html>").ToString();
+    }
+
+    private static string CreateExpectedCompletedText()
+    {
+        var text = new StringBuilder("Wanted result");
+        for (var index = 0; index < 32; index++)
+            text.Append(" Useful row ").Append(index).Append(": value.");
+        return text.ToString();
     }
 
     private static string Normalize(string? value)

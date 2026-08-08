@@ -20,6 +20,12 @@ internal sealed class CapturedElementBuffer : IDisposable
 
     internal int BufferedByteCount => _length;
 
+    /// <summary>
+    /// Whether the next non-whitespace normalized run can materialize one byte that is not present
+    /// in that run. Resource-limit preflight includes this byte before mutating the capture.
+    /// </summary>
+    internal bool HasPendingNormalizedSpace => _textMode == CompletedTextMode.Normalized && _pendingSpace;
+
     internal void Reset(CompletedTextMode textMode, int attributeCount)
     {
         _textMode = textMode;
@@ -85,6 +91,18 @@ internal sealed class CapturedElementBuffer : IDisposable
             offset += whitespaceLength;
             _pendingSpace = _length != _textStart;
         }
+    }
+
+    /// <summary>
+    /// Records that a rendered word boundary occurred here - the start or end tag of an element
+    /// that is not laid out inline. Reuses the collapsing machinery, so a boundary next to real
+    /// whitespace still yields one space, and a boundary at either edge of the text yields none.
+    /// Raw capture is untouched: it reproduces source bytes and must not invent any.
+    /// </summary>
+    internal void MarkBoundary()
+    {
+        if (_textMode == CompletedTextMode.Normalized)
+            _pendingSpace = _length != _textStart;
     }
 
     internal string GetText() => _decodedText ??= Encoding.UTF8.GetString(TextUtf8);

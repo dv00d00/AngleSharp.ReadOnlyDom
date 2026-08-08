@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
 using AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
@@ -53,6 +54,14 @@ internal class QueryExecution<TState, TResourceLimits>
     private long _queryCaptureBytes;
     private int _activeTextNodes;
     private int _activeCompletedTextCaptures;
+    private int _activeNormalizedTextCaptures;
+    private readonly ulong _normalizedTextMask;
+
+    /// <summary>Set in <see cref="QueryFrame.TagIdentityLength"/> when the frame's tag separates words.</summary>
+    private const int TextBoundaryFrameFlag = Int32.MinValue;
+
+    /// <summary>Masks <see cref="TextBoundaryFrameFlag"/> off a frame's stored identity length.</summary>
+    private const int TagIdentityLengthMask = Int32.MaxValue;
 
     internal QueryExecution(
         QueryPlan<TState> plan,
@@ -69,6 +78,7 @@ internal class QueryExecution<TState, TResourceLimits>
         _maximumQueryCaptureBytes = limits.MaximumQueryCaptureBytes;
         _rewriteHandler = rewriteHandler;
         _rewriteCollector = rewriteCollector;
+        _normalizedTextMask = plan.NormalizedTextHandlerMask;
         _streamingRewriteCollector = rewriteCollector as Utf8StreamingRewriteCollector;
         _activeCounts = ArrayPool<int>.Shared.Rent(Math.Max(plan.Nodes.Length, 1));
         _activeCounts.AsSpan(0, plan.Nodes.Length).Clear();
@@ -211,6 +221,14 @@ internal class QueryExecution<TState, TResourceLimits>
 
     private void StartTagEndCore(bool selfClosing, long sourceStart, long sourceEnd)
     {
+        // Classify only inside an open normalized capture, then carry the result to the close in
+        // the frame's sign bit. A frame opened before the outermost capture cannot close while that
+        // capture is active: lexical recovery closes inner frames first.
+        var isTextBoundary =
+            _activeNormalizedTextCaptures != 0
+            && HtmlTextBoundaryElements.IsBoundary(_pendingTagIdentity, _pendingTagIdentityLength);
+        if (isTextBoundary)
+            MarkTextBoundary();
         var matches = 0UL;
         var candidates = _pendingCandidateBits;
         while (candidates != 0)
@@ -282,7 +300,7 @@ internal class QueryExecution<TState, TResourceLimits>
         EnsureFrameCapacity();
         _frames[_frameCount++] = new QueryFrame(
             _pendingTagIdentity,
-            _pendingTagIdentityLength,
+            isTextBoundary ? _pendingTagIdentityLength | TextBoundaryFrameFlag : _pendingTagIdentityLength,
             _pendingFallbackTagNameUtf8,
             matches,
             rewriteScopeId
@@ -359,7 +377,10 @@ internal class QueryExecution<TState, TResourceLimits>
         }
         for (var index = _frameCount - 1; index >= 0; index--)
         {
-            if (_frames[index].TagIdentity != identity || _frames[index].TagIdentityLength != identityLength)
+            if (
+                _frames[index].TagIdentity != identity
+                || (_frames[index].TagIdentityLength & TagIdentityLengthMask) != identityLength
+            )
                 continue;
             if (
                 identityLength != 0
@@ -513,6 +534,8 @@ internal class QueryExecution<TState, TResourceLimits>
 
     private void CloseFrame(QueryFrame frame, long sourceStart, long sourceEnd, bool hasExplicitEndTag)
     {
+        if (frame.TagIdentityLength < 0 && _activeNormalizedTextCaptures != 0)
+            MarkTextBoundary();
         try
         {
             _rewriteCollector?.EndElement(frame.RewriteScopeId, sourceStart, sourceEnd, hasExplicitEndTag);
@@ -578,6 +601,29 @@ internal class QueryExecution<TState, TResourceLimits>
             captures.Add(capture);
             if (node.CompletedTextMode != CompletedTextMode.None)
                 _activeCompletedTextCaptures++;
+            if (node.CompletedTextMode == CompletedTextMode.Normalized)
+                _activeNormalizedTextCaptures++;
+        }
+    }
+
+    /// <summary>
+    /// Separates words in every open normalized capture. Callers have already established that this
+    /// tag is a boundary and that at least one normalized capture is open, so this walks only the
+    /// normalized nodes and never the raw ones.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void MarkTextBoundary()
+    {
+        var completed = _normalizedTextMask;
+        while (completed != 0)
+        {
+            var index = BitOperations.TrailingZeroCount(completed);
+            completed &= completed - 1;
+            var captures = _completedCaptures[index];
+            if (captures is null)
+                continue;
+            foreach (var capture in captures)
+                capture.MarkBoundary();
         }
     }
 
@@ -616,6 +662,8 @@ internal class QueryExecution<TState, TResourceLimits>
         captures.RemoveAt(captureIndex);
         if (node.CompletedTextMode != CompletedTextMode.None)
             _activeCompletedTextCaptures--;
+        if (node.CompletedTextMode == CompletedTextMode.Normalized)
+            _activeNormalizedTextCaptures--;
         if (TResourceLimits.Enabled)
         {
             _queryCaptureBytes -= capture.BufferedByteCount;
@@ -718,7 +766,10 @@ internal class QueryExecution<TState, TResourceLimits>
 
     private long GetCompletedTextUpperBound(int textLength)
     {
-        var captureCount = 0L;
+        if (textLength == 0)
+            return 0;
+
+        var total = 0L;
         var completed = _plan.CompletedHandlerMask;
         while (completed != 0)
         {
@@ -726,11 +777,17 @@ internal class QueryExecution<TState, TResourceLimits>
             completed &= completed - 1;
             if (_plan.Nodes[index].CompletedTextMode == CompletedTextMode.None)
                 continue;
-            captureCount = SaturatingAdd(captureCount, _completedCaptures[index]?.Count ?? 0);
+            var captures = _completedCaptures[index];
+            if (captures is null)
+                continue;
+            foreach (var capture in captures)
+            {
+                total = SaturatingAdd(total, textLength);
+                if (capture.HasPendingNormalizedSpace)
+                    total = SaturatingAdd(total, 1);
+            }
         }
-        return captureCount == 0 || textLength == 0 ? 0
-            : captureCount > long.MaxValue / textLength ? long.MaxValue
-            : captureCount * textLength;
+        return total;
     }
 
     private void EnsureQueryCaptureCapacity(long additional)
