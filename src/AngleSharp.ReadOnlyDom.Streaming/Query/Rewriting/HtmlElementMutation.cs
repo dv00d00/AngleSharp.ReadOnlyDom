@@ -23,11 +23,13 @@ internal sealed class HtmlElementMutation(long sourceStart, long sourceEnd, bool
     internal long SourceEnd { get; } = sourceEnd;
     internal bool CanHaveContent { get; } = canHaveContent;
     internal bool SelfClosingSyntax { get; } = selfClosingSyntax;
-    internal List<AttributeMutation> Attributes { get; } = [];
-    internal List<byte[]> Before { get; } = [];
-    internal List<byte[]> Prepend { get; } = [];
-    internal List<byte[]> Append { get; } = [];
-    internal List<byte[]> After { get; } = [];
+    // Allocated on first use. A mutation typically touches one of these five, so constructing them
+    // all eagerly cost five allocations per mutated element before any payload was copied.
+    internal List<AttributeMutation>? Attributes { get; set; }
+    internal List<byte[]>? Before { get; set; }
+    internal List<byte[]>? Prepend { get; set; }
+    internal List<byte[]>? Append { get; set; }
+    internal List<byte[]>? After { get; set; }
     internal ElementDisposition Disposition { get; set; }
     internal byte[]? Replacement { get; set; }
     internal bool SuppressInnerContent { get; set; }
@@ -42,7 +44,8 @@ internal sealed class HtmlElementMutation(long sourceStart, long sourceEnd, bool
     internal int EndSequence { get; set; }
 
     internal bool ChangesStartTag =>
-        Attributes.Count != 0 || (SelfClosingSyntax && CanHaveContent && (Prepend.Count != 0 || SuppressInnerContent));
+        Attributes is { Count: > 0 }
+        || (SelfClosingSyntax && CanHaveContent && (Prepend is { Count: > 0 } || SuppressInnerContent));
 }
 
 internal readonly record struct AttributeMutation(AttributeMutationKind Kind, byte[] Name, byte[]? Value);

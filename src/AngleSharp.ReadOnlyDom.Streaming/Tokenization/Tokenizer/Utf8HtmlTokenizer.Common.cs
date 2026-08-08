@@ -670,7 +670,8 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         if (_captureText)
                         {
                             EmitText(utf8.Slice(index, run));
-                            EmitRawText(sourceBase + index, utf8.Slice(index, run), CurrentRawTextType());
+                            if (RawTextEnabled)
+                                EmitRawText(sourceBase + index, utf8.Slice(index, run), CurrentRawTextType());
                             if (yieldOnRequest && _yieldRequested)
                             {
                                 index += run;
@@ -754,7 +755,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                     _pendingCarriageReturn = false;
                     if (value == (Byte)'\n')
                     {
-                        if (IsRawTextInputState(_state))
+                        if (RawTextEnabled && IsRawTextInputState(_state))
                             EmitRawCurrentByte(value, CurrentRawTextType());
                         continue;
                     }
@@ -886,20 +887,39 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
 
     private void RefreshCapture() => _captureText = (_sink.Capture & Utf8HtmlTokenCapture.Text) != 0;
 
+    /// <summary>
+    /// True while a raw-text sink is attached. Callers test this before doing any work that only a
+    /// raw-text consumer needs - classifying the text type, materializing a single-byte span - so a
+    /// parse with no raw-text sink pays one field test per site and nothing else.
+    /// </summary>
+    private Boolean RawTextEnabled => (_streamingFlags & RawTextEnabledFlag) != 0;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EmitRawCurrentByte(Byte value, Utf8HtmlTextType textType)
+    {
+        if (RawTextEnabled)
+            EmitRawCurrentByteCore(value, textType);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void EmitRawCurrentByteCore(Byte value, Utf8HtmlTextType textType)
     {
         Span<Byte> source = stackalloc Byte[1];
         source[0] = _pendingCarriageReturn ? (Byte)'\r' : value;
-        EmitRawText(_currentSourceOffset - 1, source, textType);
+        EmitRawTextCore(_currentSourceOffset - 1, source, textType);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EmitRawText(Int64 sourceStart, ReadOnlySpan<Byte> utf8, Utf8HtmlTextType textType)
     {
-        if (
-            utf8.IsEmpty
-            || (_streamingFlags & RawTextEnabledFlag) == 0
-            || _streamingCommentSink is not IUtf8HtmlRawTextSink { WantsRawText: true } rawTextSink
-        )
+        if (RawTextEnabled && !utf8.IsEmpty)
+            EmitRawTextCore(sourceStart, utf8, textType);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void EmitRawTextCore(Int64 sourceStart, ReadOnlySpan<Byte> utf8, Utf8HtmlTextType textType)
+    {
+        if (utf8.IsEmpty || _streamingCommentSink is not IUtf8HtmlRawTextSink { WantsRawText: true } rawTextSink)
             return;
         rawTextSink.RawText(sourceStart, utf8, textType, isLastInTextNode: false);
         _streamingFlags = (Byte)(
@@ -909,10 +929,16 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         );
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EndRawText(Int64 sourceOffset)
     {
-        if ((_streamingFlags & RawTextNodeOpenFlag) == 0)
-            return;
+        if ((_streamingFlags & RawTextNodeOpenFlag) != 0)
+            EndRawTextCore(sourceOffset);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void EndRawTextCore(Int64 sourceOffset)
+    {
         ((IUtf8HtmlRawTextSink)_streamingCommentSink!).RawText(
             sourceOffset,
             [],

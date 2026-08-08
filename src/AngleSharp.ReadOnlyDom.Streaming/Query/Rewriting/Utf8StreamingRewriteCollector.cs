@@ -62,8 +62,8 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
             || (
                 hasExplicitEndTag
                 && (
-                    mutation.Append.Count != 0
-                    || mutation.After.Count != 0
+                    mutation.Append is { Count: > 0 }
+                    || mutation.After is { Count: > 0 }
                     || mutation.Disposition == ElementDisposition.Unwrap
                 )
             )
@@ -292,14 +292,18 @@ internal sealed class Utf8StreamingRewriteCollector : HtmlRewriteCollectorBase, 
             Write(chunk[checked((int)(from - chunkStart))..checked((int)(to - chunkStart))]);
     }
 
-    private void WriteForward(List<byte[]> values)
+    private void WriteForward(List<byte[]>? values)
     {
+        if (values is null)
+            return;
         foreach (var value in values)
             Write(value);
     }
 
-    private void WriteReverse(List<byte[]> values)
+    private void WriteReverse(List<byte[]>? values)
     {
+        if (values is null)
+            return;
         for (var index = values.Count - 1; index >= 0; index--)
             Write(values[index]);
     }
