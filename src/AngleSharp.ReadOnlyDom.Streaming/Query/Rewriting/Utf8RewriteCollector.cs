@@ -23,8 +23,7 @@ internal sealed class Utf8RewriteCollector : HtmlRewriteCollectorBase
 
     private List<BufferedEdit> BuildEdits(ReadOnlySpan<byte> source)
     {
-        var edits = new List<BufferedEdit>(Mutations.Count * 3);
-        var sequence = 0;
+        var edits = new List<BufferedEdit>(Mutations.Count * 3 + TextMutations.Count);
         foreach (var mutation in Mutations)
         {
             if (mutation.Ignored)
@@ -32,14 +31,16 @@ internal sealed class Utf8RewriteCollector : HtmlRewriteCollectorBase
             if (mutation.Disposition is ElementDisposition.Remove or ElementDisposition.Replace)
             {
                 var end = mutation.CanHaveContent ? mutation.EndEnd : mutation.SourceEnd;
-                edits.Add(new BufferedEdit(mutation.SourceStart, end, BuildWholeReplacement(mutation), sequence++));
+                edits.Add(
+                    new BufferedEdit(mutation.SourceStart, end, BuildWholeReplacement(mutation), mutation.StartSequence)
+                );
                 continue;
             }
 
             if (
-                mutation.Before.Count != 0
-                || (!mutation.CanHaveContent && mutation.After.Count != 0)
-                || mutation.Prepend.Count != 0
+                mutation.Before is { Count: > 0 }
+                || (!mutation.CanHaveContent && mutation.After is { Count: > 0 })
+                || mutation.Prepend is { Count: > 0 }
                 || mutation.InnerReplacement is not null
                 || mutation.Disposition == ElementDisposition.Unwrap
                 || mutation.ChangesStartTag
@@ -50,19 +51,19 @@ internal sealed class Utf8RewriteCollector : HtmlRewriteCollectorBase
                         mutation.SourceStart,
                         mutation.SourceEnd,
                         BuildStartReplacement(source, mutation),
-                        sequence++
+                        mutation.StartSequence
                     )
                 );
             }
 
             if (mutation.SuppressInnerContent && mutation.EndStart >= mutation.SourceEnd)
-                edits.Add(new BufferedEdit(mutation.SourceEnd, mutation.EndStart, [], sequence++));
+                edits.Add(new BufferedEdit(mutation.SourceEnd, mutation.EndStart, [], mutation.StartSequence));
 
             if (
                 mutation.HasExplicitEndTag
                 && (
-                    mutation.Append.Count != 0
-                    || mutation.After.Count != 0
+                    mutation.Append is { Count: > 0 }
+                    || mutation.After is { Count: > 0 }
                     || mutation.Disposition == ElementDisposition.Unwrap
                 )
             )
@@ -72,10 +73,21 @@ internal sealed class Utf8RewriteCollector : HtmlRewriteCollectorBase
                         mutation.EndStart,
                         mutation.EndEnd,
                         BuildEndReplacement(source, mutation),
-                        sequence++
+                        mutation.EndSequence
                     )
                 );
             }
+        }
+        foreach (var mutation in TextMutations)
+        {
+            edits.Add(
+                new BufferedEdit(
+                    mutation.SourceStart,
+                    mutation.SourceEnd,
+                    BuildTextReplacement(source, mutation),
+                    mutation.Sequence
+                )
+            );
         }
         edits.Sort(
             static (left, right) =>
@@ -85,6 +97,18 @@ internal sealed class Utf8RewriteCollector : HtmlRewriteCollectorBase
             }
         );
         return edits;
+    }
+
+    private static byte[] BuildTextReplacement(ReadOnlySpan<byte> source, HtmlTextMutation mutation)
+    {
+        var output = new ArrayBufferWriter<byte>();
+        WriteForward(output, mutation.Before);
+        if (mutation.Removed)
+            Write(output, mutation.Replacement ?? []);
+        else
+            Write(output, source[checked((int)mutation.SourceStart)..checked((int)mutation.SourceEnd)]);
+        WriteReverse(output, mutation.After);
+        return output.WrittenSpan.ToArray();
     }
 
     private static byte[] BuildWholeReplacement(HtmlElementMutation mutation)
@@ -131,14 +155,18 @@ internal sealed class Utf8RewriteCollector : HtmlRewriteCollectorBase
     internal static bool IsHtmlSpace(byte value) =>
         value is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\f' or (byte)'\r';
 
-    internal static void WriteForward(IBufferWriter<byte> output, List<byte[]> values)
+    internal static void WriteForward(IBufferWriter<byte> output, List<byte[]>? values)
     {
+        if (values is null)
+            return;
         foreach (var value in values)
             Write(output, value);
     }
 
-    internal static void WriteReverse(IBufferWriter<byte> output, List<byte[]> values)
+    internal static void WriteReverse(IBufferWriter<byte> output, List<byte[]>? values)
     {
+        if (values is null)
+            return;
         for (var index = values.Count - 1; index >= 0; index--)
             Write(output, values[index]);
     }

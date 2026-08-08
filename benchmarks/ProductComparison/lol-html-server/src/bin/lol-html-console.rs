@@ -1,4 +1,4 @@
-use lol_html::{element, HtmlRewriter, OutputSink, Settings};
+use lol_html::{element, text, HtmlRewriter, OutputSink, Settings};
 use std::cell::RefCell;
 use std::env;
 use std::fs;
@@ -120,7 +120,7 @@ fn parse(
         return (count, count as i64);
     }
 
-    if workload == "rewrite" {
+    if workload == "rewrite" || workload == "rewrite-text" {
         // The rewritten-output checksum is deterministic per corpus: compute it on the first
         // pass only so the hot loop measures rewriting and publishing, not checksumming.
         thread_local! {
@@ -147,14 +147,24 @@ fn parse(
 
         let matches = Rc::new(RefCell::new(0usize));
         let handler_matches = Rc::clone(&matches);
-        let settings = Settings::default().append_element_content_handler(element!(
-            selector(query),
-            move |element| {
-                *handler_matches.borrow_mut() += 1;
-                element.set_attribute("data-q", "1")?;
+        let settings = if workload == "rewrite-text" {
+            Settings::default().append_element_content_handler(text!("body", move |text| {
+                if !text.last_in_text_node() {
+                    *handler_matches.borrow_mut() += text.as_str().len();
+                    text.remove();
+                }
                 Ok(())
-            }
-        ));
+            }))
+        } else {
+            Settings::default().append_element_content_handler(element!(
+                selector(query),
+                move |element| {
+                    *handler_matches.borrow_mut() += 1;
+                    element.set_attribute("data-q", "1")?;
+                    Ok(())
+                }
+            ))
+        };
         let first_pass = REWRITE_CHECKSUM.with(|cache| cache.borrow().is_none());
         let accumulator = Rc::new(RefCell::new(17i64));
         let dump_buffer = if first_pass && dump.is_some() {
@@ -267,7 +277,7 @@ fn parse_options() -> Options {
     }
     assert!(matches!(
         workload.as_str(),
-        "passthrough" | "match" | "extract" | "rewrite"
+        "passthrough" | "match" | "extract" | "rewrite" | "rewrite-text"
     ));
     assert!(matches!(query.as_str(), "qq" | "generic"));
     Options {

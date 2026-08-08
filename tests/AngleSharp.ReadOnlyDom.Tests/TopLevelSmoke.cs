@@ -27,8 +27,8 @@ public class TopLevelSmoke
     private static (IHtmlDocument, IReadOnlyDocument) GetDocs(string fileName)
     {
         return (
-            ParsedMutableDocs.GetOrAdd(fileName, static fileName => parser.ParseDocument(GetHtml(fileName))),
-            ParsedRoDocs.GetOrAdd(fileName, static fileName => parser.ParseReadOnlyDocument(GetHtml(fileName)))
+            ParsedMutableDocs.GetOrAdd(fileName, static fileName => parser().ParseDocument(GetHtml(fileName))),
+            ParsedRoDocs.GetOrAdd(fileName, static fileName => parser().ParseReadOnlyDocument(GetHtml(fileName)))
         );
     }
 
@@ -397,7 +397,7 @@ public class TopLevelSmoke
             {
                 var fileName = Path.GetFileName(file);
                 var html = GetHtml(fileName);
-                var doc = ParsedMutableDocs.GetOrAdd(fileName, static (_, html) => parser.ParseDocument(html), html);
+                var doc = ParsedMutableDocs.GetOrAdd(fileName, static (_, html) => parser().ParseDocument(html), html);
 
                 return doc
                     .All.Where(it => TagsShort.Contains(it.LocalName))
@@ -449,7 +449,7 @@ public class TopLevelSmoke
             {
                 var fileName = Path.GetFileName(file);
                 var html = GetHtml(fileName);
-                var doc = ParsedMutableDocs.GetOrAdd(fileName, k => parser.ParseDocument(html));
+                var doc = ParsedMutableDocs.GetOrAdd(fileName, k => parser().ParseDocument(html));
                 return doc
                     .All.SelectMany(n => n.ClassList)
                     .Distinct()
@@ -465,7 +465,7 @@ public class TopLevelSmoke
             {
                 var fileName = Path.GetFileName(file);
                 var html = GetHtml(fileName);
-                var doc = ParsedMutableDocs.GetOrAdd(fileName, k => parser.ParseDocument(html));
+                var doc = ParsedMutableDocs.GetOrAdd(fileName, k => parser().ParseDocument(html));
                 return doc
                     .All.Select(it => it.Id)
                     .Where(id => !id.IsNullOrWhiteSpace() && !HasBadChar(id.AsSpan()))
@@ -474,10 +474,22 @@ public class TopLevelSmoke
                     .Select(id => (fileName, id!));
             });
 
-    public static HtmlParser parser = new HtmlParser(
+    // One parser per thread, each with its own BrowsingContext rather than the shared
+    // ReadOnlyParser.DefaultContext. The parser is effectively stateless per parse, but a
+    // BrowsingContext caches resolved services in a dictionary and every document it creates holds a
+    // reference back to it, so one shared context is what puts concurrent writers on that dictionary.
+    //
+    // Deliberately ThreadLocal rather than a rent/return ObjectPool: parsed documents are cached for
+    // the life of the run and keep their context alive, so returning a parser to a shared pool would
+    // hand its context to another thread while the first thread's documents are still reading it -
+    // reintroducing exactly the race being fixed. A pool of one per thread never does that, and costs
+    // one parser per worker thread instead of one per parse.
+    private static readonly ThreadLocal<HtmlParser> ThreadParser = new(static () => new HtmlParser(
         new HtmlParserOptions() { IsKeepingSourceReferences = true },
-        ReadOnlyParser.DefaultContext
-    );
+        BrowsingContext.New(ReadOnlyParser.DefaultConfig)
+    ));
+
+    public static HtmlParser parser() => ThreadParser.Value!;
 
     [Test]
     [MethodDataSource(nameof(SingleTag))]

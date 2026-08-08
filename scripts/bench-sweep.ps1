@@ -17,7 +17,7 @@
 param(
     [double] $Seconds = 2,
     [int] $Rounds = 3,
-    [ValidateSet("passthrough", "match", "extract", "rewrite", "rewrite-sink", "rewrite-stream")]
+    [ValidateSet("passthrough", "match", "extract", "rewrite", "rewrite-sink", "rewrite-stream", "rewrite-text")]
     [string] $Workload = "passthrough",
     # "qq" is the corpus-specific composite selector; "generic" (a[href]) matches on every corpus.
     [ValidateSet("qq", "generic")]

@@ -16,10 +16,11 @@ var urlQuery = CreateUrlQuery(options.Query);
 var matchQuery = CreateMatchQuery(options.Query);
 var passThroughQuery = StreamQuery.For<CountState>("zz").Compile();
 var rewriteQuery = CreateRewriteQuery(options.Query);
+var textRewriteQuery = StreamQuery.For<CountState>("body").Compile();
 
 BenchmarkResult last = default;
 for (var index = 0; index < options.Warmup; index++)
-    last = await Parse(urlQuery, matchQuery, passThroughQuery, rewriteQuery, input, options);
+    last = await Parse(urlQuery, matchQuery, passThroughQuery, rewriteQuery, textRewriteQuery, input, options);
 
 GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
 GC.WaitForPendingFinalizers();
@@ -36,7 +37,7 @@ long requests = 0;
 long checksum = 0;
 do
 {
-    last = await Parse(urlQuery, matchQuery, passThroughQuery, rewriteQuery, input, options);
+    last = await Parse(urlQuery, matchQuery, passThroughQuery, rewriteQuery, textRewriteQuery, input, options);
     checksum = unchecked(checksum + last.Checksum);
     requests++;
 } while (Stopwatch.GetTimestamp() < deadline);
@@ -59,6 +60,7 @@ static async ValueTask<BenchmarkResult> Parse(
     QueryPlan<CountState> matchQuery,
     QueryPlan<CountState> passThroughQuery,
     QueryPlan<CountState> rewriteQuery,
+    QueryPlan<CountState> textRewriteQuery,
     byte[] input,
     Options options
 )
@@ -70,6 +72,8 @@ static async ValueTask<BenchmarkResult> Parse(
         return RewriteSink(rewriteQuery, input, limits);
     if (options.Workload == "rewrite-stream")
         return RewriteStream(rewriteQuery, input, options.ChunkSize, limits);
+    if (options.Workload == "rewrite-text")
+        return RewriteTextStream(textRewriteQuery, input, options.ChunkSize, limits);
 
     if (options.Workload == "extract")
     {
@@ -197,6 +201,51 @@ static BenchmarkResult RewriteStream(
             state.Count++;
             tag.AppendAttribute("data-q"u8, "1"u8);
         },
+        Utf8InputContract.WellFormedUtf8,
+        limits
+    );
+    for (var offset = 0; offset < input.Length; offset += chunkSize)
+        session.Write(input.AsSpan(offset, Math.Min(chunkSize, input.Length - offset)));
+    var state = session.Complete();
+    if (capture is not null)
+        File.WriteAllBytes(RewriteScratch.DumpPath!, capture.WrittenSpan.ToArray());
+    RewriteScratch.Checksum ??= RewriteScratch.Accumulator;
+    return new BenchmarkResult(state.Count, RewriteScratch.Checksum.Value);
+}
+
+// Realistic selector-scoped redaction: strip every text fragment under body while retaining the
+// complete markup stream. The removed-byte count and output checksum are chunk-boundary invariant,
+// which makes this directly comparable with lol-html's text!("body", ...) handler.
+static BenchmarkResult RewriteTextStream(
+    QueryPlan<CountState> plan,
+    byte[] input,
+    int chunkSize,
+    HtmlStreamingLimits? limits
+)
+{
+    var checksumThisPass = RewriteScratch.Checksum is null;
+    var capture = checksumThisPass && RewriteScratch.DumpPath is not null ? new ArrayBufferWriter<byte>() : null;
+    if (checksumThisPass)
+        RewriteScratch.Accumulator = 17;
+    var handlers = new HtmlRewriteHandlers<CountState>(
+        text: static (ref CountState state, in TextChunk chunk, ref TextChunkRewriter text) =>
+        {
+            if (chunk.IsLastInTextNode)
+                return;
+            state.Count += chunk.Utf8.Length;
+            text.Remove();
+        }
+    );
+    using var session = plan.CreateRewriteSession(
+        new CountState(),
+        checksumThisPass
+            ? segment =>
+            {
+                RewriteScratch.Accumulator = Fnv(segment, RewriteScratch.Accumulator);
+                capture?.Write(segment);
+            }
+            : static _ => { },
+        handlers,
         Utf8InputContract.WellFormedUtf8,
         limits
     );
@@ -369,7 +418,18 @@ sealed record Options(
     {
         var values = args.Chunk(2).ToDictionary(pair => pair[0], pair => pair[1]);
         var workload = values.GetValueOrDefault("--workload", "extract");
-        if (workload is not ("passthrough" or "match" or "extract" or "rewrite" or "rewrite-sink" or "rewrite-stream"))
+        if (
+            workload
+            is not (
+                "passthrough"
+                or "match"
+                or "extract"
+                or "rewrite"
+                or "rewrite-sink"
+                or "rewrite-stream"
+                or "rewrite-text"
+            )
+        )
             throw new ArgumentException($"Unknown workload: {workload}");
         var query = values.GetValueOrDefault("--query", "qq");
         if (query is not ("qq" or "generic"))

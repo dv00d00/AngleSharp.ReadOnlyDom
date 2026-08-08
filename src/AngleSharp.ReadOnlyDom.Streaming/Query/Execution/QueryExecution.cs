@@ -13,6 +13,7 @@ internal interface IQueryExecution<out TState> : IUtf8HtmlTokenSink, IDisposable
 
 internal class QueryExecution<TState, TResourceLimits>
     : IUtf8HtmlStartTagSourceRangeSink,
+        IUtf8HtmlRawTextSink,
         IUtf8HtmlStreamingCommentSink,
         IElementAttributeSource,
         IQueryExecution<TState>
@@ -43,7 +44,7 @@ internal class QueryExecution<TState, TResourceLimits>
     private bool _disposed;
     private readonly int _maximumNestingDepth;
     private readonly long _maximumQueryCaptureBytes;
-    private readonly RewriteHandler<TState>? _rewriteHandler;
+    private readonly object? _rewriteHandlers;
     private readonly IHtmlRewriteCollector? _rewriteCollector;
     private readonly Utf8StreamingRewriteCollector? _streamingRewriteCollector;
     private long _startTagSourceStart = -1;
@@ -63,11 +64,16 @@ internal class QueryExecution<TState, TResourceLimits>
     /// <summary>Masks <see cref="TextBoundaryFrameFlag"/> off a frame's stored identity length.</summary>
     private const int TagIdentityLengthMask = Int32.MaxValue;
 
+    // A plan has at most 64 nodes, so one field can carry the semantic and rewrite text counts.
+    private const int RewriteTextNodeIncrement = 1 << 16;
+    private const int RewriteTextNodeMask = unchecked((int)0xFFFF0000);
+
     internal QueryExecution(
         QueryPlan<TState> plan,
         TState state,
         HtmlStreamingLimits limits,
         RewriteHandler<TState>? rewriteHandler = null,
+        TextRewriteHandler<TState>? textRewriteHandler = null,
         IHtmlRewriteCollector? rewriteCollector = null
     )
     {
@@ -76,7 +82,18 @@ internal class QueryExecution<TState, TResourceLimits>
         _state = state;
         _maximumNestingDepth = limits.MaximumNestingDepth;
         _maximumQueryCaptureBytes = limits.MaximumQueryCaptureBytes;
-        _rewriteHandler = rewriteHandler;
+        if (rewriteHandler is not null && textRewriteHandler is not null)
+        {
+            _rewriteHandlers = new RewriteHandlerPair(rewriteHandler, textRewriteHandler);
+        }
+        else if (rewriteHandler is not null)
+        {
+            _rewriteHandlers = rewriteHandler;
+        }
+        else if (textRewriteHandler is not null)
+        {
+            _rewriteHandlers = textRewriteHandler;
+        }
         _rewriteCollector = rewriteCollector;
         _normalizedTextMask = plan.NormalizedTextHandlerMask;
         _streamingRewriteCollector = rewriteCollector as Utf8StreamingRewriteCollector;
@@ -98,14 +115,29 @@ internal class QueryExecution<TState, TResourceLimits>
             ? Utf8HtmlTokenCapture.Text
             : Utf8HtmlTokenCapture.None;
 
-    public bool WantsStartTagSourceRanges => _rewriteHandler is not null;
+    public bool WantsStartTagSourceRanges => _rewriteHandlers is not null;
 
-    public bool WantsEndTagSourceRanges => _rewriteCollector?.NeedsEndTagSourceRanges == true;
+    public bool IsRawTextEnabled => HasTextRewriteHandler;
+
+    public bool WantsRawText =>
+        (_activeTextNodes & RewriteTextNodeMask) != 0 && _rewriteCollector?.IsSuppressingContent != true;
+
+    public bool WantsEndTagSourceRanges => HasTextRewriteHandler || _rewriteCollector?.NeedsEndTagSourceRanges == true;
 
     public void ObserveNormalizedUtf8End(long sourceStart, ReadOnlySpan<byte> utf8, long publishableOffset)
     {
         _observedUtf8End = sourceStart + utf8.Length;
         _streamingRewriteCollector?.PublishWindow(sourceStart, utf8, publishableOffset);
+    }
+
+    public void RawText(long sourceStart, ReadOnlySpan<byte> utf8, Utf8HtmlTextType textType, bool isLastInTextNode)
+    {
+        if (!WantsRawText)
+            return;
+        var chunk = new TextChunk(utf8, (HtmlTextType)textType, isLastInTextNode);
+        var rewriter = new TextChunkRewriter(_rewriteCollector!, sourceStart, sourceStart + utf8.Length);
+        TextRewriteHandler.Invoke(ref _state, in chunk, ref rewriter);
+        rewriter.Commit();
     }
 
     public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
@@ -265,7 +297,8 @@ internal class QueryExecution<TState, TResourceLimits>
             node.Start.Invoke(ref _state, in element);
         }
         var rewriteScopeId = -1;
-        if (_rewriteHandler is not null && (matches & _plan.TerminalNodeMask) != 0)
+        var rewriteHandler = ElementRewriteHandler;
+        if (rewriteHandler is not null && (matches & _plan.TerminalNodeMask) != 0)
         {
             if (sourceStart < 0 || sourceEnd <= sourceStart)
                 throw new InvalidOperationException("The tokenizer did not provide a valid start-tag source range.");
@@ -277,7 +310,7 @@ internal class QueryExecution<TState, TResourceLimits>
                 !closesImmediately,
                 selfClosing
             );
-            _rewriteHandler.Invoke(ref _state, in element, ref editor);
+            rewriteHandler.Invoke(ref _state, in element, ref editor);
             editor.Commit();
             rewriteScopeId = editor.ScopeId;
         }
@@ -717,6 +750,8 @@ internal class QueryExecution<TState, TResourceLimits>
             matches &= matches - 1;
             if (_activeCounts[index] == 0 && (_plan.TextHandlerMask & (1UL << index)) != 0)
                 _activeTextNodes++;
+            if (HasTextRewriteHandler && _activeCounts[index] == 0 && (_plan.TerminalNodeMask & (1UL << index)) != 0)
+                _activeTextNodes += RewriteTextNodeIncrement;
             _activeCounts[index]++;
         }
     }
@@ -730,6 +765,8 @@ internal class QueryExecution<TState, TResourceLimits>
             _activeCounts[index]--;
             if (_activeCounts[index] == 0 && (_plan.TextHandlerMask & (1UL << index)) != 0)
                 _activeTextNodes--;
+            if (HasTextRewriteHandler && _activeCounts[index] == 0 && (_plan.TerminalNodeMask & (1UL << index)) != 0)
+                _activeTextNodes -= RewriteTextNodeIncrement;
         }
     }
 
@@ -882,6 +919,21 @@ internal class QueryExecution<TState, TResourceLimits>
             )
             || (nameLength == 6 && identity == HtmlVoidElements.Source)
         );
+
+    private bool HasTextRewriteHandler => _rewriteHandlers is TextRewriteHandler<TState> or RewriteHandlerPair;
+
+    private RewriteHandler<TState>? ElementRewriteHandler =>
+        _rewriteHandlers switch
+        {
+            RewriteHandler<TState> handler => handler,
+            RewriteHandlerPair pair => pair.Element,
+            _ => null,
+        };
+
+    private TextRewriteHandler<TState> TextRewriteHandler =>
+        _rewriteHandlers is TextRewriteHandler<TState> handler ? handler : ((RewriteHandlerPair)_rewriteHandlers!).Text;
+
+    private sealed record RewriteHandlerPair(RewriteHandler<TState> Element, TextRewriteHandler<TState> Text);
 }
 
 internal sealed class QueryExecution<TState> : QueryExecution<TState, EnforcedResourceLimits>
@@ -891,7 +943,8 @@ internal sealed class QueryExecution<TState> : QueryExecution<TState, EnforcedRe
         TState state,
         HtmlStreamingLimits limits,
         RewriteHandler<TState>? rewriteHandler = null,
+        TextRewriteHandler<TState>? textRewriteHandler = null,
         IHtmlRewriteCollector? rewriteCollector = null
     )
-        : base(plan, state, limits, rewriteHandler, rewriteCollector) { }
+        : base(plan, state, limits, rewriteHandler, textRewriteHandler, rewriteCollector) { }
 }

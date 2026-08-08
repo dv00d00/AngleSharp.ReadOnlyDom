@@ -3,7 +3,7 @@ param(
     [int] $Rounds = 5,
     [int] $Warmup = 500,
     [int] $ChunkSize = 4096,
-    [ValidateSet("passthrough", "match", "extract")]
+    [ValidateSet("passthrough", "match", "extract", "rewrite", "rewrite-text")]
     [string] $Workload = "extract",
     [switch] $NativeAot,
     # NativeAOT ISA baseline. The ILC default is x86-64-v2, which compiles out the AVX2

@@ -16,6 +16,16 @@ internal enum Utf8HtmlTokenCapture : byte
     Text = 1,
 }
 
+internal enum Utf8HtmlTextType : byte
+{
+    Data,
+    RcData,
+    RawText,
+    ScriptData,
+    PlainText,
+    CDataSection,
+}
+
 /// <summary>
 /// Synchronous borrowed views over tokenizer-owned or PipeReader-owned UTF-8. Every span is valid only for the duration
 /// of its callback. The split start-tag callbacks let a construction sink collect only attributes it needs.
@@ -92,6 +102,16 @@ internal interface IUtf8HtmlStartTagSourceRangeSink
     /// buffer the tail beyond it. Spans arrive contiguously in normalized-offset order.
     /// </summary>
     void ObserveNormalizedUtf8End(Int64 sourceStart, ReadOnlySpan<Byte> utf8, Int64 publishableOffset) { }
+}
+
+/// <summary>Opt-in delivery of borrowed, undecoded source text for streaming rewrites.</summary>
+internal interface IUtf8HtmlRawTextSink
+{
+    bool IsRawTextEnabled { get; }
+
+    bool WantsRawText { get; }
+
+    void RawText(long sourceStart, ReadOnlySpan<byte> utf8, Utf8HtmlTextType textType, bool isLastInTextNode);
 }
 
 /// <summary>

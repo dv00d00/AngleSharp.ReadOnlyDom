@@ -24,14 +24,17 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 }
                 else if (value == (Byte)'&' && _captureText && IsRcData() && !IsNotConsumingCharacterReferences)
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.RcData);
                     BeginCharacterReference(State.RawText);
                 }
                 else if (value == 0)
                 {
+                    EmitRawCurrentByte(value, IsRcData() ? Utf8HtmlTextType.RcData : Utf8HtmlTextType.RawText);
                     EmitReplacementCharacter();
                 }
                 else
                 {
+                    EmitRawCurrentByte(value, IsRcData() ? Utf8HtmlTextType.RcData : Utf8HtmlTextType.RawText);
                     EmitByte(value);
                 }
 
@@ -45,6 +48,11 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 else
                 {
                     EmitText(_candidate.WrittenSpan);
+                    EmitRawText(
+                        _currentSourceOffset - 1 - _candidate.WrittenCount,
+                        _candidate.WrittenSpan,
+                        IsRcData() ? Utf8HtmlTextType.RcData : Utf8HtmlTextType.RawText
+                    );
                     Clear(_candidate);
                     Reconsume(ref reconsume, State.RawText);
                 }
@@ -58,6 +66,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 }
                 else if (_state == State.RawEndTagName && IsTagDelimiter(value) && RawCandidateMatches())
                 {
+                    EndRawText(_currentSourceOffset - 1 - _candidate.WrittenCount);
                     Clear(_name);
                     _tagNameIdentityCache.Reset();
                     AppendTagName(_candidate.WrittenSpan.Slice(2));
@@ -80,6 +89,11 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 else
                 {
                     EmitText(_candidate.WrittenSpan);
+                    EmitRawText(
+                        _currentSourceOffset - 1 - _candidate.WrittenCount,
+                        _candidate.WrittenSpan,
+                        IsRcData() ? Utf8HtmlTextType.RcData : Utf8HtmlTextType.RawText
+                    );
                     Clear(_candidate);
                     Reconsume(ref reconsume, State.RawText);
                 }
@@ -141,17 +155,20 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 else if (value == '!')
                 {
                     EmitText("<!"u8);
+                    EmitRawText(_currentSourceOffset - 2, "<!"u8, Utf8HtmlTextType.ScriptData);
                     _state = State.ScriptEscapeStart;
                 }
                 else
                 {
                     EmitText("<"u8);
+                    EmitRawText(_currentSourceOffset - 2, "<"u8, Utf8HtmlTextType.ScriptData);
                     Reconsume(ref reconsume, State.ScriptData);
                 }
                 break;
             case State.ScriptEscapeStart:
                 if (value == '-')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = State.ScriptEscapeStartDash;
                 }
@@ -164,6 +181,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             case State.ScriptEscapeStartDash:
                 if (value == '-')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = State.ScriptEscapedDashDash;
                 }
@@ -176,6 +194,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             case State.ScriptEscaped:
                 if (value == '-')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = State.ScriptEscapedDash;
                 }
@@ -192,6 +211,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             case State.ScriptEscapedDash:
                 if (value == '-')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = State.ScriptEscapedDashDash;
                 }
@@ -208,6 +228,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             case State.ScriptEscapedDashDash:
                 if (value == '-')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                 }
                 else if (value == '<')
@@ -216,6 +237,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 }
                 else if (value == '>')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = State.ScriptData;
                 }
@@ -233,14 +255,17 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 else if (IsAsciiLetter(value))
                 {
                     EmitText("<"u8);
+                    EmitRawText(_currentSourceOffset - 2, "<"u8, Utf8HtmlTextType.ScriptData);
                     Clear(_candidate);
                     Append(_candidate, AsciiLower(value));
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = State.ScriptDoubleEscapeStart;
                 }
                 else
                 {
                     EmitText("<"u8);
+                    EmitRawText(_currentSourceOffset - 2, "<"u8, Utf8HtmlTextType.ScriptData);
                     Reconsume(ref reconsume, State.ScriptEscaped);
                 }
                 break;
@@ -254,12 +279,14 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 if (IsAsciiLetter(value))
                 {
                     Append(_candidate, AsciiLower(value));
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                 }
                 else if (IsTagDelimiter(value))
                 {
                     var script = _candidate.WrittenSpan.SequenceEqual("script"u8);
                     Clear(_candidate);
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = script ? State.ScriptDoubleEscaped : State.ScriptEscaped;
                 }
@@ -272,11 +299,13 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             case State.ScriptDoubleEscaped:
                 if (value == '-')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = State.ScriptDoubleEscapedDash;
                 }
                 else if (value == '<')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = State.ScriptDoubleEscapedLessThan;
                 }
@@ -289,11 +318,13 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             case State.ScriptDoubleEscapedDash:
                 if (value == '-')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = State.ScriptDoubleEscapedDashDash;
                 }
                 else if (value == '<')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = State.ScriptDoubleEscapedLessThan;
                 }
@@ -306,15 +337,18 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             case State.ScriptDoubleEscapedDashDash:
                 if (value == '-')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                 }
                 else if (value == '<')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = State.ScriptDoubleEscapedLessThan;
                 }
                 else if (value == '>')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = State.ScriptData;
                 }
@@ -327,6 +361,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             case State.ScriptDoubleEscapedLessThan:
                 if (value == '/')
                 {
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     Clear(_candidate);
                     _state = State.ScriptDoubleEscapeEnd;
@@ -341,12 +376,14 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 if (IsAsciiLetter(value))
                 {
                     Append(_candidate, AsciiLower(value));
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                 }
                 else if (IsTagDelimiter(value))
                 {
                     var script = _candidate.WrittenSpan.SequenceEqual("script"u8);
                     Clear(_candidate);
+                    EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
                     EmitByte(value);
                     _state = script ? State.ScriptEscaped : State.ScriptDoubleEscaped;
                 }
@@ -396,6 +433,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         if (_captureText)
         {
             EmitText(remaining[..run]);
+            EmitRawText(_currentSourceOffset, remaining[..run], Utf8HtmlTextType.ScriptData);
         }
         index += run;
     }
@@ -417,6 +455,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         var candidate = _candidate.WrittenSpan;
         if (RawCandidateMatches() && IsTagDelimiter(value))
         {
+            EndRawText(_currentSourceOffset - 1 - candidate.Length);
             if (_startTagSourceRangeSink is not null)
                 _currentTagSourceOffset = _currentSourceOffset - candidate.Length - 1;
             Clear(_name);
@@ -441,12 +480,18 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             return;
         }
         EmitText(_candidate.WrittenSpan);
+        EmitRawText(
+            _currentSourceOffset - 1 - _candidate.WrittenCount,
+            _candidate.WrittenSpan,
+            Utf8HtmlTextType.ScriptData
+        );
         Clear(_candidate);
         Reconsume(ref reconsume, fallback);
     }
 
     private void EmitScriptByte(Byte value)
     {
+        EmitRawCurrentByte(value, Utf8HtmlTextType.ScriptData);
         if (value == 0)
         {
             EmitReplacementCharacter();
@@ -524,6 +569,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 if (TCapture.Enabled)
                 {
                     EmitText(remaining);
+                    EmitRawText(sourceOffset + index, remaining, Utf8HtmlTextType.ScriptData);
                 }
                 return utf8.Length;
             }
@@ -534,6 +580,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 if (TCapture.Enabled)
                 {
                     EmitText(remaining[..run]);
+                    EmitRawText(sourceOffset + index - run, remaining[..run], Utf8HtmlTextType.ScriptData);
                     if (yieldOnRequest && _yieldRequested)
                     {
                         return index;
@@ -558,6 +605,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 }
                 if (matched)
                 {
+                    EndRawText(sourceOffset + index);
                     return CompleteScannedRawEndTag<TMetrics>(
                         utf8,
                         index,
@@ -572,6 +620,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 if (TCapture.Enabled)
                 {
                     EmitText(utf8[index..resolution]);
+                    EmitRawText(sourceOffset + index, utf8[index..resolution], Utf8HtmlTextType.ScriptData);
                     if (yieldOnRequest && _yieldRequested)
                     {
                         return resolution;
@@ -591,6 +640,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             if (TCapture.Enabled)
             {
                 EmitText("<"u8);
+                EmitRawText(sourceOffset + index - 1, "<"u8, Utf8HtmlTextType.ScriptData);
                 if (yieldOnRequest && _yieldRequested)
                 {
                     return index;
@@ -613,6 +663,11 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 if (TCapture.Enabled)
                 {
                     EmitText(remaining);
+                    EmitRawText(
+                        sourceOffset + index,
+                        remaining,
+                        isRcData ? Utf8HtmlTextType.RcData : Utf8HtmlTextType.RawText
+                    );
                 }
                 return utf8.Length;
             }
@@ -623,6 +678,11 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 if (TCapture.Enabled)
                 {
                     EmitText(remaining[..run]);
+                    EmitRawText(
+                        sourceOffset + index - run,
+                        remaining[..run],
+                        isRcData ? Utf8HtmlTextType.RcData : Utf8HtmlTextType.RawText
+                    );
                     if (yieldOnRequest && _yieldRequested)
                     {
                         return index;
@@ -644,6 +704,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 }
                 if (matched)
                 {
+                    EndRawText(sourceOffset + index);
                     return CompleteScannedRawEndTag<TMetrics>(
                         utf8,
                         index,
@@ -657,6 +718,11 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 if (TCapture.Enabled)
                 {
                     EmitText(utf8[index..resolution]);
+                    EmitRawText(
+                        sourceOffset + index,
+                        utf8[index..resolution],
+                        isRcData ? Utf8HtmlTextType.RcData : Utf8HtmlTextType.RawText
+                    );
                     if (yieldOnRequest && _yieldRequested)
                     {
                         return resolution;
@@ -670,6 +736,11 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             if (TCapture.Enabled)
             {
                 EmitText("<"u8);
+                EmitRawText(
+                    sourceOffset + index - 1,
+                    "<"u8,
+                    isRcData ? Utf8HtmlTextType.RcData : Utf8HtmlTextType.RawText
+                );
                 if (yieldOnRequest && _yieldRequested)
                 {
                     return index;
