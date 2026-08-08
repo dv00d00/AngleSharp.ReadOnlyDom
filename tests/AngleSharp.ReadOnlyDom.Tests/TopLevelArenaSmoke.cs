@@ -34,7 +34,7 @@ internal class TopLevelArenaSmoke
         (
             ParsedMutableDocs.GetOrAdd(
                 fileName,
-                static fileName => TopLevelSmoke.parser.ParseDocument(GetHtml(fileName))
+                static fileName => TopLevelSmoke.parser().ParseDocument(GetHtml(fileName))
             ),
             ParsedArenaDocs.GetOrAdd(
                 (fileName, layout),
