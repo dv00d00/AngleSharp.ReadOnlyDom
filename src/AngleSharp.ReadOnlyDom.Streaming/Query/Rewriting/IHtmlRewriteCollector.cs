@@ -84,8 +84,8 @@ internal abstract class HtmlRewriteCollectorBase : IHtmlRewriteCollector
                         or ElementDisposition.Replace
                         or ElementDisposition.Unwrap
                 || mutation.SuppressInnerContent
-                || mutation.Append.Count != 0
-                || mutation.After.Count != 0
+                || mutation.Append is { Count: > 0 }
+                || mutation.After is { Count: > 0 }
             );
         if (mutation.RequiresEndTagRange)
             _endTagRangeScopes++;
@@ -119,52 +119,57 @@ internal abstract class HtmlRewriteCollectorBase : IHtmlRewriteCollector
     public void AppendAttribute(int scopeId, ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
     {
         HtmlRewritePayload.ValidateAttributeName(name);
-        Mutation(scopeId)
-            .Attributes.Add(
-                new AttributeMutation(
-                    AttributeMutationKind.Append,
-                    name.ToArray(),
-                    HtmlRewritePayload.CopyAttributeValue(value)
-                )
-            );
+        var mutation = Mutation(scopeId);
+        (mutation.Attributes ??= []).Add(
+            new AttributeMutation(AttributeMutationKind.Append, name.ToArray(), HtmlRewritePayload.CopyAttributeValue(value))
+        );
     }
 
     public void SetAttribute(int scopeId, ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
     {
         HtmlRewritePayload.ValidateAttributeName(name);
-        Mutation(scopeId)
-            .Attributes.Add(
-                new AttributeMutation(
-                    AttributeMutationKind.Set,
-                    name.ToArray(),
-                    HtmlRewritePayload.CopyAttributeValue(value)
-                )
-            );
+        var mutation = Mutation(scopeId);
+        (mutation.Attributes ??= []).Add(
+            new AttributeMutation(AttributeMutationKind.Set, name.ToArray(), HtmlRewritePayload.CopyAttributeValue(value))
+        );
     }
 
     public void RemoveAttribute(int scopeId, ReadOnlySpan<byte> name)
     {
         HtmlRewritePayload.ValidateAttributeName(name);
-        Mutation(scopeId).Attributes.Add(new AttributeMutation(AttributeMutationKind.Remove, name.ToArray(), null));
+        var mutation = Mutation(scopeId);
+        (mutation.Attributes ??= []).Add(new AttributeMutation(AttributeMutationKind.Remove, name.ToArray(), null));
     }
 
-    public void Before(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType) =>
-        Mutation(scopeId).Before.Add(HtmlRewritePayload.CopyContent(content, contentType));
+    public void Before(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType)
+    {
+        var mutation = Mutation(scopeId);
+        (mutation.Before ??= []).Add(HtmlRewritePayload.CopyContent(content, contentType));
+    }
 
-    public void After(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType) =>
-        Mutation(scopeId).After.Add(HtmlRewritePayload.CopyContent(content, contentType));
+    public void After(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType)
+    {
+        var mutation = Mutation(scopeId);
+        (mutation.After ??= []).Add(HtmlRewritePayload.CopyContent(content, contentType));
+    }
 
-    public void Prepend(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType) =>
-        Mutation(scopeId).Prepend.Add(HtmlRewritePayload.CopyContent(content, contentType));
+    public void Prepend(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType)
+    {
+        var mutation = Mutation(scopeId);
+        (mutation.Prepend ??= []).Add(HtmlRewritePayload.CopyContent(content, contentType));
+    }
 
-    public void Append(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType) =>
-        Mutation(scopeId).Append.Add(HtmlRewritePayload.CopyContent(content, contentType));
+    public void Append(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType)
+    {
+        var mutation = Mutation(scopeId);
+        (mutation.Append ??= []).Add(HtmlRewritePayload.CopyContent(content, contentType));
+    }
 
     public void SetInnerContent(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType)
     {
         var mutation = Mutation(scopeId);
-        mutation.Prepend.Clear();
-        mutation.Append.Clear();
+        mutation.Prepend?.Clear();
+        mutation.Append?.Clear();
         mutation.InnerReplacement = HtmlRewritePayload.CopyContent(content, contentType);
         mutation.SuppressInnerContent = true;
     }
@@ -206,11 +211,17 @@ internal abstract class HtmlRewriteCollectorBase : IHtmlRewriteCollector
             TextMutation(scopeId).Sequence = _sequence++;
     }
 
-    public void TextBefore(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType) =>
-        TextMutation(scopeId).Before.Add(HtmlRewritePayload.CopyContent(content, contentType));
+    public void TextBefore(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType)
+    {
+        var mutation = TextMutation(scopeId);
+        (mutation.Before ??= []).Add(HtmlRewritePayload.CopyContent(content, contentType));
+    }
 
-    public void TextAfter(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType) =>
-        TextMutation(scopeId).After.Add(HtmlRewritePayload.CopyContent(content, contentType));
+    public void TextAfter(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType)
+    {
+        var mutation = TextMutation(scopeId);
+        (mutation.After ??= []).Add(HtmlRewritePayload.CopyContent(content, contentType));
+    }
 
     public void ReplaceText(int scopeId, ReadOnlySpan<byte> content, HtmlRewriteContentType contentType)
     {

@@ -4,6 +4,8 @@ namespace AngleSharp.ReadOnlyDom.Streaming.Query.Rewriting;
 
 internal static class StartTagMutationWriter
 {
+    private static readonly List<AttributeMutation> NoAttributeMutations = [];
+
     internal static byte[] Rewrite(ReadOnlySpan<byte> source, HtmlElementMutation mutation)
     {
         var output = new ArrayBufferWriter<byte>(source.Length + 64);
@@ -14,11 +16,14 @@ internal static class StartTagMutationWriter
         var slash = mutation.SelfClosingSyntax ? FindSelfClosingSlash(source, close) : -1;
         var attributesEnd = slash >= 0 ? slash : close;
         var attributes = ParseAttributes(source, attributesEnd);
-        var operationEmitted = mutation.Attributes.Count == 0 ? [] : new bool[mutation.Attributes.Count];
+        // Attribute lists are allocated on first use, so an element mutated only by insertion has
+        // none. One shared empty list keeps every path below unconditional.
+        var attributeOps = mutation.Attributes ?? NoAttributeMutations;
+        var operationEmitted = attributeOps.Count == 0 ? [] : new bool[attributeOps.Count];
         var cursor = 0;
         foreach (var attribute in attributes)
         {
-            var operation = FindLastOperation(mutation.Attributes, source[attribute.NameStart..attribute.NameEnd]);
+            var operation = FindLastOperation(attributeOps, source[attribute.NameStart..attribute.NameEnd]);
             HtmlRewritePayload.Write(output, source[cursor..attribute.PrefixStart]);
             if (operation < 0)
             {
@@ -26,7 +31,7 @@ internal static class StartTagMutationWriter
             }
             else
             {
-                var edit = mutation.Attributes[operation];
+                var edit = attributeOps[operation];
                 if (edit.Kind == AttributeMutationKind.Set && !operationEmitted[operation])
                 {
                     HtmlRewritePayload.Write(output, source[attribute.PrefixStart..attribute.NameStart]);
@@ -38,12 +43,12 @@ internal static class StartTagMutationWriter
         }
 
         HtmlRewritePayload.Write(output, source[cursor..attributesEnd]);
-        for (var index = 0; index < mutation.Attributes.Count; index++)
+        for (var index = 0; index < attributeOps.Count; index++)
         {
-            var edit = mutation.Attributes[index];
+            var edit = attributeOps[index];
             if (edit.Kind == AttributeMutationKind.Remove || operationEmitted[index])
                 continue;
-            if (edit.Kind == AttributeMutationKind.Set && HasLaterSetOrRemove(mutation.Attributes, index, edit.Name))
+            if (edit.Kind == AttributeMutationKind.Set && HasLaterSetOrRemove(attributeOps, index, edit.Name))
                 continue;
             if (output.WrittenCount == 0 || !Utf8RewriteCollector.IsHtmlSpace(output.WrittenSpan[^1]))
                 HtmlRewritePayload.Write(output, " "u8);
@@ -61,7 +66,11 @@ internal static class StartTagMutationWriter
 
     private static bool ShouldDropSelfClosingSlash(HtmlElementMutation mutation) =>
         mutation.CanHaveContent
-        && (mutation.Prepend.Count != 0 || mutation.Append.Count != 0 || mutation.SuppressInnerContent);
+        && (
+            mutation.Prepend is { Count: > 0 }
+            || mutation.Append is { Count: > 0 }
+            || mutation.SuppressInnerContent
+        );
 
     private static int FindSelfClosingSlash(ReadOnlySpan<byte> source, int close)
     {
