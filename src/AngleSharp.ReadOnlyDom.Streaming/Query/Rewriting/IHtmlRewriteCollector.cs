@@ -121,7 +121,11 @@ internal abstract class HtmlRewriteCollectorBase : IHtmlRewriteCollector
         HtmlRewritePayload.ValidateAttributeName(name);
         var mutation = Mutation(scopeId);
         (mutation.Attributes ??= []).Add(
-            new AttributeMutation(AttributeMutationKind.Append, name.ToArray(), HtmlRewritePayload.CopyAttributeValue(value))
+            new AttributeMutation(
+                AttributeMutationKind.Append,
+                name.ToArray(),
+                HtmlRewritePayload.CopyAttributeValue(value)
+            )
         );
     }
 
@@ -130,7 +134,11 @@ internal abstract class HtmlRewriteCollectorBase : IHtmlRewriteCollector
         HtmlRewritePayload.ValidateAttributeName(name);
         var mutation = Mutation(scopeId);
         (mutation.Attributes ??= []).Add(
-            new AttributeMutation(AttributeMutationKind.Set, name.ToArray(), HtmlRewritePayload.CopyAttributeValue(value))
+            new AttributeMutation(
+                AttributeMutationKind.Set,
+                name.ToArray(),
+                HtmlRewritePayload.CopyAttributeValue(value)
+            )
         );
     }
 
@@ -201,9 +209,12 @@ internal abstract class HtmlRewriteCollectorBase : IHtmlRewriteCollector
 
     public int BeginText(long sourceStart, long sourceEnd)
     {
-        TextMutations.Add(new HtmlTextMutation(sourceStart, sourceEnd));
+        TextMutations.Add(CreateTextMutation(sourceStart, sourceEnd));
         return TextMutations.Count - 1;
     }
+
+    protected virtual HtmlTextMutation CreateTextMutation(long sourceStart, long sourceEnd) =>
+        new(sourceStart, sourceEnd);
 
     public virtual void CommitText(int scopeId)
     {
