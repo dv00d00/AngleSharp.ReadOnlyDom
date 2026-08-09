@@ -10,10 +10,16 @@ This repository explores a spectrum of representations built around AngleSharp's
 | Read-only DOM | Familiar object graph | General navigation with lower allocation than the mutable DOM |
 | Compact DOM | Pooled columnar document | Repeated queries and longer-lived parsed documents |
 | UTF-8 stream query | Bounded parser/query state | Extracting typed rows, text, JSON, or Markdown directly from wire bytes |
+| UTF-8 stream rewrite | Bounded holdback | Editing elements and text in flight while untouched bytes are forwarded verbatim |
 
 The streaming lane is the main experimental direction: selectors are compiled into the tokenizer's target encoding,
 only requested attributes and text are captured, and caller-owned state determines the result shape. It supports
 contiguous UTF-8 and `PipeReader` input, bounded resource limits, and backpressured output without first building a DOM.
+
+Extracting `a[href]` counts across a 47-document corpus allocates **888 B to 2 KB per parse regardless of document
+size** — a 1.5 MB page allocates less than a 434 KB one — and throughput is in the same band as a PGO-tuned build of
+[`lol-html`](https://github.com/cloudflare/lol-html), the Rust engine behind Cloudflare Workers' `HTMLRewriter`. See
+[Performance](#performance) for the numbers and the method.
 
 > [!NOTE]
 > The streaming-query assembly and Markdown proxy are self-contained and do not reference AngleSharp at runtime. The
@@ -163,6 +169,93 @@ links.Rewrite(
 `CreateRewriteSession` exposes the same operations for chunked input and a backpressured `IBufferWriter<byte>`. Content
 marked as `Text` is escaped; `Html` is trusted and emitted verbatim. Element matching and closure follow the lexical tag
 stack, so use a tree-building lane when browser-corrected topology is part of the rewrite policy.
+
+### Rewriting text
+
+Element and text handlers compose in a single pass. A text handler receives borrowed, undecoded UTF-8 fragments along
+with their tokenizer context — `Data`, `RcData`, `RawText`, `ScriptData`, `PlainText`, `CDataSection` — and a flag
+marking the last fragment of a text node, so large text nodes keep streaming instead of being buffered to be seen whole.
+
+```csharp
+var article = StreamQuery.For<int>("article").Compile();
+var output = new ArrayBufferWriter<byte>();
+
+article.Rewrite(
+    htmlUtf8,
+    output,
+    0,
+    new HtmlRewriteHandlers<int>(
+        text: static (ref int redacted, in TextChunk chunk, ref TextChunkRewriter text) =>
+        {
+            if (chunk.IsLastInTextNode)
+                return;
+            redacted += chunk.Utf8.Length;
+            text.Replace("[redacted]"u8, HtmlRewriteContentType.Text);
+        }
+    )
+);
+```
+
+`Before`, `After`, `Replace`, and `Remove` are available per fragment, with the same `Text`/`Html` payload contract as
+element mutations. Text below a removed, replaced, or inner-replaced element is skipped rather than reported and
+discarded, and mutation state is recycled inside the session so a redaction pass does not allocate per matched chunk.
+
+## Performance
+
+The reference point is [`lol-html`](https://github.com/cloudflare/lol-html) 3.0.1, compiled for comparison with fat LTO,
+a single codegen unit, `target-cpu=native`, and LLVM PGO — an untuned Rust build is not an honest bar. Cross-engine runs
+interleave the two lanes **ABBA** within each round so that drift in machine state cancels instead of accruing to
+whichever lane happened to run second. Numbers below are means of four runs per lane on one Zen 3 machine.
+
+### Extraction, against tuned lol-html
+
+Counting `a[href]`, 4 KiB chunked push, workstation GC:
+
+| Corpus | tuned lol-html | this library | Δ |
+| --- | ---: | ---: | ---: |
+| stackoverflow | 5,765 | 7,032 | **+22.0%** |
+| spiegel | 666 | 736 | **+10.5%** |
+| google | 57,796 | 60,395 | **+4.5%** |
+| ebay | 2,779 | 2,813 | +1.2% |
+| yahoo | 6,433 | 6,190 | −3.8% |
+| aliexpress | 16,200 | 15,511 | −4.3% |
+| baidu | 20,599 | 19,565 | −5.0% |
+| linkedin | 8,780 | 7,693 | −12.4% |
+
+Requests per second; median −1.3%, four wins and four losses. The engines trade places by document shape rather than one
+dominating — `linkedin` is the standing structural loss and is tracked as an open attribution question rather than
+quietly dropped.
+
+### Allocation
+
+Whole-corpus BenchmarkDotNet sweep, 47 documents, server GC:
+
+| Document | Size | Allocated per parse |
+| --- | ---: | ---: |
+| weibo | 9 KB | 888 B |
+| msn | 42 KB | 888 B |
+| aliexpress | 294 KB | 1,449 B |
+| baidu | 434 KB | 2,008 B |
+| imdb | 981 KB | 1,171 B |
+| yahoo | 1,493 KB | 1,168 B |
+
+Allocation is bounded by the query's retained state, not by input length, and gen-0 collections are absent on most
+documents. Feeding the same input as 4 KiB chunks instead of one buffer costs a median 5.8% (range 1.2%–12%).
+
+Throughput per byte varies by more than an order of magnitude across the corpus — small cache-resident documents scan far
+faster than a 13 MB one — so this repository reports per-corpus figures rather than a single header number.
+
+### Against a DOM-based .NET baseline
+
+Extracting plain text with an HtmlAgilityPack implementation versus the streaming lane, over synthetic clinician notes,
+Outlook reply chains, and Word "Save as Web Page" letters (968 B – 44 KB): **6.8× to 9.0× faster, allocating 31× to 118×
+less**. The DOM-building lanes in this repository are not the fast path and make no such claim.
+
+### What is not claimed
+
+These are single-machine numbers over a fixed corpus with one selector shape. Other documents, selectors, and hardware
+will move them. The method is published so the claims can be rechecked, and refuted hypotheses are recorded in the issue
+history beside the wins.
 
 ## Run it
 
