@@ -205,26 +205,88 @@ discarded, and mutation state is recycled inside the session so a redaction pass
 The reference point is [`lol-html`](https://github.com/cloudflare/lol-html) 3.0.1, compiled for comparison with fat LTO,
 a single codegen unit, `target-cpu=native`, and LLVM PGO — an untuned Rust build is not an honest bar. Cross-engine runs
 interleave the two lanes **ABBA** within each round so that drift in machine state cancels instead of accruing to
-whichever lane happened to run second. Numbers below are means of four runs per lane on one Zen 3 machine.
+whichever lane happened to run second. Numbers below come from one Zen 3 machine: per document, two independent passes
+of five interleaved 3-second rounds per lane, reported as the median of all ten samples and cross-checked pass against
+pass. Documents whose two engines disagree on the extracted values are shown but excluded from every aggregate.
 
 ### Extraction, against tuned lol-html
 
-Counting `a[href]`, 4 KiB chunked push, workstation GC:
+Counting `a[href]`, 4 KiB chunked push, workstation GC, over the whole 47-document corpus. Documents per second;
+each figure is the median of ten samples — two independent passes of five ABBA-interleaved rounds each.
 
-| Corpus | tuned lol-html | this library | Δ |
-| --- | ---: | ---: | ---: |
-| stackoverflow | 5,765 | 7,032 | **+22.0%** |
-| spiegel | 666 | 736 | **+10.5%** |
-| google | 57,796 | 60,395 | **+4.5%** |
-| ebay | 2,779 | 2,813 | +1.2% |
-| yahoo | 6,433 | 6,190 | −3.8% |
-| aliexpress | 16,200 | 15,511 | −4.3% |
-| baidu | 20,599 | 19,565 | −5.0% |
-| linkedin | 8,780 | 7,693 | −12.4% |
+Over the 44 documents where both engines agree on the extracted values: **21 wins, 23 losses, median −0.7%**, range
+−38.8% to +119.1%. The engines trade places by document shape rather than one dominating, and the spread is far wider
+than the median suggests, so the full per-document result is published rather than a chosen subset.
 
-Requests per second; median −1.3%, four wins and four losses. The engines trade places by document shape rather than one
-dominating — `linkedin` is the standing structural loss and is tracked as an open attribution question rather than
-quietly dropped.
+Two cuts of the same data matter more than the headline:
+
+- **Documents ≥ 100 KB** (23 of them, where throughput is genuinely tokenizer-bound): 9 wins, 14 losses,
+  **median −3.8%**. This is the honest structural number.
+- **Documents < 100 KB** (21): 12 wins, 9 losses, **median +3.5%**, and every extreme in the set. `godaddy` is 273
+  bytes and `weibo`, `msn`, `tmall`, `pcmag` match zero anchors; at 200k–1.2M documents per second those rows price
+  per-parse fixed cost and process-loop overhead, not scanning. `godaddy` +119% is a setup-cost result and should not
+  be read as a parsing win.
+
+| Corpus | KB | `a[href]` | tuned lol-html | this library | Δ % |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| w3 | 13,265 | 59,914 | 22 | 28 | +25.8 |
+| spiegel | 2,052 | 679 | 656 | 739 | +12.7 |
+| yahoo | 1,493 | 58 | 6,660 | 5,788 | −13.1 |
+| huffingtonpost | 1,171 | 354 | 1,706 | 1,532 | −10.2 |
+| nbc | 1,161 | 459 | 1,776 | 1,403 | −21.0 |
+| imdb | 981 | 149 | 2,315 | 2,802 | +21.0 |
+| nytimes | 693 | 622 | 2,100 | 2,017 | −4.0 |
+| en.wikipedia | 681 | 1,280 | 1,093 | 1,051 | −3.8 |
+| flickr | 646 | 68 | 5,291 | 8,214 | +55.2 |
+| 163 | 600 | 1,375 | 1,400 | 1,457 | +4.0 |
+| reddit | 595 | 167 | 2,578 | 2,688 | +4.3 |
+| ebay † | 587 | 374 | 2,725 | 2,630 | −3.5 |
+| news.google | 460 | 8 | 11,981 | 7,333 | −38.8 |
+| baidu | 434 | 53 | 20,549 | 17,338 | −15.6 |
+| mail.ru | 394 | 171 | 7,248 | 6,347 | −12.4 |
+| aliexpress | 294 | 105 | 15,950 | 13,599 | −14.7 |
+| pinterest † | 294 | 1 | 58,477 | 38,037 | −35.0 |
+| google | 265 | 11 | 56,867 | 54,959 | −3.4 |
+| myspace | 240 | 257 | 3,376 | 2,794 | −17.2 |
+| sitepoint | 192 | 149 | 7,869 | 8,944 | +13.7 |
+| stackoverflow | 176 | 118 | 5,756 | 6,865 | +19.3 |
+| linkedin | 135 | 153 | 8,677 | 7,369 | −15.1 |
+| wordpress | 134 | 73 | 12,029 | 10,557 | −12.2 |
+| qq | 122 | 288 | 5,454 | 5,482 | +0.5 |
+| bing | 119 | 42 | 20,953 | 20,889 | −0.3 |
+| codeproject † | 115 | 123 | 12,761 | 12,568 | −1.5 |
+| ask | 93 | 74 | 12,966 | 12,258 | −5.5 |
+| 360.cn | 91 | 480 | 4,144 | 4,597 | +10.9 |
+| html5rocks | 87 | 70 | 10,938 | 10,146 | −7.2 |
+| netflix | 87 | 19 | 56,412 | 51,150 | −9.3 |
+| tumblr | 51 | 20 | 30,968 | 31,282 | +1.0 |
+| msn | 42 | 0 | 194,896 | 150,924 | −22.6 |
+| peacekeeper.futuremark | 27 | 103 | 18,905 | 17,137 | −9.4 |
+| taobao | 20 | 108 | 22,467 | 26,715 | +18.9 |
+| tmall | 19 | 0 | 261,863 | 196,064 | −25.1 |
+| html5test | 19 | 13 | 49,537 | 54,023 | +9.1 |
+| kickass.to | 18 | 1 | 120,760 | 130,529 | +8.1 |
+| florian-rappl | 11 | 58 | 32,404 | 29,864 | −7.8 |
+| weibo | 9 | 0 | 447,632 | 636,622 | +42.2 |
+| amazon | 7 | 2 | 145,917 | 99,783 | −31.6 |
+| youtube | 6 | 13 | 114,937 | 120,536 | +4.9 |
+| neobux | 5 | 4 | 157,224 | 162,672 | +3.5 |
+| pcmag | 5 | 0 | 380,863 | 394,027 | +3.5 |
+| blogspot | 4 | 7 | 168,682 | 186,814 | +10.7 |
+| vk | 3 | 5 | 207,275 | 204,975 | −1.1 |
+| live | 1 | 1 | 371,108 | 484,063 | +30.4 |
+| godaddy | 0 | 0 | 553,066 | 1,211,863 | +119.1 |
+
+† Excluded from the win/loss counts and medians: the two engines extract different anchor sets. Each of these three
+documents contains exactly one `<a href>` inside a `<noscript>` element, which this engine finds and lol-html does not.
+`<noscript>` is raw text only when scripting is enabled; lol-html hardcodes scripting-enabled parsing, while this engine
+follows the scripting-disabled default that AngleSharp uses and that suits server-side extraction. The divergence only
+ever runs one way — no document has this engine missing an anchor lol-html reports.
+
+`linkedin`, `nbc`, `myspace`, `baidu`, and `aliexpress` are the standing structural losses on attribute-dense markup,
+and `news.google` (−38.8%) is the largest; they are tracked as open attribution questions rather than quietly dropped.
+Both passes agreed closely: the per-document Δ moved by a median of 1.1 percentage points between them, at most 10.7
+(`html5test`), and only `qq` and `bing` changed sign — both within half a percent of parity either way.
 
 ### Allocation
 
@@ -255,7 +317,11 @@ less**. The DOM-building lanes in this repository are not the fast path and make
 
 These are single-machine numbers over a fixed corpus with one selector shape. Other documents, selectors, and hardware
 will move them. The method is published so the claims can be rechecked, and refuted hypotheses are recorded in the issue
-history beside the wins.
+history beside the wins. The table above is reproduced by:
+
+```powershell
+./scripts/bench-cross-engine-corpus.ps1
+```
 
 ## Run it
 
