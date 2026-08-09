@@ -76,6 +76,13 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
     private static readonly SearchValues<Byte> DiscardedAttributeNameTerminators = SearchValues.Create(
         "\t\n\f\r /=>"u8
     );
+
+    // Measured 2026-08-09 and rejected: peeling this scan the way IndexOfTagNameStop peels tag names
+    // cost a median +0.41% retired instructions over a 14-document set (5 improved, 9 regressed,
+    // pooled +0.28%). Tag names are 3-6 bytes so their peel almost always wins outright, but
+    // discarded attribute names are long where it matters - linkedin averages 8.4 bytes with a fifth
+    // of them data-* - so the peel scans its whole 16-byte window AND still falls through to the
+    // vectorized call, paying both, while growing an already-large ScanTagTail.
     private static readonly SearchValues<Byte> AttributeNameArbitraryAllowed = CreateArbitraryAllowed(
         "\0\t\n\f\r /=>"u8
     );
@@ -138,6 +145,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             // One virtual fetch per captured tag; DecideAttributeCapture then pre-filters every
             // attribute of the tag against this snapshot without calling back into the sink.
             _attributeNameFilter = _sink.StartTagAttributeFilter;
+            _attributeNameLengths = _sink.StartTagAttributeNameLengths;
         }
         _startTagEmitted = true;
     }
@@ -165,6 +173,23 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         // never be the first-seen occurrence of an accepted name. Hash false positives merely fall
         // through to the exact path below, which behaves exactly as the unfiltered tokenizer.
         var filter = _attributeNameFilter;
+        // Length first: it is a shift and a test against a value already in hand, whereas the hash
+        // below is a serial (hash ^ byte) * prime chain over every byte of the name. Real markup
+        // rejects on length far more often than it collides - a[href] wants only 4-byte names while
+        // linkedin's names average 8.4 bytes with a fifth of them data-* - so paying the hash first
+        // spent the whole chain to learn what one bit test already knew. The safety argument is the
+        // filter's, verbatim and spelling-independent: this rejects every occurrence of a name whose
+        // length cannot be wanted, so a rejected occurrence can never be the first-seen occurrence of
+        // an accepted name, and duplicate tracking stays observationally identical.
+        var lengths = _attributeNameLengths;
+        if (
+            lengths != UInt64.MaxValue
+            && (lengths & (1UL << Math.Min(_attributeName.WrittenCount, 63))) == 0
+        )
+        {
+            _attributeCapture = AttributeCapture.Discard;
+            return;
+        }
         if (
             filter != UInt64.MaxValue
             && (

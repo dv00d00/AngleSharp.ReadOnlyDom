@@ -59,6 +59,11 @@ internal static class QueryPlanCompiler
         var attributeFilterBits = attributeNamesUtf8
             .Select(static name => Utf8NameHash.AttributeFilterBit(Utf8NameHash.ComputeSemantic(name)))
             .ToArray();
+        // Companion length set for the same pre-filter (IUtf8HtmlTokenSink.StartTagAttributeNameLengths).
+        // Bit 63 is saturating: a wanted name of 63 bytes or more admits every length from 63 up, since
+        // the tokenizer clamps the observed length the same way. Without the clamp a 64-byte name would
+        // alias onto bit 0 through the shift count wrapping.
+        var attributeNameLengthBits = attributeNamesUtf8.Select(static name => 1UL << Math.Min(name.Length, 63)).ToArray();
         var compactAttributeMask = 0UL;
         for (var index = 0; index < attributeIdentities.Length; index++)
         {
@@ -92,6 +97,7 @@ internal static class QueryPlanCompiler
                 .Concat(source.ProjectedAttributes)
                 .Aggregate(0UL, (bits, name) => bits | (1UL << attributeIndexes[name]));
             var requestedAttributeFilter = ComputeAttributeFilter(requiredAttributeBits, attributeFilterBits);
+            var requestedAttributeNameLengths = ComputeAttributeFilter(requiredAttributeBits, attributeNameLengthBits);
             var completedAttributeNames = source.CompletedHandler is null
                 ? []
                 : source
@@ -108,6 +114,7 @@ internal static class QueryPlanCompiler
                 tagIdentity.Length,
                 requiredAttributeBits,
                 requestedAttributeFilter,
+                requestedAttributeNameLengths,
                 predicates,
                 source.StartHandler,
                 source.TextHandler,

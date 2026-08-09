@@ -77,6 +77,17 @@ internal interface IUtf8HtmlTokenSink
     /// </summary>
     UInt64 StartTagAttributeFilter => UInt64.MaxValue;
 
+    /// <summary>
+    /// Set of byte lengths the sink's wanted attribute names can have, as bit <c>min(length, 63)</c>;
+    /// bit 63 therefore means "63 or longer" and is set whenever any wanted name reaches that length.
+    /// A missed bit proves the name cannot be wanted, which rejects it without hashing it - the
+    /// semantic hash is a serial multiply chain over every byte, so on markup whose attribute names
+    /// are mostly longer than anything requested (<c>data-*</c> soup) the length test is the cheaper
+    /// discriminator and runs first. Like <see cref="StartTagAttributeFilter"/> this must be a pure
+    /// function of the tag for its duration; the default admits every length.
+    /// </summary>
+    UInt64 StartTagAttributeNameLengths => UInt64.MaxValue;
+
     void EndOfFile() { }
 }
 

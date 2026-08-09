@@ -57,6 +57,12 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     private Int64 _lastLessThanSourceOffset;
     private Int64 _currentTagSourceOffset;
 
+    // Declared last on purpose. Inserting this beside _attributeNameFilter shifted the offsets of
+    // every field declared after it and cost 1.1% retired instructions on news.google - a document
+    // with 8 capturing tags, which cannot pay that from the pre-filter itself. Keeping new tokenizer
+    // state at the end leaves the hot fields' offsets untouched.
+    private UInt64 _attributeNameLengths;
+
     // Allowed sets for input that skipped UTF-8 validation contain the ASCII bytes that are NOT
     // terminators. The feature partials own the concrete sets; this shared helper builds them.
     private static SearchValues<Byte> CreateArbitraryAllowed(ReadOnlySpan<Byte> terminators)
@@ -648,7 +654,17 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 {
                     var remaining = utf8.Slice(index);
                     Int32 run;
-                    if (!_captureText)
+                    // Minified markup is mostly adjacent tags, so data state is entered standing on
+                    // '<' more often than not (83% of the '<' bytes in news.google, 24% in
+                    // stackoverflow). Both searches below would scan for a byte that is already
+                    // under the cursor and return 0 - '<' terminates the capture set as well - so
+                    // test the first byte instead of paying a vectorized call to rediscover it.
+                    // The fusion path below re-tests the same condition and owns the short-span case.
+                    if (_state == State.Data && remaining[0] == (Byte)'<')
+                    {
+                        run = 0;
+                    }
+                    else if (!_captureText)
                     {
                         // Discarded text may swallow arbitrary bytes raw - nothing observes it.
                         run = _state == State.Plaintext ? remaining.Length : remaining.IndexOf((Byte)'<');
@@ -1181,6 +1197,10 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         return true;
     }
 
+    // Measured 2026-08-09: rewriting this as an explicit 64-bit mask test moved nothing
+    // (news.google -0.13%, linkedin +0.16%, stackoverflow -1.79% retired instructions, inside the
+    // run-to-run spread). The JIT already lowers a constant or-pattern over a byte to a bit test,
+    // so there is no chain to shorten here. Left as the readable form on purpose.
     private static Boolean IsSpace(Byte value) => value is 0x09 or 0x0A or 0x0C or 0x0D or 0x20;
 
     private static Boolean IsAsciiLetter(Byte value) =>
