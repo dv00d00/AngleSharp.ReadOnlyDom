@@ -44,6 +44,40 @@ The handler-free `lol_html` raw-forwarding fast path is intentionally not used f
 Use `-NativeAot` for the secondary ahead-of-time comparison. It publishes with the standard
 `OptimizationPreference=Speed`; keep JIT as the default for sustained production-server throughput.
 
+### Whole-corpus cross-engine table
+
+`bench-native-console.ps1` answers "how do we compare on qq.html" and `bench-sweep.ps1` answers "does this change hold
+across fifteen documents". The per-document table published in the readme comes from a third script, which runs every
+document in the corpus and repeats the whole sweep so run-to-run stability is measured rather than assumed:
+
+```powershell
+./scripts/bench-cross-engine-corpus.ps1
+./scripts/bench-cross-engine-corpus.ps1 -Passes 3 -Rounds 5 -Seconds 3
+./scripts/bench-cross-engine-corpus.ps1 -Corpora "qq.html","ebay.html" -Seconds 0.5 -Rounds 2
+```
+
+The Rust lane must be the tuned build (`--profile release-tuned` with `RUSTFLAGS="-C target-cpu=native"`, plus LLVM PGO);
+a plain `cargo build --release` binary understates lol-html by roughly 45% and is not a bar worth publishing against.
+Pass `-LolConsole` for any other path.
+
+Reported rates are the median of all samples across all passes per document and lane, not the mean of per-pass medians,
+so a drifting pass does not carry the same weight as a stable one. The report also records each pass's own delta and the
+spread between them; a document whose delta moves by more than a few percentage points between passes is a measurement
+artifact rather than a structural result. Warmup is scaled to document size with a floor of 30 iterations, without which
+the managed lane is still executing tier-0 code on the largest documents and reports a fabricated ~90% loss.
+
+Three documents extract different anchor sets in the two engines and are therefore reported but excluded from every
+aggregate: ebay (374 versus 373), pinterest (1 versus 0), and codeproject (123 versus 122). Each contains exactly one
+`<a href>` inside a `<noscript>` element. `<noscript>` holds raw text only when scripting is enabled; lol-html hardcodes
+scripting-enabled parsing, while this engine follows the scripting-disabled default that AngleSharp uses and that fits
+server-side extraction. The divergence only runs one way, so a document where this engine reports *fewer* anchors is a
+genuine bug rather than this known policy difference.
+
+Aggregate by document size before drawing conclusions. Documents under 100 KB — and especially the sub-10 KB ones and
+those matching zero anchors — price per-parse fixed cost and process-loop overhead at hundreds of thousands of documents
+per second, not scanning throughput. They belong in the table, but the structural number is the median over the
+documents large enough to be tokenizer-bound.
+
 For an end-to-end service comparison, `bench-product.ps1` compares two independent long-lived HTTP services without
 interop: a normal Rust release binary using `lol_html` and a .NET NativeAOT/Kestrel binary using the streaming query
 engine.
