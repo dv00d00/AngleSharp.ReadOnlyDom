@@ -379,6 +379,22 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         }
     }
 
+    // Metrics for the fused tag-name stop byte. Process() records one visit per dispatched byte, so
+    // consuming the delimiter in the scan arm has to record the TagName visit it replaces or the
+    // per-state counts silently lose one byte per tag.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void RecordFusedTagNameStop() => _stateMetrics!.Record((Int32)State.TagName, 1);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void RecordFusedTagNameStopIf<TMetrics>()
+        where TMetrics : struct, IStateMetricsPolicy
+    {
+        if (TMetrics.Enabled)
+        {
+            RecordFusedTagNameStop();
+        }
+    }
+
     public Utf8HtmlTokenizerCounters Counters => GetCounters(_inputBytesConsumed);
 
     internal Utf8HtmlTokenizerCounters GetCounters(Int64 sourceBytesConsumed) =>
@@ -606,14 +622,56 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 else if (_state == State.TagName)
                 {
                     var remaining = utf8.Slice(index);
-                    var run = IndexOfTagNameStop<TTrust>(remaining);
-                    run = run < 0 ? remaining.Length : run;
+                    var stop = IndexOfTagNameStop<TTrust>(remaining);
+                    var run = stop < 0 ? remaining.Length : stop;
 
                     if (run > 0)
                     {
                         RecordState<TMetrics>((Int32)_state, run);
                         AppendTagName(remaining[..run]);
                         index += run;
+                        if (stop < 0)
+                        {
+                            // The name continues past this span; nothing to fuse.
+                            continue;
+                        }
+                    }
+
+                    // Tag-name stop fusion. The byte that ended the name is in-span and its entire
+                    // effect in TagName state is one of three transitions, so take them here instead
+                    // of surrendering the byte to the outer else-if chain, the PerByte prologue,
+                    // Process's state switch and ProcessTagState's - the per-transition round-trip
+                    // PR #66 removed for the tag tail but never for the name-to-tail boundary.
+                    // Excluded on purpose: '\0' (becomes a replacement character), '\r' (starts CR
+                    // normalization), unvalidated non-ASCII (must bounce to the caller), and a
+                    // pending CR (the next byte belongs to the normalizer, not to this state).
+                    var stopByte = remaining[run];
+                    if (
+                        !_pendingCarriageReturn
+                        && stopByte is (Byte)'\t' or (Byte)'\n' or (Byte)'\f' or (Byte)' ' or (Byte)'/' or (Byte)'>'
+                    )
+                    {
+                        index++;
+                        RecordFusedTagNameStopIf<TMetrics>();
+                        if (trackSourceRanges)
+                        {
+                            _currentSourceOffset = sourceBase + index;
+                        }
+                        if (stopByte == (Byte)'>')
+                        {
+                            FinishTag(selfClosing: false);
+                        }
+                        else
+                        {
+                            // Mirrors the ProcessTagState TagName arm: the start tag is emitted
+                            // before the state changes, and end tags no-op inside EmitTagStart.
+                            EmitTagStart();
+                            _state = stopByte == (Byte)'/' ? State.SelfClosingStartTag : State.BeforeAttributeName;
+                        }
+                        if (yieldOnRequest && _yieldRequested)
+                        {
+                            return index;
+                        }
                         continue;
                     }
                 }
