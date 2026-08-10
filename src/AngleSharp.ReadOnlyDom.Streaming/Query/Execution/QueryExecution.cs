@@ -37,6 +37,7 @@ internal class QueryExecution<TState, TResourceLimits>
     private ulong _pendingCandidateBits;
     private ulong _pendingAttributeBits;
     private ulong _pendingAttributeFilter;
+    private ulong _pendingAttributeNameLengths;
     private int _pendingAttributeIndex = -1;
     private ulong _seenAttributeBits;
     private ulong _rawAttributeBits;
@@ -157,6 +158,7 @@ internal class QueryExecution<TState, TResourceLimits>
         _pendingCandidateBits = 0;
         _pendingAttributeBits = 0;
         _pendingAttributeFilter = 0;
+        _pendingAttributeNameLengths = 0;
         _pendingAttributeIndex = -1;
         var candidates = FindTagCandidates(identity, identityLength);
         while (candidates != 0)
@@ -169,6 +171,7 @@ internal class QueryExecution<TState, TResourceLimits>
             _pendingCandidateBits |= 1UL << node.Index;
             _pendingAttributeBits |= node.RequestedAttributeMask;
             _pendingAttributeFilter |= node.RequestedAttributeFilter;
+            _pendingAttributeNameLengths |= node.RequestedAttributeNameLengths;
         }
         ResetAttributes();
         return _pendingAttributeBits == 0 ? Utf8HtmlStartTagCapture.None : Utf8HtmlStartTagCapture.Attributes;
@@ -181,6 +184,13 @@ internal class QueryExecution<TState, TResourceLimits>
     /// reject filter-missed names without calling back.
     /// </summary>
     public ulong StartTagAttributeFilter => _pendingAttributeFilter;
+
+    /// <summary>
+    /// Byte lengths of the attribute names any candidate node on the current tag requests, as bits.
+    /// Same purity contract as <see cref="StartTagAttributeFilter"/>, and cheaper for the tokenizer
+    /// to consult: a length is known before the name has been hashed.
+    /// </summary>
+    public ulong StartTagAttributeNameLengths => _pendingAttributeNameLengths;
 
     public bool WantsAttribute(Utf8HtmlName name)
     {

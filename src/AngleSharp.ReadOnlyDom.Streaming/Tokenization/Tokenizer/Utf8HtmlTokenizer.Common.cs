@@ -57,6 +57,12 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     private Int64 _lastLessThanSourceOffset;
     private Int64 _currentTagSourceOffset;
 
+    // Declared last on purpose. Inserting this beside _attributeNameFilter shifted the offsets of
+    // every field declared after it and cost 1.1% retired instructions on news.google - a document
+    // with 8 capturing tags, which cannot pay that from the pre-filter itself. Keeping new tokenizer
+    // state at the end leaves the hot fields' offsets untouched.
+    private UInt64 _attributeNameLengths;
+
     // Allowed sets for input that skipped UTF-8 validation contain the ASCII bytes that are NOT
     // terminators. The feature partials own the concrete sets; this shared helper builds them.
     private static SearchValues<Byte> CreateArbitraryAllowed(ReadOnlySpan<Byte> terminators)
@@ -373,6 +379,22 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         }
     }
 
+    // Metrics for the fused tag-name stop byte. Process() records one visit per dispatched byte, so
+    // consuming the delimiter in the scan arm has to record the TagName visit it replaces or the
+    // per-state counts silently lose one byte per tag.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void RecordFusedTagNameStop() => _stateMetrics!.Record((Int32)State.TagName, 1);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void RecordFusedTagNameStopIf<TMetrics>()
+        where TMetrics : struct, IStateMetricsPolicy
+    {
+        if (TMetrics.Enabled)
+        {
+            RecordFusedTagNameStop();
+        }
+    }
+
     public Utf8HtmlTokenizerCounters Counters => GetCounters(_inputBytesConsumed);
 
     internal Utf8HtmlTokenizerCounters GetCounters(Int64 sourceBytesConsumed) =>
@@ -600,14 +622,56 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 else if (_state == State.TagName)
                 {
                     var remaining = utf8.Slice(index);
-                    var run = IndexOfTagNameStop<TTrust>(remaining);
-                    run = run < 0 ? remaining.Length : run;
+                    var stop = IndexOfTagNameStop<TTrust>(remaining);
+                    var run = stop < 0 ? remaining.Length : stop;
 
                     if (run > 0)
                     {
                         RecordState<TMetrics>((Int32)_state, run);
                         AppendTagName(remaining[..run]);
                         index += run;
+                        if (stop < 0)
+                        {
+                            // The name continues past this span; nothing to fuse.
+                            continue;
+                        }
+                    }
+
+                    // Tag-name stop fusion. The byte that ended the name is in-span and its entire
+                    // effect in TagName state is one of three transitions, so take them here instead
+                    // of surrendering the byte to the outer else-if chain, the PerByte prologue,
+                    // Process's state switch and ProcessTagState's - the per-transition round-trip
+                    // PR #66 removed for the tag tail but never for the name-to-tail boundary.
+                    // Excluded on purpose: '\0' (becomes a replacement character), '\r' (starts CR
+                    // normalization), unvalidated non-ASCII (must bounce to the caller), and a
+                    // pending CR (the next byte belongs to the normalizer, not to this state).
+                    var stopByte = remaining[run];
+                    if (
+                        !_pendingCarriageReturn
+                        && stopByte is (Byte)'\t' or (Byte)'\n' or (Byte)'\f' or (Byte)' ' or (Byte)'/' or (Byte)'>'
+                    )
+                    {
+                        index++;
+                        RecordFusedTagNameStopIf<TMetrics>();
+                        if (trackSourceRanges)
+                        {
+                            _currentSourceOffset = sourceBase + index;
+                        }
+                        if (stopByte == (Byte)'>')
+                        {
+                            FinishTag(selfClosing: false);
+                        }
+                        else
+                        {
+                            // Mirrors the ProcessTagState TagName arm: the start tag is emitted
+                            // before the state changes, and end tags no-op inside EmitTagStart.
+                            EmitTagStart();
+                            _state = stopByte == (Byte)'/' ? State.SelfClosingStartTag : State.BeforeAttributeName;
+                        }
+                        if (yieldOnRequest && _yieldRequested)
+                        {
+                            return index;
+                        }
                         continue;
                     }
                 }
@@ -648,7 +712,17 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 {
                     var remaining = utf8.Slice(index);
                     Int32 run;
-                    if (!_captureText)
+                    // Minified markup is mostly adjacent tags, so data state is entered standing on
+                    // '<' more often than not (83% of the '<' bytes in news.google, 24% in
+                    // stackoverflow). Both searches below would scan for a byte that is already
+                    // under the cursor and return 0 - '<' terminates the capture set as well - so
+                    // test the first byte instead of paying a vectorized call to rediscover it.
+                    // The fusion path below re-tests the same condition and owns the short-span case.
+                    if (_state == State.Data && remaining[0] == (Byte)'<')
+                    {
+                        run = 0;
+                    }
+                    else if (!_captureText)
                     {
                         // Discarded text may swallow arbitrary bytes raw - nothing observes it.
                         run = _state == State.Plaintext ? remaining.Length : remaining.IndexOf((Byte)'<');
@@ -1181,6 +1255,10 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         return true;
     }
 
+    // Measured 2026-08-09: rewriting this as an explicit 64-bit mask test moved nothing
+    // (news.google -0.13%, linkedin +0.16%, stackoverflow -1.79% retired instructions, inside the
+    // run-to-run spread). The JIT already lowers a constant or-pattern over a byte to a bit test,
+    // so there is no chain to shorten here. Left as the readable form on purpose.
     private static Boolean IsSpace(Byte value) => value is 0x09 or 0x0A or 0x0C or 0x0D or 0x20;
 
     private static Boolean IsAsciiLetter(Byte value) =>

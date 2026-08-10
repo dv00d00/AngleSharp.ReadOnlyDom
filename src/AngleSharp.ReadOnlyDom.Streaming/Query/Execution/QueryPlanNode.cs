@@ -9,6 +9,7 @@ internal sealed record QueryPlanNode<TState>(
     int TagIdentityLength,
     ulong RequestedAttributeMask,
     ulong RequestedAttributeFilter,
+    ulong RequestedAttributeNameLengths,
     CompiledAttributePredicate[] Predicates,
     StartHandler<TState>? Start,
     TextHandler<TState>? Text,
