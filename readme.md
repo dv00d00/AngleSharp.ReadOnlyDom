@@ -17,9 +17,11 @@ only requested attributes and text are captured, and caller-owned state determin
 contiguous UTF-8 and `PipeReader` input, bounded resource limits, and backpressured output without first building a DOM.
 
 Extracting `a[href]` counts across a 47-document corpus allocates **888 B to 2 KB per parse regardless of document
-size** — a 1.5 MB page allocates less than a 434 KB one — and throughput is in the same band as a PGO-tuned build of
-[`lol-html`](https://github.com/cloudflare/lol-html), the Rust engine behind Cloudflare Workers' `HTMLRewriter`. See
-[Performance](#performance) for the numbers and the method.
+size** — a 1.5 MB page allocates less than a 434 KB one — and throughput edges ahead of a PGO-tuned build of
+[`lol-html`](https://github.com/cloudflare/lol-html), the Rust engine behind Cloudflare Workers' `HTMLRewriter`:
+**median +9.5% over the corpus, +6.8% over the documents large enough to be tokenizer-bound**, with the remaining
+losses confined to pages dominated by large inline `<script>`/`<style>` bodies. See
+[Performance](#performance) for the per-document numbers and the method.
 
 > [!NOTE]
 > The streaming-query assembly and Markdown proxy are self-contained and do not reference AngleSharp at runtime. The
@@ -214,68 +216,74 @@ pass. Documents whose two engines disagree on the extracted values are shown but
 Counting `a[href]`, 4 KiB chunked push, workstation GC, over the whole 47-document corpus. Documents per second;
 each figure is the median of ten samples — two independent passes of five ABBA-interleaved rounds each.
 
-Over the 44 documents where both engines agree on the extracted values: **21 wins, 23 losses, median −0.7%**, range
-−38.8% to +119.1%. The engines trade places by document shape rather than one dominating, and the spread is far wider
-than the median suggests, so the full per-document result is published rather than a chosen subset.
+Over the 44 documents where both engines agree on the extracted values: **31 wins, 13 losses, median +9.5%**, range
+−31.2% to +145.7%. The spread is far wider than the median suggests, so the full per-document result is published
+rather than a chosen subset.
 
 Two cuts of the same data matter more than the headline:
 
-- **Documents ≥ 100 KB** (23 of them, where throughput is genuinely tokenizer-bound): 9 wins, 14 losses,
-  **median −3.8%**. This is the honest structural number.
-- **Documents < 100 KB** (21): 12 wins, 9 losses, **median +3.5%**, and every extreme in the set. `godaddy` is 273
-  bytes and `weibo`, `msn`, `tmall`, `pcmag` match zero anchors; at 200k–1.2M documents per second those rows price
-  per-parse fixed cost and process-loop overhead, not scanning. `godaddy` +119% is a setup-cost result and should not
+- **Documents ≥ 100 KB** (23 of them, where throughput is genuinely tokenizer-bound): 14 wins, 9 losses,
+  **median +6.8%**. This is the honest structural number.
+- **Documents < 100 KB** (21): 17 wins, 4 losses, **median +13.7%**, and every extreme in the set. `godaddy` is 273
+  bytes and `weibo`, `msn`, `tmall`, `pcmag` match zero anchors; at 200k–1.4M documents per second those rows price
+  per-parse fixed cost and process-loop overhead, not scanning. `godaddy` +146% is a setup-cost result and should not
   be read as a parsing win.
+
+The losses are one shape, not scattered noise: every document that still loses is dominated by large inline
+`<script>`/`<style>` bodies whose bytes both engines merely skip — `news.google` (−31%, 77% of its bytes sit in one
+318 KB style element), `amazon`, `tmall`, `msn`, `nbc`, `yahoo`, `aliexpress`, `baidu`. Per-byte skip rate over
+discarded raw text is the open attribution question; markup-dense documents, which were the losing family a release
+ago, now win (`linkedin` moved from −15.1% to −2.7%, `stackoverflow` from +19.3% to +31.3%).
 
 | Corpus | KB | `a[href]` | tuned lol-html | this library | Δ % |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| w3 | 13,265 | 59,914 | 22 | 28 | +25.8 |
-| spiegel | 2,052 | 679 | 656 | 739 | +12.7 |
-| yahoo | 1,493 | 58 | 6,660 | 5,788 | −13.1 |
-| huffingtonpost | 1,171 | 354 | 1,706 | 1,532 | −10.2 |
-| nbc | 1,161 | 459 | 1,776 | 1,403 | −21.0 |
-| imdb | 981 | 149 | 2,315 | 2,802 | +21.0 |
-| nytimes | 693 | 622 | 2,100 | 2,017 | −4.0 |
-| en.wikipedia | 681 | 1,280 | 1,093 | 1,051 | −3.8 |
-| flickr | 646 | 68 | 5,291 | 8,214 | +55.2 |
-| 163 | 600 | 1,375 | 1,400 | 1,457 | +4.0 |
-| reddit | 595 | 167 | 2,578 | 2,688 | +4.3 |
-| ebay † | 587 | 374 | 2,725 | 2,630 | −3.5 |
-| news.google | 460 | 8 | 11,981 | 7,333 | −38.8 |
-| baidu | 434 | 53 | 20,549 | 17,338 | −15.6 |
-| mail.ru | 394 | 171 | 7,248 | 6,347 | −12.4 |
-| aliexpress | 294 | 105 | 15,950 | 13,599 | −14.7 |
-| pinterest † | 294 | 1 | 58,477 | 38,037 | −35.0 |
-| google | 265 | 11 | 56,867 | 54,959 | −3.4 |
-| myspace | 240 | 257 | 3,376 | 2,794 | −17.2 |
-| sitepoint | 192 | 149 | 7,869 | 8,944 | +13.7 |
-| stackoverflow | 176 | 118 | 5,756 | 6,865 | +19.3 |
-| linkedin | 135 | 153 | 8,677 | 7,369 | −15.1 |
-| wordpress | 134 | 73 | 12,029 | 10,557 | −12.2 |
-| qq | 122 | 288 | 5,454 | 5,482 | +0.5 |
-| bing | 119 | 42 | 20,953 | 20,889 | −0.3 |
-| codeproject † | 115 | 123 | 12,761 | 12,568 | −1.5 |
-| ask | 93 | 74 | 12,966 | 12,258 | −5.5 |
-| 360.cn | 91 | 480 | 4,144 | 4,597 | +10.9 |
-| html5rocks | 87 | 70 | 10,938 | 10,146 | −7.2 |
-| netflix | 87 | 19 | 56,412 | 51,150 | −9.3 |
-| tumblr | 51 | 20 | 30,968 | 31,282 | +1.0 |
-| msn | 42 | 0 | 194,896 | 150,924 | −22.6 |
-| peacekeeper.futuremark | 27 | 103 | 18,905 | 17,137 | −9.4 |
-| taobao | 20 | 108 | 22,467 | 26,715 | +18.9 |
-| tmall | 19 | 0 | 261,863 | 196,064 | −25.1 |
-| html5test | 19 | 13 | 49,537 | 54,023 | +9.1 |
-| kickass.to | 18 | 1 | 120,760 | 130,529 | +8.1 |
-| florian-rappl | 11 | 58 | 32,404 | 29,864 | −7.8 |
-| weibo | 9 | 0 | 447,632 | 636,622 | +42.2 |
-| amazon | 7 | 2 | 145,917 | 99,783 | −31.6 |
-| youtube | 6 | 13 | 114,937 | 120,536 | +4.9 |
-| neobux | 5 | 4 | 157,224 | 162,672 | +3.5 |
-| pcmag | 5 | 0 | 380,863 | 394,027 | +3.5 |
-| blogspot | 4 | 7 | 168,682 | 186,814 | +10.7 |
-| vk | 3 | 5 | 207,275 | 204,975 | −1.1 |
-| live | 1 | 1 | 371,108 | 484,063 | +30.4 |
-| godaddy | 0 | 0 | 553,066 | 1,211,863 | +119.1 |
+| w3 | 13,265 | 59,914 | 21 | 31 | +43.5 |
+| spiegel | 2,052 | 679 | 662 | 803 | +21.3 |
+| yahoo | 1,493 | 58 | 6,691 | 6,009 | −10.2 |
+| huffingtonpost | 1,171 | 354 | 1,700 | 1,726 | +1.6 |
+| nbc | 1,161 | 459 | 1,790 | 1,617 | −9.6 |
+| imdb | 981 | 149 | 2,369 | 3,064 | +29.4 |
+| nytimes | 693 | 622 | 2,114 | 2,258 | +6.8 |
+| en.wikipedia | 681 | 1,280 | 1,101 | 1,197 | +8.7 |
+| flickr | 646 | 68 | 5,380 | 8,912 | +65.7 |
+| 163 | 600 | 1,375 | 1,419 | 1,553 | +9.5 |
+| reddit | 595 | 167 | 2,605 | 2,920 | +12.1 |
+| ebay † | 587 | 374 | 2,758 | 2,926 | +6.1 |
+| news.google | 460 | 8 | 12,033 | 8,278 | −31.2 |
+| baidu | 434 | 53 | 20,537 | 19,147 | −6.8 |
+| mail.ru | 394 | 171 | 7,273 | 6,975 | −4.1 |
+| aliexpress | 294 | 105 | 16,013 | 14,786 | −7.7 |
+| pinterest † | 294 | 1 | 58,961 | 40,006 | −32.1 |
+| google | 265 | 11 | 56,936 | 58,252 | +2.3 |
+| myspace | 240 | 257 | 3,385 | 3,166 | −6.5 |
+| sitepoint | 192 | 149 | 7,749 | 9,917 | +28.0 |
+| stackoverflow | 176 | 118 | 5,771 | 7,579 | +31.3 |
+| linkedin | 135 | 153 | 8,706 | 8,468 | −2.7 |
+| wordpress | 134 | 73 | 11,967 | 11,486 | −4.0 |
+| qq | 122 | 288 | 5,409 | 6,034 | +11.6 |
+| bing | 119 | 42 | 21,172 | 23,535 | +11.2 |
+| codeproject † | 115 | 123 | 12,850 | 13,605 | +5.9 |
+| ask | 93 | 74 | 13,009 | 13,568 | +4.3 |
+| 360.cn | 91 | 480 | 4,114 | 4,832 | +17.5 |
+| html5rocks | 87 | 70 | 10,938 | 11,274 | +3.1 |
+| netflix | 87 | 19 | 56,342 | 56,680 | +0.6 |
+| tumblr | 51 | 20 | 31,041 | 34,659 | +11.7 |
+| msn | 42 | 0 | 195,536 | 160,382 | −18.0 |
+| peacekeeper.futuremark | 27 | 103 | 18,972 | 18,873 | −0.5 |
+| taobao | 20 | 108 | 22,664 | 29,811 | +31.5 |
+| tmall | 19 | 0 | 262,521 | 203,932 | −22.3 |
+| html5test | 19 | 13 | 49,813 | 58,419 | +17.3 |
+| kickass.to | 18 | 1 | 120,918 | 144,254 | +19.3 |
+| florian-rappl | 11 | 58 | 32,536 | 32,973 | +1.3 |
+| weibo | 9 | 0 | 448,168 | 685,740 | +53.0 |
+| amazon | 7 | 2 | 146,969 | 110,550 | −24.8 |
+| youtube | 6 | 13 | 115,563 | 134,778 | +16.6 |
+| neobux | 5 | 4 | 157,724 | 179,303 | +13.7 |
+| pcmag | 5 | 0 | 379,142 | 439,218 | +15.8 |
+| blogspot | 4 | 7 | 168,648 | 207,351 | +22.9 |
+| vk | 3 | 5 | 206,510 | 226,006 | +9.4 |
+| live | 1 | 1 | 373,113 | 521,630 | +39.8 |
+| godaddy | 0 | 0 | 558,717 | 1,372,735 | +145.7 |
 
 † Excluded from the win/loss counts and medians: the two engines extract different anchor sets. Each of these three
 documents contains exactly one `<a href>` inside a `<noscript>` element, which this engine finds and lol-html does not.
@@ -283,10 +291,9 @@ documents contains exactly one `<a href>` inside a `<noscript>` element, which t
 follows the scripting-disabled default that AngleSharp uses and that suits server-side extraction. The divergence only
 ever runs one way — no document has this engine missing an anchor lol-html reports.
 
-`linkedin`, `nbc`, `myspace`, `baidu`, and `aliexpress` are the standing structural losses on attribute-dense markup,
-and `news.google` (−38.8%) is the largest; they are tracked as open attribution questions rather than quietly dropped.
-Both passes agreed closely: the per-document Δ moved by a median of 1.1 percentage points between them, at most 10.7
-(`html5test`), and only `qq` and `bing` changed sign — both within half a percent of parity either way.
+Both passes agreed closely: the per-document Δ moved by a median of 1.0 percentage point between them, at most 7.5
+(`godaddy`, a 273-byte document), and only `huffingtonpost` and `netflix` changed sign — both within a few percent of
+parity either way.
 
 ### Allocation
 
