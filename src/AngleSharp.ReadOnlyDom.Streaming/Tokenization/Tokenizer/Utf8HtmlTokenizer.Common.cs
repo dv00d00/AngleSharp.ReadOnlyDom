@@ -89,9 +89,117 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
 
     private static Int32 IndexOfDiscardedRawTextStop(ReadOnlySpan<Byte> utf8)
     {
+        if (Avx2.IsSupported && utf8.Length >= 4 * Vector256<Byte>.Count)
+        {
+            ref var source = ref MemoryMarshal.GetReference(utf8);
+            var lessThan = Vector256.Create((Byte)'<');
+            var wideEnd = utf8.Length - 4 * Vector256<Byte>.Count;
+            var offset = 0;
+            var dense = false;
+            while (offset <= wideEnd)
+            {
+                if (dense)
+                {
+                    var input0 = Vector256.LoadUnsafe(ref source, (UIntPtr)offset);
+                    var input1 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 32));
+                    var input2 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 64));
+                    var input3 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 96));
+                    var denseCandidates =
+                        (UInt32)Avx2.MoveMask(Avx2.CompareEqual(input0, lessThan))
+                        | ((UInt64)(UInt32)Avx2.MoveMask(Avx2.CompareEqual(input1, lessThan)) << 32);
+                    var hasCandidates = denseCandidates != 0;
+                    while (denseCandidates != 0)
+                    {
+                        var position = offset + BitOperations.TrailingZeroCount(denseCandidates);
+                        if (IsDiscardedRawTextStop(utf8, position))
+                        {
+                            return position;
+                        }
+                        denseCandidates &= denseCandidates - 1;
+                    }
+                    denseCandidates =
+                        (UInt32)Avx2.MoveMask(Avx2.CompareEqual(input2, lessThan))
+                        | ((UInt64)(UInt32)Avx2.MoveMask(Avx2.CompareEqual(input3, lessThan)) << 32);
+                    hasCandidates |= denseCandidates != 0;
+                    while (denseCandidates != 0)
+                    {
+                        var position = offset + 64 + BitOperations.TrailingZeroCount(denseCandidates);
+                        if (IsDiscardedRawTextStop(utf8, position))
+                        {
+                            return position;
+                        }
+                        denseCandidates &= denseCandidates - 1;
+                    }
+                    dense = hasCandidates;
+                    offset += 4 * Vector256<Byte>.Count;
+                    continue;
+                }
+
+                var matches0 = Avx2.CompareEqual(
+                    Vector256.LoadUnsafe(ref source, (UIntPtr)offset),
+                    lessThan
+                );
+                var matches1 = Avx2.CompareEqual(
+                    Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 32)),
+                    lessThan
+                );
+                var matches2 = Avx2.CompareEqual(
+                    Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 64)),
+                    lessThan
+                );
+                var matches3 = Avx2.CompareEqual(
+                    Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 96)),
+                    lessThan
+                );
+
+                var any = Avx2.Or(Avx2.Or(matches0, matches1), Avx2.Or(matches2, matches3));
+                if (Avx2.MoveMask(any) == 0)
+                {
+                    offset += 4 * Vector256<Byte>.Count;
+                    continue;
+                }
+
+                var candidates =
+                    (UInt32)Avx2.MoveMask(matches0)
+                    | ((UInt64)(UInt32)Avx2.MoveMask(matches1) << 32);
+                while (candidates != 0)
+                {
+                    var position = offset + BitOperations.TrailingZeroCount(candidates);
+                    if (IsDiscardedRawTextStop(utf8, position))
+                    {
+                        return position;
+                    }
+                    candidates &= candidates - 1;
+                }
+                candidates =
+                    (UInt32)Avx2.MoveMask(matches2)
+                    | ((UInt64)(UInt32)Avx2.MoveMask(matches3) << 32);
+                while (candidates != 0)
+                {
+                    var position = offset + 64 + BitOperations.TrailingZeroCount(candidates);
+                    if (IsDiscardedRawTextStop(utf8, position))
+                    {
+                        return position;
+                    }
+                    candidates &= candidates - 1;
+                }
+
+                // A candidate predicts that the next block is dense. One empty dense block
+                // switches the following block back to the one-mask sparse path.
+                dense = true;
+                offset += 4 * Vector256<Byte>.Count;
+            }
+
+            return IndexOfDiscardedRawTextStopScalar(utf8, offset);
+        }
+
+        return IndexOfDiscardedRawTextStopScalar(utf8, 0);
+    }
+
+    private static Int32 IndexOfDiscardedRawTextStopScalar(ReadOnlySpan<Byte> utf8, Int32 offset)
+    {
         // Single-byte IndexOf keeps the memchr-speed kernel; the follower check resolves
         // lone '<' bytes locally instead of surfacing each one to the dispatch loop.
-        var offset = 0;
         while (true)
         {
             var found = utf8[offset..].IndexOf((Byte)'<');
@@ -113,6 +221,10 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Boolean IsDiscardedRawTextStop(ReadOnlySpan<Byte> utf8, Int32 position) =>
+        position + 1 == utf8.Length || utf8[position + 1] == (Byte)'/';
+
     private static Int32 IndexOfDiscardedScriptDataStop(ReadOnlySpan<Byte> utf8)
     {
         if (Avx2.IsSupported && utf8.Length >= Vector256<Byte>.Count)
@@ -122,15 +234,65 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             var wideEnd = utf8.Length - 4 * Vector256<Byte>.Count;
             var vectorEnd = utf8.Length - Vector256<Byte>.Count;
             var offset = 0;
+            var dense = false;
             while (offset <= wideEnd)
             {
+                if (dense)
+                {
+                    var denseInput0 = Vector256.LoadUnsafe(ref source, (UIntPtr)offset);
+                    var denseInput1 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 32));
+                    var denseInput2 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 64));
+                    var denseInput3 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 96));
+                    var denseCandidates =
+                        (UInt32)Avx2.MoveMask(Avx2.CompareEqual(denseInput0, lessThan))
+                        | ((UInt64)(UInt32)Avx2.MoveMask(Avx2.CompareEqual(denseInput1, lessThan)) << 32);
+                    var hasCandidates = denseCandidates != 0;
+                    while (denseCandidates != 0)
+                    {
+                        var position = offset + BitOperations.TrailingZeroCount(denseCandidates);
+                        if (IsDiscardedScriptDataStop(utf8, position))
+                        {
+                            return position;
+                        }
+                        denseCandidates &= denseCandidates - 1;
+                    }
+                    denseCandidates =
+                        (UInt32)Avx2.MoveMask(Avx2.CompareEqual(denseInput2, lessThan))
+                        | ((UInt64)(UInt32)Avx2.MoveMask(Avx2.CompareEqual(denseInput3, lessThan)) << 32);
+                    hasCandidates |= denseCandidates != 0;
+                    while (denseCandidates != 0)
+                    {
+                        var position = offset + 64 + BitOperations.TrailingZeroCount(denseCandidates);
+                        if (IsDiscardedScriptDataStop(utf8, position))
+                        {
+                            return position;
+                        }
+                        denseCandidates &= denseCandidates - 1;
+                    }
+                    dense = hasCandidates;
+                    offset += 4 * Vector256<Byte>.Count;
+                    continue;
+                }
+
                 var input0 = Vector256.LoadUnsafe(ref source, (UIntPtr)offset);
                 var input1 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 32));
                 var input2 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 64));
                 var input3 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 96));
+                var matches0 = Avx2.CompareEqual(input0, lessThan);
+                var matches1 = Avx2.CompareEqual(input1, lessThan);
+                var matches2 = Avx2.CompareEqual(input2, lessThan);
+                var matches3 = Avx2.CompareEqual(input3, lessThan);
+
+                var any = Avx2.Or(Avx2.Or(matches0, matches1), Avx2.Or(matches2, matches3));
+                if (Avx2.MoveMask(any) == 0)
+                {
+                    offset += 4 * Vector256<Byte>.Count;
+                    continue;
+                }
+
                 var candidates =
-                    (UInt32)Avx2.MoveMask(Avx2.CompareEqual(input0, lessThan))
-                    | ((UInt64)(UInt32)Avx2.MoveMask(Avx2.CompareEqual(input1, lessThan)) << 32);
+                    (UInt32)Avx2.MoveMask(matches0)
+                    | ((UInt64)(UInt32)Avx2.MoveMask(matches1) << 32);
                 while (candidates != 0)
                 {
                     var position = offset + BitOperations.TrailingZeroCount(candidates);
@@ -141,8 +303,8 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                     candidates &= candidates - 1;
                 }
                 candidates =
-                    (UInt32)Avx2.MoveMask(Avx2.CompareEqual(input2, lessThan))
-                    | ((UInt64)(UInt32)Avx2.MoveMask(Avx2.CompareEqual(input3, lessThan)) << 32);
+                    (UInt32)Avx2.MoveMask(matches2)
+                    | ((UInt64)(UInt32)Avx2.MoveMask(matches3) << 32);
                 while (candidates != 0)
                 {
                     var position = offset + 64 + BitOperations.TrailingZeroCount(candidates);
@@ -152,6 +314,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                     }
                     candidates &= candidates - 1;
                 }
+                dense = true;
                 offset += 4 * Vector256<Byte>.Count;
             }
             while (offset <= vectorEnd)
