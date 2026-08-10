@@ -4,6 +4,27 @@ using System.IO.Pipelines;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
+internal class Utf8HtmlTokenizer<TResourceLimits> : Utf8HtmlTokenizerCore
+    where TResourceLimits : struct, IResourceLimitPolicy
+{
+    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink)
+        : this(sink, null, HtmlStreamingLimits.Default, countInputBytes: true) { }
+
+    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink, HtmlStreamingLimits limits)
+        : this(sink, null, limits, countInputBytes: true) { }
+
+    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink, Utf8HtmlTokenizerStateMetrics? stateMetrics)
+        : this(sink, stateMetrics, HtmlStreamingLimits.Default, countInputBytes: true) { }
+
+    public Utf8HtmlTokenizer(
+        IUtf8HtmlTokenSink sink,
+        Utf8HtmlTokenizerStateMetrics? stateMetrics,
+        HtmlStreamingLimits limits,
+        Boolean countInputBytes
+    )
+        : base(sink, stateMetrics, limits, countInputBytes, TResourceLimits.Enabled) { }
+}
+
 internal sealed class Utf8HtmlTokenizer : Utf8HtmlTokenizer<EnforcedResourceLimits>
 {
     public static ValueTask<Utf8HtmlTokenizerCounters> TokenizeAsync(

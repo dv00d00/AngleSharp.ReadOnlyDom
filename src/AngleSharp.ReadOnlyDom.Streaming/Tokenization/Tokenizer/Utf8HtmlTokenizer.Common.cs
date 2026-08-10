@@ -7,8 +7,7 @@ using System.Runtime.Intrinsics.X86;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
-    where TResourceLimits : struct, IResourceLimitPolicy
+internal partial class Utf8HtmlTokenizerCore : IUtf8HtmlTokenizer
 {
     private readonly Utf8HtmlTokenizerStateMetrics? _stateMetrics;
     private readonly Utf8TokenBuffer _name = new(32);
@@ -62,6 +61,11 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     // with 8 capturing tags, which cannot pay that from the pre-filter itself. Keeping new tokenizer
     // state at the end leaves the hot fields' offsets untouched.
     private UInt64 _attributeNameLengths;
+
+    // One runtime flag keeps the 4.5K-line tokenizer core non-generic and therefore shares its JIT
+    // code across bounded and unbounded sessions. The generic input normalizer retains compile-time
+    // resource-policy elimination in its framing loop.
+    private readonly Boolean _resourceLimitsEnabled;
 
     // Allowed sets for input that skipped UTF-8 validation contain the ASCII bytes that are NOT
     // terminators. The feature partials own the concrete sets; this shared helper builds them.
@@ -419,20 +423,12 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
 
     private Utf8TokenBuffer DoctypeSystem => _doctypeSystem ??= new(64);
 
-    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink)
-        : this(sink, null, HtmlStreamingLimits.Default, countInputBytes: true) { }
-
-    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink, HtmlStreamingLimits limits)
-        : this(sink, null, limits, countInputBytes: true) { }
-
-    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink, Utf8HtmlTokenizerStateMetrics? stateMetrics)
-        : this(sink, stateMetrics, HtmlStreamingLimits.Default, countInputBytes: true) { }
-
-    public Utf8HtmlTokenizer(
+    protected Utf8HtmlTokenizerCore(
         IUtf8HtmlTokenSink sink,
         Utf8HtmlTokenizerStateMetrics? stateMetrics,
         HtmlStreamingLimits limits,
-        Boolean countInputBytes
+        Boolean countInputBytes,
+        Boolean resourceLimitsEnabled
     )
     {
         ArgumentNullException.ThrowIfNull(limits);
@@ -447,6 +443,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         _stateMetrics = stateMetrics;
         _maximumBufferedTokenBytesAllowed = limits.MaximumBufferedTokenBytes;
         _maximumInputBytesAllowed = countInputBytes ? limits.MaximumInputBytes : Int64.MaxValue;
+        _resourceLimitsEnabled = resourceLimitsEnabled;
     }
 
     public static Int32 StateCount => StateNames.Length;
@@ -646,7 +643,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     {
         ThrowIfCompleted();
         var previousBytesConsumed = 0L;
-        if (TResourceLimits.Enabled)
+        if (_resourceLimitsEnabled)
         {
             previousBytesConsumed = _inputBytesConsumed;
             var observedInputBytes = SaturatingAdd(previousBytesConsumed, utf8.Length);
@@ -661,7 +658,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         }
 
         var consumed = WriteTrustedUtf8(utf8, yieldOnRequest);
-        if (TResourceLimits.Enabled)
+        if (_resourceLimitsEnabled)
         {
             _inputBytesConsumed = SaturatingAdd(previousBytesConsumed, consumed);
         }
@@ -1304,12 +1301,12 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
 
     private void Append(Utf8TokenBuffer buffer, Byte value)
     {
-        if (TResourceLimits.Enabled)
+        if (_resourceLimitsEnabled)
         {
             EnsureBufferedTokenCapacity(1);
         }
         buffer.Append(value);
-        if (TResourceLimits.Enabled)
+        if (_resourceLimitsEnabled)
         {
             ObserveBufferAppend(1);
         }
@@ -1317,12 +1314,12 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
 
     private void Append(Utf8TokenBuffer buffer, ReadOnlySpan<Byte> value)
     {
-        if (TResourceLimits.Enabled)
+        if (_resourceLimitsEnabled)
         {
             EnsureBufferedTokenCapacity(value.Length);
         }
         buffer.Append(value);
-        if (TResourceLimits.Enabled)
+        if (_resourceLimitsEnabled)
         {
             ObserveBufferAppend(value.Length);
         }
@@ -1356,7 +1353,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             return;
         }
 
-        if (TResourceLimits.Enabled)
+        if (_resourceLimitsEnabled)
         {
             _bufferedTokenBytes -= buffer.WrittenCount;
         }
