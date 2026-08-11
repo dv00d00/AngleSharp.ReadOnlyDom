@@ -676,9 +676,9 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Boolean IsTagTailState(State state) =>
-        state
-            is State.BeforeAttributeName
+        state is State.BeforeAttributeName
                 or State.AttributeName
                 or State.AfterAttributeName
                 or State.BeforeAttributeValue

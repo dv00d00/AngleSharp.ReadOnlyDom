@@ -72,6 +72,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 allowed[count++] = (Byte)value;
             }
         }
+
         return SearchValues.Create(allowed[..count]);
     }
 
@@ -90,13 +91,19 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     private Utf8TokenBuffer DoctypeSystem => _doctypeSystem ??= new(64);
 
     public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink)
-        : this(sink, null, HtmlStreamingLimits.Default, countInputBytes: true) { }
+        : this(sink, null, HtmlStreamingLimits.Default, countInputBytes: true)
+    {
+    }
 
     public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink, HtmlStreamingLimits limits)
-        : this(sink, null, limits, countInputBytes: true) { }
+        : this(sink, null, limits, countInputBytes: true)
+    {
+    }
 
     public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink, Utf8HtmlTokenizerStateMetrics? stateMetrics)
-        : this(sink, stateMetrics, HtmlStreamingLimits.Default, countInputBytes: true) { }
+        : this(sink, stateMetrics, HtmlStreamingLimits.Default, countInputBytes: true)
+    {
+    }
 
     public Utf8HtmlTokenizer(
         IUtf8HtmlTokenSink sink,
@@ -335,6 +342,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         {
             _inputBytesConsumed = SaturatingAdd(previousBytesConsumed, consumed);
         }
+
         return consumed;
     }
 
@@ -361,6 +369,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             {
                 return _normalizedBytesConsumed;
             }
+
             var wantsEndTagRange = _startTagSourceRangeSink?.WantsEndTagSourceRanges == true;
             switch (_state)
             {
@@ -418,77 +427,15 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         var trackSourceRanges = _startTagSourceRangeSink is not null;
         var sourceBase = trackSourceRanges ? _normalizedBytesConsumed : 0;
         var index = 0;
-        Byte stopByte = 0;
-        
+
         try
         {
             while (index < utf8.Length)
             {
-                if (_state == State.TagName)
-                {
-                    var remaining = utf8.Slice(index);
-                    var stop = IndexOfTagNameStop<TTrust>(remaining);
-                    var run = stop < 0 ? remaining.Length : stop;
-
-                    if (run > 0)
-                    {
-                        RecordState<TMetrics>((Int32)_state, run);
-                        AppendTagName(remaining[..run]);
-                        index += run;
-                        if (stop < 0)
-                        {
-                            // The name continues past this span; nothing to fuse.
-                            continue;
-                        }
-                    }
-
-                    stopByte = remaining[run];
-                }
-
                 if (!_pendingCarriageReturn)
                 {
-                    if (_state == State.TagName)
+                    if (IsTagTailState(_state) && (_isEndTag || _startTagEmitted))
                     {
-                        // Tag-name stop fusion. The byte that ended the name is in-span and its entire
-                        // effect in TagName state is one of three transitions, so take them here instead
-                        // of surrendering the byte to the outer else-if chain, the PerByte prologue,
-                        // Process's state switch and ProcessTagState's - the per-transition round-trip
-                        // PR #66 removed for the tag tail but never for the name-to-tail boundary.
-                        // Excluded on purpose: '\0' (becomes a replacement character), '\r' (starts CR
-                        // normalization), unvalidated non-ASCII (must bounce to the caller), and a
-                        // pending CR (the next byte belongs to the normalizer, not to this state).
-
-                        if (stopByte is (Byte)'\t' or (Byte)'\n' or (Byte)'\f' or (Byte)' ' or (Byte)'/' or (Byte)'>')
-                        {
-                            index++;
-                            RecordFusedTagNameStopIf<TMetrics>();
-                            if (trackSourceRanges)
-                            {
-                                _currentSourceOffset = sourceBase + index;
-                            }
-                            if (stopByte == (Byte)'>')
-                            {
-                                FinishTag(selfClosing: false);
-                            }
-                            else
-                            {
-                                // Mirrors the ProcessTagState TagName arm: the start tag is emitted
-                                // before the state changes, and end tags no-op inside EmitTagStart.
-                                EmitTagStart();
-                                _state = stopByte == (Byte)'/' ? State.SelfClosingStartTag : State.BeforeAttributeName;
-                            }
-                            if (yieldOnRequest && _yieldRequested)
-                            {
-                                return index;
-                            }
-                            continue;
-                        }
-                    }
-                    else if ((_isEndTag || _startTagEmitted) && IsTagTailState(_state))
-                    {
-                        // A start tag is always emitted before its tail states, so the capture flag is
-                        // settled here; end tags never capture, whatever the flag still says from the
-                        // previous start tag (the raw-text end-tag path skips BeginTag).
                         var sourceOffset = trackSourceRanges ? sourceBase + index : 0;
                         var consumed = !_isEndTag && _captureStartTagAttributes
                             ? ScanTagTail<TMetrics, TTrust, CaptureOn>(
@@ -503,7 +450,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                                 trackSourceRanges,
                                 yieldOnRequest
                             );
-                        
+
                         if (consumed > 0)
                         {
                             index += consumed;
@@ -511,28 +458,75 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                             {
                                 return index;
                             }
+
                             continue;
                         }
                     }
-                    // Data only. Plaintext shares the shape but never occurs in real documents
-                    // (zero instances across the 47-document corpus), so it sits in a cold arm
-                    // below rather than costing this path a state test per text run.
+                    else if (_state == State.TagName)
+                    {
+                        var remaining = utf8.Slice(index);
+                        var stop = IndexOfTagNameStop<TTrust>(remaining);
+                        var run = stop < 0 ? remaining.Length : stop;
+
+                        if (run > 0)
+                        {
+                            // _state is TagName by the test above; naming the constant lets it fold
+                            // instead of reloading the field in the hot path.
+                            RecordState<TMetrics>((Int32)State.TagName, run);
+                            AppendTagName(remaining[..run]);
+                            index += run;
+                            if (stop < 0)
+                            {
+                                // The name continues past this span; nothing to fuse.
+                                continue;
+                            }
+                        }
+
+                        var stopByte = remaining[run];
+                        // Tag-name stop fusion: the byte that ended the name is in-span and its whole
+                        // effect here is one of three transitions, so take them instead of a per-byte
+                        // round-trip. Not the full terminator set - '\0' becomes a replacement
+                        // character, '\r' starts CR normalization, non-ASCII must bounce to the caller.
+                        if (stopByte is (Byte)'\t' or (Byte)'\n' or (Byte)'\f' or (Byte)' ' or (Byte)'/' or (Byte)'>')
+                        {
+                            index++;
+                            RecordFusedTagNameStopIf<TMetrics>();
+                            if (trackSourceRanges)
+                            {
+                                _currentSourceOffset = sourceBase + index;
+                            }
+
+                            if (stopByte == (Byte)'>')
+                            {
+                                FinishTag(selfClosing: false);
+                            }
+                            else
+                            {
+                                // Mirrors the ProcessTagState TagName arm: the start tag is emitted
+                                // before the state changes, and end tags no-op inside EmitTagStart.
+                                EmitTagStart();
+                                _state = stopByte == (Byte)'/' ? State.SelfClosingStartTag : State.BeforeAttributeName;
+                            }
+
+                            if (yieldOnRequest && _yieldRequested)
+                            {
+                                return index;
+                            }
+
+                            continue;
+                        }
+                    }
                     else if (_state == State.Data && _textUtf8CarryLength == 0)
                     {
                         var remaining = utf8.Slice(index);
                         Int32 run;
-                        // Minified markup is mostly adjacent tags, so data state is entered standing on
-                        // '<' more often than not. Both searches below would scan for a byte that is already
-                        // under the cursor and return 0 - '<' terminates the capture set as well - so
-                        // test the first byte instead of paying a vectorized call to rediscover it.
-                        // The fusion path below re-tests the same condition and owns the short-span case.
+
                         if (remaining[0] == (Byte)'<')
                         {
                             run = 0;
                         }
                         else if (!_captureText)
                         {
-                            // Discarded text may swallow arbitrary bytes raw - nothing observes it.
                             run = remaining.IndexOf((Byte)'<');
                         }
                         else
@@ -544,28 +538,30 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         {
                             run = remaining.Length;
                         }
+
                         if (run > 0)
                         {
                             RecordState<TMetrics>((Int32)_state, run);
                             if (_captureText)
                             {
                                 EmitText(utf8.Slice(index, run));
-                                
+
                                 if (RawTextEnabled)
                                 {
                                     EmitRawText(sourceBase + index, utf8.Slice(index, run), CurrentRawTextType());
                                 }
-                                
+
                                 if (yieldOnRequest && _yieldRequested)
                                 {
                                     index += run;
                                     return index;
                                 }
                             }
+
                             index += run;
                             continue;
                         }
-                        
+
                         // Stop-byte fusion: a '<' followed by an ASCII letter (or "/" + letter) in
                         // data state always begins a tag, so consume through the first name byte here
                         // instead of surrendering '<', the follower, and the letter to three per-byte
@@ -590,16 +586,19 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                             {
                                 goto PerByteStateMachine;
                             }
+
                             if (TMetrics.Enabled)
                             {
                                 RecordFusedTagOpen(isEndTag);
                             }
+
                             index += fused;
                             if (trackSourceRanges)
                             {
                                 _currentSourceOffset = sourceBase + index;
                                 _lastLessThanSourceOffset = sourceBase + index - fused;
                             }
+
                             BeginTag(isEndTag, remaining[fused - 1]);
                             continue;
                         }
@@ -626,12 +625,10 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                             {
                                 return index;
                             }
+
                             continue;
                         }
                     }
-                    // Comment bodies are 0.19% of corpus bytes (1,110 comments across 28.6 MB) and
-                    // Plaintext never occurs at all, so both scan out-of-line: their only claim on
-                    // this method would be its instruction footprint.
                     else if (_state == State.Comment)
                     {
                         var consumed = ScanCommentContent<TMetrics, TTrust>(utf8[index..]);
@@ -651,11 +648,12 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                             {
                                 return index;
                             }
+
                             continue;
                         }
                     }
                 }
-                
+
                 PerByteStateMachine:
                 var value = utf8[index];
                 if (TTrust.StopAtNonAscii && value >= 0x80)
@@ -664,6 +662,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                     // re-feeds it through the trusted entry point.
                     return index;
                 }
+
                 index++;
                 if (trackSourceRanges)
                 {
@@ -673,6 +672,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         _lastLessThanSourceOffset = _currentSourceOffset - 1;
                     }
                 }
+
                 if (_pendingCarriageReturn)
                 {
                     _pendingCarriageReturn = false;
@@ -683,11 +683,13 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                         continue;
                     }
                 }
+
                 if (value == (Byte)'\r')
                 {
                     _pendingCarriageReturn = true;
                     value = (Byte)'\n';
                 }
+
                 if (IsScriptState(_state))
                 {
                     ProcessScriptInput<TTrust>(value, utf8, ref index);
@@ -696,6 +698,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 {
                     Process(value);
                 }
+
                 if (yieldOnRequest && _yieldRequested)
                 {
                     return index;
@@ -889,11 +892,11 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
     private static Boolean IsRawTextInputState(State state) =>
         state
             is State.Data
-                or State.Plaintext
-                or State.RawText
-                or State.CDataSection
-                or >= State.ScriptData
-                and <= State.ScriptDoubleEscapeEnd;
+            or State.Plaintext
+            or State.RawText
+            or State.CDataSection
+            or >= State.ScriptData
+            and <= State.ScriptDoubleEscapeEnd;
 
     private Boolean StreamingCommentStarted
     {
@@ -952,6 +955,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         {
             return;
         }
+
         if (_textUtf8CarryLength != 0)
         {
             _textUtf8Carry |= (UInt32)value << (_textUtf8CarryLength++ * 8);
@@ -968,8 +972,10 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 _textUtf8CarryLength = 0;
                 _textUtf8ExpectedLength = 0;
             }
+
             return;
         }
+
         if (value >= 0x80)
         {
             _textUtf8Carry = value;
@@ -977,6 +983,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
             _textUtf8ExpectedLength = Utf8SequenceLength(value);
             return;
         }
+
         Span<Byte> single = stackalloc Byte[1];
         single[0] = value;
         EmitText(single);
@@ -995,6 +1002,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         {
             EnsureBufferedTokenCapacity(1);
         }
+
         buffer.Append(value);
         if (TResourceLimits.Enabled)
         {
@@ -1008,6 +1016,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         {
             EnsureBufferedTokenCapacity(value.Length);
         }
+
         buffer.Append(value);
         if (TResourceLimits.Enabled)
         {
@@ -1047,6 +1056,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
         {
             _bufferedTokenBytes -= buffer.WrittenCount;
         }
+
         buffer.ResetWrittenCount();
     }
 
@@ -1102,6 +1112,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
                 return false;
             }
         }
+
         return true;
     }
 
