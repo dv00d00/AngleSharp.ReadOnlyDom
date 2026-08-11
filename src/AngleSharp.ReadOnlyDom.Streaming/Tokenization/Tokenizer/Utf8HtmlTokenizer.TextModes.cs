@@ -562,7 +562,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             var remaining = utf8[index..];
             var run = TCapture.Enabled
                 ? IndexOfCaptureStop<TTrust>(remaining, RawTextTerminators, RawTextArbitraryAllowed)
-                : IndexOfDiscardedScriptDataStop(remaining);
+                : Utf8DiscardedTextScanner.IndexOfScriptDataStop(remaining);
             if (run < 0)
             {
                 RecordState<TMetrics>((Int32)State.ScriptData, remaining.Length);
@@ -656,7 +656,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
                 ? isRcData
                     ? IndexOfCaptureStop<TTrust>(remaining, DataTextTerminators, DataTextArbitraryAllowed)
                     : IndexOfCaptureStop<TTrust>(remaining, RawTextTerminators, RawTextArbitraryAllowed)
-                : IndexOfDiscardedRawTextStop(remaining);
+                : Utf8DiscardedTextScanner.IndexOfRawTextStop(remaining);
             if (run < 0)
             {
                 RecordState<TMetrics>((Int32)State.RawText, remaining.Length);
