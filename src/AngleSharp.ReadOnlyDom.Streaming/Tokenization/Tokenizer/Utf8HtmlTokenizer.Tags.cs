@@ -77,31 +77,18 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         "\t\n\f\r /=>"u8
     );
 
-    // Every discarded-attribute-name terminator is below 64, so one 64-bit mask and a shift-and-test
-    // classifies a byte in two ALU instructions - the shape of IndexOfTagNameStop's peel.
     private const UInt64 DiscardedAttributeNameTerminatorMask =
         1UL << '\t' | 1UL << '\n' | 1UL << '\f' | 1UL << '\r' | 1UL << ' ' | 1UL << '/' | 1UL << '=' | 1UL << '>';
 
-    // Wider than IndexOfTagNameStop's window because attribute names are longer than tag names: a
-    // fifth of linkedin's are 17-32 bytes. 16 and 32 measured within noise of each other, and 32
-    // keeps the fall-through for genuinely pathological names only.
+    // Wider than the tag-name window: a fifth of linkedin's attribute names are 17-32 bytes.
     private const Int32 DiscardedAttributeNameScalarScanLimit = 32;
 
     /// <summary>
-    /// Discarded-attribute-name counterpart of <see cref="IndexOfTagNameStop{TTrust}"/>: identical
-    /// classification to <see cref="DiscardedAttributeNameTerminators"/>, scanned with a plain byte
-    /// loop. A discarded name is a handful of bytes (6-10 across this corpus), and at that length the
-    /// searcher's per-call setup costs more than the whole scan - the single largest item in the
-    /// per-attribute constant this engine pays over lol-html, whose attribute_name_state is also a
-    /// byte loop.
-    ///
-    /// Names still unterminated after <see cref="DiscardedAttributeNameScalarScanLimit"/> bytes fall
-    /// through to the searcher for the remainder, so an adversarial megabyte-long attribute name is
-    /// not scanned a byte at a time.
-    ///
-    /// Peeling this scan was measured on retired instructions in 2026-08-09 and rejected there
-    /// (+0.41% median over 14 documents). Instruction count was the wrong meter: the searcher's
-    /// per-call setup is cheap in instructions and expensive in cycles at these name lengths.
+    /// <see cref="IndexOfTagNameStop{TTrust}"/> for discarded attribute names, same classification as
+    /// <see cref="DiscardedAttributeNameTerminators"/>. Names are 6-10 bytes across this corpus, where
+    /// the searcher's per-call setup costs more than the scan; past the window it takes over, so a
+    /// pathological name is not scanned a byte at a time. Rejected in 2026-08-09 on retired
+    /// instructions (+0.41%) - the wrong meter, the setup is cheap in instructions and dear in cycles.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Int32 IndexOfDiscardedAttributeNameStop(ReadOnlySpan<Byte> utf8)
