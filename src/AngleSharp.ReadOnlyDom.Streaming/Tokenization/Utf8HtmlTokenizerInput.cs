@@ -128,13 +128,6 @@ internal class Utf8HtmlTokenizerInput<TResourceLimits> : IUtf8HtmlTokenizerInput
         _normalizer.Write(_tokenizer, input, yieldOnRequest: false);
     }
 
-    internal Int32 WriteUntilYield(ReadOnlySpan<Byte> input)
-    {
-        ThrowIfCompleted();
-        _tokenizer.ResetYieldRequest();
-        return _normalizer.Write(_tokenizer, input, yieldOnRequest: true);
-    }
-
     public void Complete()
     {
         if (_completed)
