@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Runtime.CompilerServices;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
@@ -7,6 +8,27 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
 {
     private static readonly SearchValues<Byte> CommentTerminators = SearchValues.Create("<-\0\r"u8);
     private static readonly SearchValues<Byte> CommentArbitraryAllowed = CreateArbitraryAllowed("<-\0\r"u8);
+
+    /// <summary>
+    /// Bulk-scans comment content, returning the bytes consumed and 0 when the byte under the
+    /// cursor is a terminator the per-byte machine has to resolve. Kept out of line: comments are
+    /// 0.19% of real document bytes, so this exists to stay out of <c>WriteUtf8</c>'s footprint,
+    /// not to be fast.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private Int32 ScanCommentContent<TMetrics, TTrust>(ReadOnlySpan<Byte> utf8)
+        where TMetrics : struct, IStateMetricsPolicy
+        where TTrust : struct, IInputTrustPolicy
+    {
+        var run = IndexOfCaptureStop<TTrust>(utf8, CommentTerminators, CommentArbitraryAllowed);
+        run = run < 0 ? utf8.Length : run;
+        if (run > 0)
+        {
+            RecordState<TMetrics>((Int32)State.Comment, run);
+            AppendComment(utf8[..run]);
+        }
+        return run;
+    }
 
     private void ProcessMarkupState(Byte value, ref Boolean reconsume)
     {
