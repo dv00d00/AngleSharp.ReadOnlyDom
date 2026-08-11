@@ -77,12 +77,44 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
         "\t\n\f\r /=>"u8
     );
 
-    // Measured 2026-08-09 and rejected: peeling this scan the way IndexOfTagNameStop peels tag names
-    // cost a median +0.41% retired instructions over a 14-document set (5 improved, 9 regressed,
-    // pooled +0.28%). Tag names are 3-6 bytes so their peel almost always wins outright, but
-    // discarded attribute names are long where it matters - linkedin averages 8.4 bytes with a fifth
-    // of them data-* - so the peel scans its whole 16-byte window AND still falls through to the
-    // vectorized call, paying both, while growing an already-large ScanTagTail.
+    private const UInt64 DiscardedAttributeNameTerminatorMask =
+        1UL << '\t' | 1UL << '\n' | 1UL << '\f' | 1UL << '\r' | 1UL << ' ' | 1UL << '/' | 1UL << '=' | 1UL << '>';
+
+    // Wider than the tag-name window: a fifth of linkedin's attribute names are 17-32 bytes.
+    private const Int32 DiscardedAttributeNameScalarScanLimit = 32;
+
+    /// <summary>
+    /// <see cref="IndexOfTagNameStop{TTrust}"/> for discarded attribute names, same classification as
+    /// <see cref="DiscardedAttributeNameTerminators"/>. Names are 6-10 bytes across this corpus, where
+    /// the searcher's per-call setup costs more than the scan; past the window it takes over, so a
+    /// pathological name is not scanned a byte at a time. Rejected in 2026-08-09 on retired
+    /// instructions (+0.41%) - the wrong meter, the setup is cheap in instructions and dear in cycles.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Int32 IndexOfDiscardedAttributeNameStop(ReadOnlySpan<Byte> utf8)
+    {
+        var scan =
+            utf8.Length <= DiscardedAttributeNameScalarScanLimit
+                ? utf8
+                : utf8[..DiscardedAttributeNameScalarScanLimit];
+        var index = 0;
+        while ((UInt32)index < (UInt32)scan.Length)
+        {
+            UInt32 value = scan[index];
+            if (value < 64 && (DiscardedAttributeNameTerminatorMask & (1UL << (Int32)value)) != 0)
+            {
+                return index;
+            }
+            index++;
+        }
+        if (index >= utf8.Length)
+        {
+            return -1;
+        }
+        var beyond = utf8[index..].IndexOfAny(DiscardedAttributeNameTerminators);
+        return beyond < 0 ? -1 : index + beyond;
+    }
+
     private static readonly SearchValues<Byte> AttributeNameArbitraryAllowed = CreateArbitraryAllowed(
         "\0\t\n\f\r /=>"u8
     );
@@ -767,7 +799,7 @@ internal partial class Utf8HtmlTokenizer<TResourceLimits>
             var remaining = utf8[index..];
             var run = TCapture.Enabled
                 ? IndexOfCaptureStop<TTrust>(remaining, AttributeNameTerminators, AttributeNameArbitraryAllowed)
-                : remaining.IndexOfAny(DiscardedAttributeNameTerminators);
+                : IndexOfDiscardedAttributeNameStop(remaining);
             if (run < 0)
             {
                 RecordState<TMetrics>((Int32)State.AttributeName, remaining.Length);

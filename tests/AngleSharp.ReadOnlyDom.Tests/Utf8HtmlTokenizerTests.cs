@@ -621,6 +621,98 @@ public sealed class Utf8HtmlTokenizerTests
         }
     }
 
+    // Lengths straddling the discarded scan's 32-byte window, every terminator, and bytes whose low
+    // six bits alias one.
+    public static IEnumerable<string> DiscardedAttributeNameMarkup()
+    {
+        string[] names =
+        [
+            "a",
+            "o",
+            "role",
+            "IJLM",
+            "d`}~",
+            "café",
+            "data-tracking-identifier",
+            new string('n', 31),
+            new string('o', 32),
+            new string('x', 33),
+            new string('m', 70),
+        ];
+        string[] tails = [">", " >", "/>", "=1>", "='1'>", "=\"1\">", "\t>", "\n>", "\r\n>", " b=2>", "=\">\">"];
+
+        foreach (var name in names)
+        foreach (var tail in tails)
+            yield return $"<div {name}{tail}text</div>";
+
+        // A quoted value holding '>' is the shape that makes a misread name observable: end the name
+        // one byte early and the value parses unquoted, so the tag closes inside the quotes.
+        foreach (var name in new[] { "a}b", "a½b", "}", "½" })
+            yield return $"<div {name}=\"x>y\">text</div>";
+    }
+
+    [Test]
+    [MethodDataSource(nameof(DiscardedAttributeNameMarkup))]
+    public async Task DiscardedAttributeNamesTokenizeLikeCapturedOnesAtEveryChunkSize(string html)
+    {
+        // Declining attributes runs the tail through the capture-off scanner, which classifies names
+        // with its own byte loop instead of the searcher the capturing one uses. Both must agree on
+        // tag boundaries, self-closing and text at every split point.
+        var utf8 = Encoding.UTF8.GetBytes(html);
+        var captured = Tokenize(utf8, utf8.Length).Events.Where(NotAnAttribute).ToArray();
+
+        for (var segmentSize = 1; segmentSize <= utf8.Length; segmentSize++)
+        {
+            await Assert.That(TokenizeDiscardingAttributes(utf8, segmentSize)).IsEquivalentTo(captured);
+            await Assert.That(Tokenize(utf8, segmentSize).Events.Where(NotAnAttribute)).IsEquivalentTo(captured);
+        }
+
+        static bool NotAnAttribute(string action) => !action.StartsWith("attr:", StringComparison.Ordinal);
+    }
+
+    private static IReadOnlyList<string> TokenizeDiscardingAttributes(byte[] utf8, int segmentSize)
+    {
+        var sink = new AttributeDecliningSink();
+        var input = new Utf8HtmlTokenizerInput(new Utf8HtmlTokenizer(sink));
+        for (var offset = 0; offset < utf8.Length; offset += segmentSize)
+            input.Write(utf8.AsMemory(offset, Math.Min(segmentSize, utf8.Length - offset)));
+        input.Complete();
+        return sink.Events;
+    }
+
+    private sealed class AttributeDecliningSink : IUtf8HtmlTokenSink
+    {
+        private readonly RecordingSink _recording = new();
+
+        public Utf8HtmlTokenCapture Capture => _recording.Capture;
+
+        public IReadOnlyList<string> Events => _recording.Events;
+
+        public void Text(ReadOnlySpan<byte> utf8) => _recording.Text(utf8);
+
+        public Utf8HtmlStartTagCapture StartTag(Utf8HtmlName name)
+        {
+            _recording.StartTag(name);
+            return Utf8HtmlStartTagCapture.None;
+        }
+
+        public void Attribute(Utf8HtmlName name, ReadOnlySpan<byte> value, bool valueMayContainReferences) =>
+            throw new InvalidOperationException("A declining sink must not be offered attributes.");
+
+        public bool WantsAttribute(Utf8HtmlName name) =>
+            throw new InvalidOperationException("A declining sink must not be asked about attributes.");
+
+        public void StartTagEnd(bool selfClosing) => _recording.StartTagEnd(selfClosing);
+
+        public void EndTag(Utf8HtmlName name) => _recording.EndTag(name);
+
+        public void Comment(ReadOnlySpan<byte> utf8) => _recording.Comment(utf8);
+
+        public void Doctype(in Utf8DoctypeToken token) => _recording.Doctype(token);
+
+        public void EndOfFile() => _recording.EndOfFile();
+    }
+
     [Test]
     [Arguments(1)]
     [Arguments(4)]
