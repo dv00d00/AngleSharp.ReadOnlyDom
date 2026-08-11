@@ -51,7 +51,7 @@ internal struct Utf8InputNormalizer<TResourceLimits>
 
     internal readonly Int64 BytesConsumed => _bytesConsumed;
 
-    internal Int32 Write(Utf8HtmlTokenizerCore tokenizer, ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
+    internal Int32 Write(Utf8HtmlTokenizer<TResourceLimits> tokenizer, ReadOnlySpan<Byte> utf8, Boolean yieldOnRequest)
     {
         var previousBytesConsumed = 0L;
         if (TResourceLimits.Enabled)
@@ -214,7 +214,7 @@ internal struct Utf8InputNormalizer<TResourceLimits>
     }
 
     private Int32 DrainWellFormedCarry(
-        Utf8HtmlTokenizerCore tokenizer,
+        Utf8HtmlTokenizer<TResourceLimits> tokenizer,
         ReadOnlySpan<Byte> utf8,
         Boolean yieldOnRequest
     )
@@ -238,7 +238,7 @@ internal struct Utf8InputNormalizer<TResourceLimits>
     }
 
     private Int32 DrainCarry(
-        Utf8HtmlTokenizerCore tokenizer,
+        Utf8HtmlTokenizer<TResourceLimits> tokenizer,
         ReadOnlySpan<Byte> utf8,
         Boolean yieldOnRequest
     )
@@ -276,7 +276,7 @@ internal struct Utf8InputNormalizer<TResourceLimits>
         return index;
     }
 
-    internal void Complete(Utf8HtmlTokenizerCore tokenizer)
+    internal void Complete(Utf8HtmlTokenizer<TResourceLimits> tokenizer)
     {
         // The carry is replaced per maximal-subpart rules, exactly as DrainCarry would have done
         // had more input arrived: a genuinely incomplete sequence (E4 B8 at end of stream) is one
@@ -306,7 +306,7 @@ internal struct Utf8InputNormalizer<TResourceLimits>
     }
 
     private Int32 WriteWellFormed(
-        Utf8HtmlTokenizerCore tokenizer,
+        Utf8HtmlTokenizer<TResourceLimits> tokenizer,
         ReadOnlySpan<Byte> utf8,
         Int32 index,
         Int64 previousBytesConsumed,
@@ -336,7 +336,7 @@ internal struct Utf8InputNormalizer<TResourceLimits>
     }
 
     private static Int32 WriteMalformedUtf8(
-        Utf8HtmlTokenizerCore tokenizer,
+        Utf8HtmlTokenizer<TResourceLimits> tokenizer,
         ReadOnlySpan<Byte> utf8,
         Boolean yieldOnRequest
     )

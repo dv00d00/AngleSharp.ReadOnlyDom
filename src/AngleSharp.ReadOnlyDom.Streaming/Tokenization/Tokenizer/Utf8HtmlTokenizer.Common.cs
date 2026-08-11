@@ -1,13 +1,10 @@
 using System.Buffers;
-using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.X86;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-internal partial class Utf8HtmlTokenizerCore : IUtf8HtmlTokenizer
+internal partial class Utf8HtmlTokenizer<TResourceLimits> : IUtf8HtmlTokenizer
+    where TResourceLimits : struct, IResourceLimitPolicy
 {
     private readonly Utf8HtmlTokenizerStateMetrics? _stateMetrics;
     private readonly Utf8TokenBuffer _name = new(32);
@@ -62,11 +59,6 @@ internal partial class Utf8HtmlTokenizerCore : IUtf8HtmlTokenizer
     // state at the end leaves the hot fields' offsets untouched.
     private UInt64 _attributeNameLengths;
 
-    // One runtime flag keeps the 4.5K-line tokenizer core non-generic and therefore shares its JIT
-    // code across bounded and unbounded sessions. The generic input normalizer retains compile-time
-    // resource-policy elimination in its framing loop.
-    private readonly Boolean _resourceLimitsEnabled;
-
     // Allowed sets for input that skipped UTF-8 validation contain the ASCII bytes that are NOT
     // terminators. The feature partials own the concrete sets; this shared helper builds them.
     private static SearchValues<Byte> CreateArbitraryAllowed(ReadOnlySpan<Byte> terminators)
@@ -91,344 +83,26 @@ internal partial class Utf8HtmlTokenizerCore : IUtf8HtmlTokenizer
         where TTrust : struct, IInputTrustPolicy =>
         TTrust.StopAtNonAscii ? utf8.IndexOfAnyExcept(arbitraryAllowed) : utf8.IndexOfAny(terminators);
 
-    private static Int32 IndexOfDiscardedRawTextStop(ReadOnlySpan<Byte> utf8)
-    {
-        if (Avx2.IsSupported && utf8.Length >= 4 * Vector256<Byte>.Count)
-        {
-            ref var source = ref MemoryMarshal.GetReference(utf8);
-            var lessThan = Vector256.Create((Byte)'<');
-            var wideEnd = utf8.Length - 4 * Vector256<Byte>.Count;
-            var offset = 0;
-            var dense = false;
-            while (offset <= wideEnd)
-            {
-                if (dense)
-                {
-                    var input0 = Vector256.LoadUnsafe(ref source, (UIntPtr)offset);
-                    var input1 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 32));
-                    var input2 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 64));
-                    var input3 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 96));
-                    var denseCandidates =
-                        (UInt32)Avx2.MoveMask(Avx2.CompareEqual(input0, lessThan))
-                        | ((UInt64)(UInt32)Avx2.MoveMask(Avx2.CompareEqual(input1, lessThan)) << 32);
-                    var hasCandidates = denseCandidates != 0;
-                    while (denseCandidates != 0)
-                    {
-                        var position = offset + BitOperations.TrailingZeroCount(denseCandidates);
-                        if (IsDiscardedRawTextStop(utf8, position))
-                        {
-                            return position;
-                        }
-                        denseCandidates &= denseCandidates - 1;
-                    }
-                    denseCandidates =
-                        (UInt32)Avx2.MoveMask(Avx2.CompareEqual(input2, lessThan))
-                        | ((UInt64)(UInt32)Avx2.MoveMask(Avx2.CompareEqual(input3, lessThan)) << 32);
-                    hasCandidates |= denseCandidates != 0;
-                    while (denseCandidates != 0)
-                    {
-                        var position = offset + 64 + BitOperations.TrailingZeroCount(denseCandidates);
-                        if (IsDiscardedRawTextStop(utf8, position))
-                        {
-                            return position;
-                        }
-                        denseCandidates &= denseCandidates - 1;
-                    }
-                    dense = hasCandidates;
-                    offset += 4 * Vector256<Byte>.Count;
-                    continue;
-                }
-
-                var matches0 = Avx2.CompareEqual(
-                    Vector256.LoadUnsafe(ref source, (UIntPtr)offset),
-                    lessThan
-                );
-                var matches1 = Avx2.CompareEqual(
-                    Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 32)),
-                    lessThan
-                );
-                var matches2 = Avx2.CompareEqual(
-                    Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 64)),
-                    lessThan
-                );
-                var matches3 = Avx2.CompareEqual(
-                    Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 96)),
-                    lessThan
-                );
-
-                var any = Avx2.Or(Avx2.Or(matches0, matches1), Avx2.Or(matches2, matches3));
-                if (Avx2.MoveMask(any) == 0)
-                {
-                    offset += 4 * Vector256<Byte>.Count;
-                    continue;
-                }
-
-                var candidates =
-                    (UInt32)Avx2.MoveMask(matches0)
-                    | ((UInt64)(UInt32)Avx2.MoveMask(matches1) << 32);
-                while (candidates != 0)
-                {
-                    var position = offset + BitOperations.TrailingZeroCount(candidates);
-                    if (IsDiscardedRawTextStop(utf8, position))
-                    {
-                        return position;
-                    }
-                    candidates &= candidates - 1;
-                }
-                candidates =
-                    (UInt32)Avx2.MoveMask(matches2)
-                    | ((UInt64)(UInt32)Avx2.MoveMask(matches3) << 32);
-                while (candidates != 0)
-                {
-                    var position = offset + 64 + BitOperations.TrailingZeroCount(candidates);
-                    if (IsDiscardedRawTextStop(utf8, position))
-                    {
-                        return position;
-                    }
-                    candidates &= candidates - 1;
-                }
-
-                // A candidate predicts that the next block is dense. One empty dense block
-                // switches the following block back to the one-mask sparse path.
-                dense = true;
-                offset += 4 * Vector256<Byte>.Count;
-            }
-
-            return IndexOfDiscardedRawTextStopScalar(utf8, offset);
-        }
-
-        return IndexOfDiscardedRawTextStopScalar(utf8, 0);
-    }
-
-    private static Int32 IndexOfDiscardedRawTextStopScalar(ReadOnlySpan<Byte> utf8, Int32 offset)
-    {
-        // Single-byte IndexOf keeps the memchr-speed kernel; the follower check resolves
-        // lone '<' bytes locally instead of surfacing each one to the dispatch loop.
-        while (true)
-        {
-            var found = utf8[offset..].IndexOf((Byte)'<');
-            if (found < 0)
-            {
-                return -1;
-            }
-            var position = offset + found;
-            if (position + 1 == utf8.Length)
-            {
-                // A trailing '<' may complete "</" in the next chunk; the per-byte machine holds it.
-                return position;
-            }
-            if (utf8[position + 1] == (Byte)'/')
-            {
-                return position;
-            }
-            offset = position + 1;
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Boolean IsDiscardedRawTextStop(ReadOnlySpan<Byte> utf8, Int32 position) =>
-        position + 1 == utf8.Length || utf8[position + 1] == (Byte)'/';
-
-    private static Int32 IndexOfDiscardedScriptDataStop(ReadOnlySpan<Byte> utf8)
-    {
-        if (Avx2.IsSupported && utf8.Length >= Vector256<Byte>.Count)
-        {
-            ref var source = ref MemoryMarshal.GetReference(utf8);
-            var lessThan = Vector256.Create((Byte)'<');
-            var wideEnd = utf8.Length - 4 * Vector256<Byte>.Count;
-            var vectorEnd = utf8.Length - Vector256<Byte>.Count;
-            var offset = 0;
-            var dense = false;
-            while (offset <= wideEnd)
-            {
-                if (dense)
-                {
-                    var denseInput0 = Vector256.LoadUnsafe(ref source, (UIntPtr)offset);
-                    var denseInput1 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 32));
-                    var denseInput2 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 64));
-                    var denseInput3 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 96));
-                    var denseCandidates =
-                        (UInt32)Avx2.MoveMask(Avx2.CompareEqual(denseInput0, lessThan))
-                        | ((UInt64)(UInt32)Avx2.MoveMask(Avx2.CompareEqual(denseInput1, lessThan)) << 32);
-                    var hasCandidates = denseCandidates != 0;
-                    while (denseCandidates != 0)
-                    {
-                        var position = offset + BitOperations.TrailingZeroCount(denseCandidates);
-                        if (IsDiscardedScriptDataStop(utf8, position))
-                        {
-                            return position;
-                        }
-                        denseCandidates &= denseCandidates - 1;
-                    }
-                    denseCandidates =
-                        (UInt32)Avx2.MoveMask(Avx2.CompareEqual(denseInput2, lessThan))
-                        | ((UInt64)(UInt32)Avx2.MoveMask(Avx2.CompareEqual(denseInput3, lessThan)) << 32);
-                    hasCandidates |= denseCandidates != 0;
-                    while (denseCandidates != 0)
-                    {
-                        var position = offset + 64 + BitOperations.TrailingZeroCount(denseCandidates);
-                        if (IsDiscardedScriptDataStop(utf8, position))
-                        {
-                            return position;
-                        }
-                        denseCandidates &= denseCandidates - 1;
-                    }
-                    dense = hasCandidates;
-                    offset += 4 * Vector256<Byte>.Count;
-                    continue;
-                }
-
-                var input0 = Vector256.LoadUnsafe(ref source, (UIntPtr)offset);
-                var input1 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 32));
-                var input2 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 64));
-                var input3 = Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 96));
-                var matches0 = Avx2.CompareEqual(input0, lessThan);
-                var matches1 = Avx2.CompareEqual(input1, lessThan);
-                var matches2 = Avx2.CompareEqual(input2, lessThan);
-                var matches3 = Avx2.CompareEqual(input3, lessThan);
-
-                var any = Avx2.Or(Avx2.Or(matches0, matches1), Avx2.Or(matches2, matches3));
-                if (Avx2.MoveMask(any) == 0)
-                {
-                    offset += 4 * Vector256<Byte>.Count;
-                    continue;
-                }
-
-                var candidates =
-                    (UInt32)Avx2.MoveMask(matches0)
-                    | ((UInt64)(UInt32)Avx2.MoveMask(matches1) << 32);
-                while (candidates != 0)
-                {
-                    var position = offset + BitOperations.TrailingZeroCount(candidates);
-                    if (IsDiscardedScriptDataStop(utf8, position))
-                    {
-                        return position;
-                    }
-                    candidates &= candidates - 1;
-                }
-                candidates =
-                    (UInt32)Avx2.MoveMask(matches2)
-                    | ((UInt64)(UInt32)Avx2.MoveMask(matches3) << 32);
-                while (candidates != 0)
-                {
-                    var position = offset + 64 + BitOperations.TrailingZeroCount(candidates);
-                    if (IsDiscardedScriptDataStop(utf8, position))
-                    {
-                        return position;
-                    }
-                    candidates &= candidates - 1;
-                }
-                dense = true;
-                offset += 4 * Vector256<Byte>.Count;
-            }
-            while (offset <= vectorEnd)
-            {
-                var input = Vector256.LoadUnsafe(ref source, (UIntPtr)offset);
-                var candidates = (UInt32)Avx2.MoveMask(Avx2.CompareEqual(input, lessThan));
-                while (candidates != 0)
-                {
-                    var position = offset + BitOperations.TrailingZeroCount(candidates);
-                    if (IsDiscardedScriptDataStop(utf8, position))
-                    {
-                        return position;
-                    }
-                    candidates &= candidates - 1;
-                }
-                offset += Vector256<Byte>.Count;
-            }
-
-            return IndexOfDiscardedScriptDataStopScalar(utf8, offset);
-        }
-
-        return IndexOfDiscardedScriptDataStopScalar(utf8, 0);
-    }
-
-    private static Int32 IndexOfDiscardedScriptDataStopScalar(ReadOnlySpan<Byte> utf8, Int32 offset)
-    {
-        while (true)
-        {
-            var found = utf8[offset..].IndexOf((Byte)'<');
-            if (found < 0)
-            {
-                return -1;
-            }
-            var position = offset + found;
-            if (position + 1 == utf8.Length)
-            {
-                return position;
-            }
-            var next = utf8[position + 1];
-            if (next == (Byte)'/')
-            {
-                return position;
-            }
-            if (next != (Byte)'!')
-            {
-                offset = position + 1;
-                continue;
-            }
-            if (position + 2 == utf8.Length)
-            {
-                return position;
-            }
-            if (utf8[position + 2] != (Byte)'-')
-            {
-                offset = position + 2;
-                continue;
-            }
-            if (position + 3 == utf8.Length)
-            {
-                return position;
-            }
-            if (utf8[position + 3] == (Byte)'-')
-            {
-                return position;
-            }
-            offset = position + 3;
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Boolean IsDiscardedScriptDataStop(ReadOnlySpan<Byte> utf8, Int32 position)
-    {
-        if (position + 1 == utf8.Length)
-        {
-            return true;
-        }
-        var next = utf8[position + 1];
-        if (next == (Byte)'/')
-        {
-            return true;
-        }
-        if (next != (Byte)'!')
-        {
-            return false;
-        }
-        // "<!" only matters when it completes "<!--"; a split candidate defers to the
-        // per-byte machine, which can wait for the next chunk.
-        if (position + 2 == utf8.Length)
-        {
-            return true;
-        }
-        if (utf8[position + 2] != (Byte)'-')
-        {
-            return false;
-        }
-        return position + 3 == utf8.Length || utf8[position + 3] == (Byte)'-';
-    }
-
     private Utf8TokenBuffer AttributeValue => _attributeValue ??= new(128);
 
     private Utf8TokenBuffer DoctypePublic => _doctypePublic ??= new(64);
 
     private Utf8TokenBuffer DoctypeSystem => _doctypeSystem ??= new(64);
 
-    protected Utf8HtmlTokenizerCore(
+    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink)
+        : this(sink, null, HtmlStreamingLimits.Default, countInputBytes: true) { }
+
+    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink, HtmlStreamingLimits limits)
+        : this(sink, null, limits, countInputBytes: true) { }
+
+    public Utf8HtmlTokenizer(IUtf8HtmlTokenSink sink, Utf8HtmlTokenizerStateMetrics? stateMetrics)
+        : this(sink, stateMetrics, HtmlStreamingLimits.Default, countInputBytes: true) { }
+
+    public Utf8HtmlTokenizer(
         IUtf8HtmlTokenSink sink,
         Utf8HtmlTokenizerStateMetrics? stateMetrics,
         HtmlStreamingLimits limits,
-        Boolean countInputBytes,
-        Boolean resourceLimitsEnabled
+        Boolean countInputBytes
     )
     {
         ArgumentNullException.ThrowIfNull(limits);
@@ -443,7 +117,6 @@ internal partial class Utf8HtmlTokenizerCore : IUtf8HtmlTokenizer
         _stateMetrics = stateMetrics;
         _maximumBufferedTokenBytesAllowed = limits.MaximumBufferedTokenBytes;
         _maximumInputBytesAllowed = countInputBytes ? limits.MaximumInputBytes : Int64.MaxValue;
-        _resourceLimitsEnabled = resourceLimitsEnabled;
     }
 
     public static Int32 StateCount => StateNames.Length;
@@ -643,7 +316,7 @@ internal partial class Utf8HtmlTokenizerCore : IUtf8HtmlTokenizer
     {
         ThrowIfCompleted();
         var previousBytesConsumed = 0L;
-        if (_resourceLimitsEnabled)
+        if (TResourceLimits.Enabled)
         {
             previousBytesConsumed = _inputBytesConsumed;
             var observedInputBytes = SaturatingAdd(previousBytesConsumed, utf8.Length);
@@ -658,7 +331,7 @@ internal partial class Utf8HtmlTokenizerCore : IUtf8HtmlTokenizer
         }
 
         var consumed = WriteTrustedUtf8(utf8, yieldOnRequest);
-        if (_resourceLimitsEnabled)
+        if (TResourceLimits.Enabled)
         {
             _inputBytesConsumed = SaturatingAdd(previousBytesConsumed, consumed);
         }
@@ -1301,12 +974,12 @@ internal partial class Utf8HtmlTokenizerCore : IUtf8HtmlTokenizer
 
     private void Append(Utf8TokenBuffer buffer, Byte value)
     {
-        if (_resourceLimitsEnabled)
+        if (TResourceLimits.Enabled)
         {
             EnsureBufferedTokenCapacity(1);
         }
         buffer.Append(value);
-        if (_resourceLimitsEnabled)
+        if (TResourceLimits.Enabled)
         {
             ObserveBufferAppend(1);
         }
@@ -1314,12 +987,12 @@ internal partial class Utf8HtmlTokenizerCore : IUtf8HtmlTokenizer
 
     private void Append(Utf8TokenBuffer buffer, ReadOnlySpan<Byte> value)
     {
-        if (_resourceLimitsEnabled)
+        if (TResourceLimits.Enabled)
         {
             EnsureBufferedTokenCapacity(value.Length);
         }
         buffer.Append(value);
-        if (_resourceLimitsEnabled)
+        if (TResourceLimits.Enabled)
         {
             ObserveBufferAppend(value.Length);
         }
@@ -1353,7 +1026,7 @@ internal partial class Utf8HtmlTokenizerCore : IUtf8HtmlTokenizer
             return;
         }
 
-        if (_resourceLimitsEnabled)
+        if (TResourceLimits.Enabled)
         {
             _bufferedTokenBytes -= buffer.WrittenCount;
         }

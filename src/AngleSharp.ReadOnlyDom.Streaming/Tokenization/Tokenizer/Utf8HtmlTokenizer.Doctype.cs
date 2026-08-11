@@ -1,6 +1,7 @@
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-internal partial class Utf8HtmlTokenizerCore
+internal partial class Utf8HtmlTokenizer<TResourceLimits>
+    where TResourceLimits : struct, IResourceLimitPolicy
 {
     private enum DoctypeState : byte
     {

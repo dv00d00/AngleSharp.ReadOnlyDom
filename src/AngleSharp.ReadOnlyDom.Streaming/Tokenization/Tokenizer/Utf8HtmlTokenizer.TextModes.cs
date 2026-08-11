@@ -3,7 +3,8 @@ using System.Runtime.CompilerServices;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-internal partial class Utf8HtmlTokenizerCore
+internal partial class Utf8HtmlTokenizer<TResourceLimits>
+    where TResourceLimits : struct, IResourceLimitPolicy
 {
     private static readonly SearchValues<Byte> RawTextTerminators = SearchValues.Create("<\0\r"u8);
     private static readonly SearchValues<Byte> EscapedScriptTextTerminators = SearchValues.Create("<-\0\r"u8);
@@ -561,7 +562,7 @@ internal partial class Utf8HtmlTokenizerCore
             var remaining = utf8[index..];
             var run = TCapture.Enabled
                 ? IndexOfCaptureStop<TTrust>(remaining, RawTextTerminators, RawTextArbitraryAllowed)
-                : IndexOfDiscardedScriptDataStop(remaining);
+                : Utf8DiscardedTextScanner.IndexOfScriptDataStop(remaining);
             if (run < 0)
             {
                 RecordState<TMetrics>((Int32)State.ScriptData, remaining.Length);
@@ -655,7 +656,7 @@ internal partial class Utf8HtmlTokenizerCore
                 ? isRcData
                     ? IndexOfCaptureStop<TTrust>(remaining, DataTextTerminators, DataTextArbitraryAllowed)
                     : IndexOfCaptureStop<TTrust>(remaining, RawTextTerminators, RawTextArbitraryAllowed)
-                : IndexOfDiscardedRawTextStop(remaining);
+                : Utf8DiscardedTextScanner.IndexOfRawTextStop(remaining);
             if (run < 0)
             {
                 RecordState<TMetrics>((Int32)State.RawText, remaining.Length);

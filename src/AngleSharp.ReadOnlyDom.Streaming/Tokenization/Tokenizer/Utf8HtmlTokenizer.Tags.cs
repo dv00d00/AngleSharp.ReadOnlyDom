@@ -3,7 +3,8 @@ using System.Runtime.CompilerServices;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-internal partial class Utf8HtmlTokenizerCore
+internal partial class Utf8HtmlTokenizer<TResourceLimits>
+    where TResourceLimits : struct, IResourceLimitPolicy
 {
     private const Int32 AttributeIndexPromotionThreshold = 16;
     private const UInt64 IframeKey = 0x000000001CBB9A4AUL;

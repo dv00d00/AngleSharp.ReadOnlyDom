@@ -2,7 +2,8 @@ using System.Buffers;
 
 namespace AngleSharp.ReadOnlyDom.Streaming.Tokenization;
 
-internal partial class Utf8HtmlTokenizerCore
+internal partial class Utf8HtmlTokenizer<TResourceLimits>
+    where TResourceLimits : struct, IResourceLimitPolicy
 {
     private static readonly SearchValues<Byte> DataTextTerminators = SearchValues.Create("<&\0\r"u8);
     private static readonly SearchValues<Byte> PlaintextTerminators = SearchValues.Create("\0\r"u8);
