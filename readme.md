@@ -345,7 +345,8 @@ dotnet run --project samples/AngleSharp.ReadOnlyDom.MarkdownProxy -c Release
 ```
 
 The Hacker News reader folds a live list page into NDJSON one story at a time, and unfurls a link-preview card for
-each row as it scrolls into view — abandoning each linked page's download the moment its `<head>` ends:
+each row as it scrolls into view — abandoning each linked page's download the moment its `<head>` ends. It targets
+`net11.0` with platform async enabled, so it needs a .NET 11 SDK:
 
 ```powershell
 dotnet run --project samples/AngleSharp.ReadOnlyDom.HackerNews -c Release

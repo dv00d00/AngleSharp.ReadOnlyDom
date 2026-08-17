@@ -5,8 +5,13 @@ UTF-8 bytes, a compiled plan folds it into NDJSON, and each story line is flushe
 is final. Scroll, and every row unfurls the way a chat client does — the linked page's card metadata streams in
 field by field, and the download is abandoned as soon as the head ends.
 
+The project targets `net11.0` and turns platform async on, so a .NET 11 SDK is required to build it.
+
 ```powershell
 dotnet run --project samples/AngleSharp.ReadOnlyDom.HackerNews -c Release
+
+# The tokenizer's own async frames join the lane with the repository's net11 switches:
+dotnet run --project samples/AngleSharp.ReadOnlyDom.HackerNews -c Release -p:Net11Lane=true -p:Net11Async=true
 
 # Then open the printed URL, or read the endpoints directly:
 curl.exe --no-buffer "http://localhost:5000/api/stories?feed=news"
@@ -77,6 +82,33 @@ BOM or `meta` declaration decides.
 In the browser, responses are read with `TextDecoder(..., { stream: true })`, which holds the tail of a split
 multi-byte scalar across chunk boundaries — the same problem the tokenizer solves on the way in, one layer up.
 Card text is set with `textContent`, never as markup.
+
+## Platform async
+
+This sample is nothing but async I/O wrapped around a synchronous tokenizer, which makes it a fair place to put
+.NET 11's platform async to work. `Features=runtime-async=on` hands suspension to the runtime instead of having the
+compiler generate a state machine per async method.
+
+Two things are worth knowing before copying the switch:
+
+- The compiler feature flag is the switch. `UseRuntimeAsync` on its own is a silent no-op, and as of SDK
+  11.0.100-preview.7 there is no friendly MSBuild property for it — grep the SDK targets and nothing turns up.
+- Restore does not flow `AdditionalProperties` across a project reference, so the library's own net11.0 flavour
+  cannot be requested from this project file; `Net11Lane`/`Net11Async` have to arrive as global `-p:` properties or
+  restore fails with NETSDK1005. Without them the app still runs: net11.0 app against the net10.0 library.
+
+It is measurable, not assumed. Async state-machine types emitted, from the built assemblies:
+
+| Assembly | state machines | size |
+| --- | --- | --- |
+| sample, `runtime-async=on` | 0 | 43,008 B |
+| sample, feature off | 3 | 52,224 B |
+| streaming library, net11.0 async lane | 0 | 293,376 B |
+| streaming library, net10.0 | 14 | 309,760 B |
+
+Whether that is *faster* is a separate question this sample does not answer. The repository's earlier measurements on
+preview 6 had runtime-async gaining 1–4% on streaming shapes while the preview JIT lost 8–12% on the synchronous
+tokenizer loop, which swamped it. Treat the lane as something to measure per release, not as a win already banked.
 
 ## Talking to someone else's server
 
