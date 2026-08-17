@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RODOM streaming Hacker News reader</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Streaming query plan · HTML bytes in, NDJSON out</div>
+    <h1>Hacker News, one row at a time</h1>
+    <p>
+      The server folds the list page into one JSON line per story and flushes each line the moment that
+      story's markup is final, so rows appear as the bytes arrive. Scroll, and each row unfurls the same way
+      a chat client does: the linked page's card metadata streams in field by field, and the fetch is
+      abandoned as soon as the head ends.
+    </p>
+  </header>
+
+  <main>
+    <div class="controls">
+      <label>
+        Feed
+        <select id="feed">
+          <option value="news" selected>front page</option>
+          <option value="newest">newest</option>
+          <option value="best">best</option>
+          <option value="ask">ask</option>
+          <option value="show">show</option>
+          <option value="jobs">jobs</option>
+        </select>
+      </label>
+      <label>
+        Auto-refresh
+        <select id="interval">
+          <option value="0">off</option>
+          <option value="30" selected>every 30s</option>
+          <option value="60">every 60s</option>
+          <option value="300">every 5m</option>
+        </select>
+      </label>
+      <button id="refresh" type="button">Refresh now</button>
+      <p id="status" role="status">Loading the front page …</p>
+    </div>
+
+    <ol id="stories"></ol>
+
+    <p class="footnote">
+      Cards load as rows scroll into view, three requests at a time, and the server stops reading each page
+      the moment its <code>&lt;head&gt;</code> ends—so a card usually costs a few kilobytes of a page that
+      weighs hundreds. Feeds come from a 15-second snapshot and cards from a 10-minute one, so scrolling back
+      up costs nothing. Remote text is only ever added as text, never as markup, and remote images are
+      re-served through this origin, so a preview never dials a third party from the browser.
+    </p>
+  </main>
+
+  <template id="story-template">
+    <li class="story">
+      <div class="rank"></div>
+      <div class="body">
+        <div class="headline">
+          <a class="title" target="_blank" rel="noopener noreferrer nofollow"></a>
+          <span class="site"></span>
+          <span class="delta" hidden></span>
+        </div>
+        <div class="meta">
+          <span class="points"></span>
+          <span class="user"></span>
+          <span class="age"></span>
+          <a class="comments" target="_blank" rel="noopener noreferrer nofollow"></a>
+        </div>
+        <div class="preview" hidden>
+          <div class="card-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
+          <article class="card">
+            <a class="card-hero" hidden target="_blank" rel="noopener noreferrer nofollow">
+              <img alt="" loading="lazy">
+            </a>
+            <div class="card-text">
+              <div class="card-source">
+                <img class="card-icon" alt="" hidden loading="lazy">
+                <span class="card-host"></span>
+              </div>
+              <a class="card-title" target="_blank" rel="noopener noreferrer nofollow"></a>
+              <p class="card-description"></p>
+              <p class="card-byline"></p>
+            </div>
+          </article>
+          <p class="card-note" hidden></p>
+        </div>
+      </div>
+    </li>
+  </template>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

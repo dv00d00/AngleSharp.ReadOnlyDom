@@ -344,6 +344,13 @@ The Markdown proxy is an intentionally visible end-to-end demonstration of strea
 dotnet run --project samples/AngleSharp.ReadOnlyDom.MarkdownProxy -c Release
 ```
 
+The Hacker News reader folds a live list page into NDJSON one story at a time, and unfurls a link-preview card for
+each row as it scrolls into view — abandoning each linked page's download the moment its `<head>` ends:
+
+```powershell
+dotnet run --project samples/AngleSharp.ReadOnlyDom.HackerNews -c Release
+```
+
 Opinionated text/Markdown projections and safe local Markdown navigation remain runnable examples rather than library
 surface:
 
@@ -373,6 +380,7 @@ docs/         architecture decisions, performance evidence, and upstream notes
 Start with:
 
 - [Samples](samples/AngleSharp.ReadOnlyDom.Samples/README.md)
+- [Streaming Hacker News reader](samples/AngleSharp.ReadOnlyDom.HackerNews/README.md)
 - [Text and Markdown extraction examples](samples/AngleSharp.ReadOnlyDom.ExtractionExamples/README.md)
 - [Streaming HTML-to-Markdown navigation](samples/AngleSharp.ReadOnlyDom.MarkdownNavigation/README.md)
 - [Benchmark methodology and current results](docs/BENCHMARKING.md)
