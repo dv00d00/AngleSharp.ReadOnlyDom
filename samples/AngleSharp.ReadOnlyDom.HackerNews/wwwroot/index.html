@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hacker News</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="bar">
+      <span class="brand">Hacker News</span>
+      <nav id="feeds">
+        <button type="button" data-feed="news" class="is-active">top</button>
+        <button type="button" data-feed="newest">new</button>
+        <button type="button" data-feed="best">best</button>
+        <button type="button" data-feed="ask">ask</button>
+        <button type="button" data-feed="show">show</button>
+        <button type="button" data-feed="jobs">jobs</button>
+      </nav>
+      <p id="status" role="status"></p>
+      <button type="button" id="refresh" class="refresh" aria-label="Refresh" title="Refresh">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+          <path d="M20 4.5V11h-6.5" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <ol id="stories"></ol>
+  </main>
+
+  <template id="story-template">
+    <li class="story">
+      <div class="rank"></div>
+      <div class="body">
+        <div class="headline">
+          <a class="title" target="_blank" rel="noopener noreferrer nofollow"></a>
+          <span class="site"></span>
+          <span class="delta" hidden></span>
+        </div>
+        <div class="meta">
+          <span class="points"></span>
+          <span class="user"></span>
+          <span class="age"></span>
+          <a class="comments" target="_blank" rel="noopener noreferrer nofollow"></a>
+        </div>
+        <div class="preview" hidden>
+          <div class="card-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
+          <article class="card">
+            <a class="card-hero" hidden target="_blank" rel="noopener noreferrer nofollow">
+              <img alt="" loading="lazy">
+            </a>
+            <div class="card-text">
+              <div class="card-source">
+                <img class="card-icon" alt="" hidden loading="lazy">
+                <span class="card-host"></span>
+              </div>
+              <a class="card-title" target="_blank" rel="noopener noreferrer nofollow"></a>
+              <p class="card-description"></p>
+              <p class="card-byline"></p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </li>
+  </template>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
