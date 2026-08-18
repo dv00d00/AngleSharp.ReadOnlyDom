@@ -3,7 +3,7 @@ using AngleSharp.ReadOnlyDom.Streaming.Query;
 namespace AngleSharp.ReadOnlyDom.HackerNews.Preview;
 
 /// <summary>
-/// Reads the head of a linked page the way a chat client does, and nothing else. The <c>meta</c> and
+/// Reads the head of a linked page and nothing else. The <c>meta</c> and
 /// <c>link</c> keys are matched in the callback rather than by one query node per key: a single node with
 /// three projected attributes covers a dozen spellings of the same four fields, and adding another costs a
 /// branch instead of a node.

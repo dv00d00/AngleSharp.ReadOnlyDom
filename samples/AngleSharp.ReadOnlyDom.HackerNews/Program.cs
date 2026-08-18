@@ -1,6 +1,7 @@
 using System.IO.Pipelines;
 using System.Text;
 using AngleSharp.ReadOnlyDom.HackerNews.Feed;
+using AngleSharp.ReadOnlyDom.HackerNews.Http;
 using AngleSharp.ReadOnlyDom.HackerNews.Preview;
 using AngleSharp.ReadOnlyDom.HackerNews.Upstream;
 using AngleSharp.ReadOnlyDom.Streaming;
@@ -13,15 +14,29 @@ var feedLimits = new HtmlStreamingLimits(maximumInputBytes: 4L * 1024 * 1024);
 var previewLimits = new HtmlStreamingLimits(maximumInputBytes: 8L * 1024 * 1024);
 var feedLifetime = TimeSpan.FromSeconds(15);
 var previewLifetime = TimeSpan.FromMinutes(10);
+var imageLifetime = TimeSpan.FromDays(1);
 const long MaximumImageBytes = 5L * 1024 * 1024;
+const string NdjsonContentType = "application/x-ndjson; charset=utf-8";
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
 builder.Services.AddSingleton(_ => new UpstreamFetcher());
 builder.Services.AddSingleton(_ => new SnapshotCache());
 var app = builder.Build();
 
+app.UseRouting();
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(
+    new StaticFileOptions
+    {
+        OnPrepareResponse = static delivery =>
+        {
+            // The UI's assets are not fingerprinted, so they revalidate instead of expiring: the ETag the
+            // middleware already emits turns an unchanged asset into a 304 and a changed one into a 200.
+            delivery.Context.Response.Headers.CacheControl = "private, no-cache";
+        },
+    }
+);
 
 // Hacker News list markup -> one NDJSON line per story, published as each story's subtext row closes.
 app.MapGet(
@@ -36,18 +51,15 @@ app.MapGet(
     {
         if (!HackerNewsFeeds.TryResolve(feed, out var name, out var source))
         {
+            ResponseCaching.NoStore(context.Response);
             await Results.BadRequest($"Unknown feed '{feed}'.").ExecuteAsync(context);
             return;
         }
 
-        context.Response.Headers.CacheControl = "no-store";
-
         if (cache.TryGet($"feed:{name}", feedLifetime, out var snapshot, out var age))
         {
-            context.Response.ContentType = "application/x-ndjson; charset=utf-8";
-            context.Response.ContentLength = snapshot.Length;
-            context.Response.Headers["X-Snapshot-Age"] = ((Int32)age.TotalSeconds).ToString();
-            await context.Response.BodyWriter.WriteAsync(snapshot, context.RequestAborted);
+            await ResponseCaching.Snapshot(context, snapshot, age, feedLifetime, NdjsonContentType)
+                .ExecuteAsync(context);
             return;
         }
 
@@ -58,14 +70,17 @@ app.MapGet(
         using var response = fetched;
         if (!response.IsSuccessStatusCode)
         {
+            ResponseCaching.NoStore(context.Response);
             context.Response.StatusCode = StatusCodes.Status502BadGateway;
             await context.Response.WriteAsync($"Hacker News answered {(Int32)response.StatusCode}.");
             return;
         }
 
         await using var body = await response.Content.ReadAsStreamAsync(context.RequestAborted);
-        context.Response.ContentType = "application/x-ndjson; charset=utf-8";
-        context.Response.Headers["X-Snapshot-Age"] = "0";
+        context.Response.ContentType = NdjsonContentType;
+        // No validator is available while the body is still being produced, so the live response carries
+        // freshness only; the snapshot it leaves behind serves the next caller with an ETag.
+        ResponseCaching.Fresh(context.Response, feedLifetime);
 
         using var stories = new StoryFeedBuffer();
         try
@@ -74,8 +89,8 @@ app.MapGet(
                 PipeReader.Create(body),
                 context.Response.BodyWriter,
                 stories,
-                // Publish a record the moment it is final rather than waiting for a 16 KiB batch: the
-                // point of the sample is that the first row renders before the last byte arrives.
+                // Publish a record the moment it is final rather than waiting for a 16 KiB batch, so the
+                // first row renders before the last byte arrives.
                 flushThreshold: 1,
                 inputSliceSize: 4 * 1024,
                 cancellationToken: context.RequestAborted,
@@ -106,20 +121,18 @@ app.MapGet(
     {
         if (!UpstreamFetcher.TryParseTarget(url, out var target, out var error))
         {
+            ResponseCaching.NoStore(context.Response);
             await Results.BadRequest(error).ExecuteAsync(context);
             return;
         }
 
-        context.Response.Headers.CacheControl = "no-store";
         context.Response.Headers["X-Content-Type-Options"] = "nosniff";
 
         var key = $"preview:{target.AbsoluteUri}";
         if (cache.TryGet(key, previewLifetime, out var cached, out var cachedAge))
         {
-            context.Response.ContentType = "application/x-ndjson; charset=utf-8";
-            context.Response.ContentLength = cached.Length;
-            context.Response.Headers["X-Snapshot-Age"] = ((Int32)cachedAge.TotalSeconds).ToString();
-            await context.Response.BodyWriter.WriteAsync(cached, context.RequestAborted);
+            await ResponseCaching.Snapshot(context, cached, cachedAge, previewLifetime, NdjsonContentType)
+                .ExecuteAsync(context);
             return;
         }
 
@@ -130,6 +143,7 @@ app.MapGet(
         using var response = fetched;
         if (!response.IsSuccessStatusCode)
         {
+            ResponseCaching.NoStore(context.Response);
             context.Response.StatusCode = StatusCodes.Status502BadGateway;
             await context.Response.WriteAsync($"{target.Host} answered {(Int32)response.StatusCode}.");
             return;
@@ -137,6 +151,7 @@ app.MapGet(
 
         if (!UpstreamFetcher.IsHtml(response.Content.Headers))
         {
+            ResponseCaching.NoStore(context.Response);
             context.Response.StatusCode = StatusCodes.Status415UnsupportedMediaType;
             await context.Response.WriteAsync($"{response.Content.Headers.ContentType} is not an HTML document.");
             return;
@@ -145,8 +160,8 @@ app.MapGet(
         // Everything a card needs is in the head, so the input ends the moment the head does. The rest of
         // the document — usually the overwhelming majority of it — is never pulled off the wire.
         await using var body = new EarlyStopStream(await response.Content.ReadAsStreamAsync(context.RequestAborted));
-        context.Response.ContentType = "application/x-ndjson; charset=utf-8";
-        context.Response.Headers["X-Snapshot-Age"] = "0";
+        context.Response.ContentType = NdjsonContentType;
+        ResponseCaching.Fresh(context.Response, previewLifetime);
 
         // Relative URLs in the document resolve against where the response actually came from, which is
         // not necessarily where the request was sent.
@@ -192,15 +207,43 @@ app.MapGet(
     {
         if (!UpstreamFetcher.TryParseTarget(url, out var target, out var error))
         {
+            ResponseCaching.NoStore(context.Response);
             await Results.BadRequest(error).ExecuteAsync(context);
             return;
         }
 
-        var fetched = await FetchAsync(context, upstream, target);
+        // The proxy is transparent about validators: the browser's conditional request is passed upstream and
+        // a 304 is relayed, so a warm cache costs headers rather than an image.
+        var fetched = await FetchAsync(
+            context,
+            upstream,
+            target,
+            request =>
+            {
+                foreach (var header in (string[])["If-None-Match", "If-Modified-Since"])
+                {
+                    if (context.Request.Headers.TryGetValue(header, out var values))
+                        request.Headers.TryAddWithoutValidation(header, (IEnumerable<String?>)values);
+                }
+            }
+        );
         if (fetched is null)
             return;
 
         using var response = fetched;
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        ResponseCaching.Fresh(context.Response, imageLifetime);
+        if (response.Headers.ETag is { } upstreamETag)
+            context.Response.Headers.ETag = upstreamETag.ToString();
+        if (response.Content.Headers.LastModified is { } lastModified)
+            context.Response.Headers.LastModified = lastModified.ToString("R");
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotModified)
+        {
+            context.Response.StatusCode = StatusCodes.Status304NotModified;
+            return;
+        }
+
         var mediaType = response.Content.Headers.ContentType?.MediaType;
         if (
             !response.IsSuccessStatusCode
@@ -208,13 +251,12 @@ app.MapGet(
             || !mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
         )
         {
+            ResponseCaching.NoStore(context.Response);
             context.Response.StatusCode = StatusCodes.Status502BadGateway;
             return;
         }
 
         context.Response.ContentType = mediaType;
-        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
-        context.Response.Headers.CacheControl = "private, max-age=300";
 
         await using var body = await response.Content.ReadAsStreamAsync(context.RequestAborted);
         var writer = context.Response.BodyWriter;
@@ -239,21 +281,28 @@ return;
 
 // Fetches upstream headers before a single response byte is written, so a refused target or a dead host
 // still gets a status code instead of a truncated stream.
-static async Task<HttpResponseMessage?> FetchAsync(HttpContext context, UpstreamFetcher upstream, Uri target)
+static async Task<HttpResponseMessage?> FetchAsync(
+    HttpContext context,
+    UpstreamFetcher upstream,
+    Uri target,
+    Action<HttpRequestMessage>? configure = null
+)
 {
     try
     {
-        return await upstream.GetAsync(target, context.RequestAborted);
+        return await upstream.GetAsync(target, context.RequestAborted, configure);
     }
     catch (Exception exception) when (exception is HttpRequestException or UpstreamBlockedException or IOException)
     {
         var (status, message) = UpstreamFetcher.Describe(exception);
+        ResponseCaching.NoStore(context.Response);
         context.Response.StatusCode = status;
         await context.Response.WriteAsync(message);
         return null;
     }
     catch (OperationCanceledException) when (!context.RequestAborted.IsCancellationRequested)
     {
+        ResponseCaching.NoStore(context.Response);
         context.Response.StatusCode = StatusCodes.Status504GatewayTimeout;
         await context.Response.WriteAsync($"{target.Host} did not answer in time.");
         return null;

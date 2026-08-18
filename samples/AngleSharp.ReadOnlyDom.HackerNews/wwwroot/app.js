@@ -1,24 +1,21 @@
 const HN_BASE = "https://news.ycombinator.com/";
+const REFRESH_SECONDS = 60;
 const MAX_CONCURRENT_PREVIEWS = 3;
 const SAFE_COLOR = /^(#[0-9a-f]{3,8}|rgba?\([\d\s,.%/]+\))$/i;
 
-const feedSelect = document.querySelector("#feed");
-const intervalSelect = document.querySelector("#interval");
+const feedTabs = document.querySelector("#feeds");
 const refreshButton = document.querySelector("#refresh");
 const statusLine = document.querySelector("#status");
 const list = document.querySelector("#stories");
 const template = document.querySelector("#story-template");
 
 const rows = new Map();
+let feed = "news";
 let previous = new Map();
-let refreshTimer = null;
 let inFlight = null;
 
-/**
- * Yields one record per NDJSON line as the response arrives. TextDecoder keeps the tail of a split
- * multi-byte scalar across chunk boundaries, which mirrors what the server does on the way in.
- */
-async function* readRecords(response, onBytes) {
+/** Yields one record per NDJSON line as the response arrives. */
+async function* readRecords(response) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8");
   let pending = "";
@@ -26,7 +23,6 @@ async function* readRecords(response, onBytes) {
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
-    onBytes(value.byteLength);
     pending += decoder.decode(value, { stream: true });
 
     let newline;
@@ -60,17 +56,13 @@ function formatAge(unixSeconds) {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-function formatBytes(bytes) {
-  return bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`;
-}
-
 // ---------------------------------------------------------------- story rows
 
 function createRow(story) {
   const row = template.content.firstElementChild.cloneNode(true);
   row.dataset.id = story.id;
-  // Every row shows its card frame straight away and fills it in when it scrolls into view, so the list
-  // has its final shape from the start instead of shifting under the reader as cards arrive.
+  // The card frame is reserved up front and filled when the row scrolls into view, so the list keeps its
+  // shape instead of shifting as cards arrive.
   const pane = row.querySelector(".preview");
   pane.hidden = false;
   pane.classList.add("is-pending");
@@ -104,9 +96,9 @@ function renderRow(row, story) {
   const delta = row.querySelector(".delta");
   delta.hidden = true;
   delta.className = "delta";
-  if (previous.size === 0) {
-    // Nothing to compare against on the first load.
-  } else if (before === undefined) {
+  if (previous.size === 0) return;
+
+  if (before === undefined) {
     delta.textContent = "new";
     delta.classList.add("is-fresh");
     delta.hidden = false;
@@ -130,7 +122,7 @@ function tickAges() {
 
 // ------------------------------------------------------------ preview cards
 
-/** Everything remote is proxied back through this origin, so no card dials a third party. */
+/** Remote images are re-served from this origin. */
 function proxied(url) {
   return `/api/image?url=${encodeURIComponent(url)}`;
 }
@@ -179,79 +171,41 @@ function renderCard(pane, card) {
   }
 }
 
-function renderStats(pane, stats, age) {
-  const note = pane.querySelector(".card-note");
-  const read = formatBytes(stats.bytesRead);
-  if (age > 0) {
-    note.textContent = `cached ${age}s ago · built from ${read} of head`;
-  } else {
-    note.textContent = stats.stopped
-      ? `built from ${read} of head, then the download was abandoned`
-      : `built from ${read}`;
-  }
-  note.hidden = false;
-}
-
 async function loadPreview(row) {
   const pane = row.querySelector(".preview");
-  const note = pane.querySelector(".card-note");
   const card = { fields: {}, weights: {}, fallbackTitle: row.story.title };
-
-  pane.hidden = false;
-  pane.classList.add("is-loading");
-  pane.classList.remove("is-empty");
-  note.hidden = true;
 
   try {
     const response = await fetch(`/api/preview?url=${encodeURIComponent(absolute(row.story.url))}`);
-    if (!response.ok) throw new Error(`${response.status} ${(await response.text()).trim()}`);
-    const snapshotAge = Number(response.headers.get("X-Snapshot-Age") ?? 0);
+    if (!response.ok) throw new Error(String(response.status));
 
-    for await (const record of readRecords(response, () => {})) {
-      // The frame stops being a placeholder as soon as there is anything real to put in it.
+    for await (const record of readRecords(response)) {
       pane.classList.remove("is-pending");
-      switch (record.kind) {
-        case "source":
-          card.fields.url = record.url;
-          card.fields.host = record.host;
-          renderCard(pane, card);
-          break;
-        case "meta":
-          // Fields arrive in document order, not in order of quality: keep the best one seen.
-          if (record.weight >= (card.weights[record.field] ?? 0)) {
-            card.weights[record.field] = record.weight;
-            card.fields[record.field] = record.value;
-            renderCard(pane, card);
-          }
-          break;
-        case "stats":
-          renderStats(pane, record, snapshotAge);
-          break;
-        case "note":
-          note.textContent = record.text;
-          note.hidden = false;
-          break;
+      if (record.kind === "source") {
+        card.fields.url = record.url;
+        card.fields.host = record.host;
+        renderCard(pane, card);
+      } else if (record.kind === "meta" && record.weight >= (card.weights[record.field] ?? 0)) {
+        // Fields arrive in document order, not in order of quality: keep the best one seen.
+        card.weights[record.field] = record.weight;
+        card.fields[record.field] = record.value;
+        renderCard(pane, card);
       }
     }
 
     if (!card.fields.icon && card.fields.url) {
-      // No declared icon: try the conventional location and let onerror hide it if it is not there.
       card.fields.icon = new URL("/favicon.ico", card.fields.url).href;
       renderCard(pane, card);
     }
-  } catch (error) {
-    // A page that will not give up a card is not an error worth shouting about: collapse the frame to a
-    // single muted line rather than leaving a hole or shifting everything below it.
-    pane.classList.add("is-empty");
-    note.textContent = "no preview available";
-    note.hidden = false;
-    console.debug("preview failed", row.story.url, error.message);
+    if (!card.fields.title && !card.fields.description && !card.fields.image) pane.hidden = true;
+  } catch {
+    pane.hidden = true;
   } finally {
-    pane.classList.remove("is-loading", "is-pending");
+    pane.classList.remove("is-pending");
   }
 }
 
-// One request per row is polite enough; three at a time keeps a fast scroll from opening thirty sockets.
+// Three at a time, so a fast scroll does not open thirty sockets.
 const previewQueue = [];
 let activePreviews = 0;
 
@@ -283,36 +237,33 @@ const previewObserver = new IntersectionObserver(
 
 // ------------------------------------------------------------------ refresh
 
-async function refresh() {
+/** `manual` revalidates instead of reading the browser's copy, so the button always reaches the server. */
+async function refresh({ manual = false } = {}) {
   inFlight?.abort();
   const controller = new AbortController();
   inFlight = controller;
 
-  const feed = feedSelect.value;
-  const started = performance.now();
-  let bytes = 0;
+  refreshButton.classList.add("is-busy");
+  refreshButton.disabled = true;
+  statusLine.textContent = "updating…";
   let count = 0;
-  let firstRowMs = null;
-  list.classList.add("is-streaming");
-  statusLine.textContent = `Streaming ${feed} …`;
 
   try {
-    const response = await fetch(`/api/stories?feed=${encodeURIComponent(feed)}`, { signal: controller.signal });
-    if (!response.ok) throw new Error(`${response.status} ${(await response.text()).trim()}`);
-    const snapshotAge = Number(response.headers.get("X-Snapshot-Age") ?? 0);
+    const response = await fetch(`/api/stories?feed=${encodeURIComponent(feed)}`, {
+      signal: controller.signal,
+      cache: manual ? "no-cache" : "default"
+    });
+    if (!response.ok) throw new Error(String(response.status));
 
     const current = new Map();
-    for await (const story of readRecords(response, chunk => (bytes += chunk))) {
-      if (firstRowMs === null) firstRowMs = Math.round(performance.now() - started);
+    for await (const story of readRecords(response)) {
       current.set(story.id, story);
 
       const row = rows.get(story.id) ?? createRow(story);
       rows.set(story.id, row);
       renderRow(row, story);
       if (list.children[count] !== row) list.insertBefore(row, list.children[count] ?? null);
-
       count++;
-      statusLine.textContent = `Streaming ${feed} … ${count} stories · ${formatBytes(bytes)}`;
     }
 
     while (list.children.length > count) {
@@ -323,37 +274,32 @@ async function refresh() {
     }
 
     previous = current;
-    const source = snapshotAge > 0 ? `snapshot ${snapshotAge}s old` : "live from news.ycombinator.com";
-    statusLine.textContent =
-      `${count} stories · ${formatBytes(bytes)} · first row after ${firstRowMs ?? 0} ms · ` +
-      `${Math.round(performance.now() - started)} ms total · ${source}`;
+    statusLine.textContent = `updated ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   } catch (error) {
-    if (error.name !== "AbortError") statusLine.textContent = `Refresh failed: ${error.message}`;
+    if (error.name !== "AbortError") statusLine.textContent = "could not reach the feed";
   } finally {
-    list.classList.remove("is-streaming");
     if (inFlight === controller) inFlight = null;
+    refreshButton.classList.remove("is-busy");
+    refreshButton.disabled = false;
   }
 }
 
-function scheduleRefresh() {
-  clearInterval(refreshTimer);
-  const seconds = Number(intervalSelect.value);
-  if (seconds > 0) {
-    refreshTimer = setInterval(() => {
-      if (!document.hidden) refresh();
-    }, seconds * 1000);
-  }
-}
+feedTabs.addEventListener("click", event => {
+  const tab = event.target.closest("button[data-feed]");
+  if (!tab || tab.dataset.feed === feed) return;
 
-feedSelect.addEventListener("change", () => {
+  for (const button of feedTabs.children) button.classList.toggle("is-active", button === tab);
+  feed = tab.dataset.feed;
   list.replaceChildren();
   rows.clear();
   previous = new Map();
   refresh();
 });
-intervalSelect.addEventListener("change", scheduleRefresh);
-refreshButton.addEventListener("click", refresh);
 
+refreshButton.addEventListener("click", () => refresh({ manual: true }));
+
+setInterval(() => {
+  if (!document.hidden) refresh();
+}, REFRESH_SECONDS * 1000);
 setInterval(tickAges, 15000);
-scheduleRefresh();
 refresh();

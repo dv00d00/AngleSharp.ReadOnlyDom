@@ -57,12 +57,21 @@ internal sealed class UpstreamFetcher : IDisposable
         return true;
     }
 
-    internal async Task<HttpResponseMessage> GetAsync(Uri target, CancellationToken cancellationToken)
+    /// <summary>
+    /// Fetches <paramref name="target"/>, following redirects by hand. <paramref name="configure"/> runs for
+    /// every hop, so conditional headers survive a redirect chain.
+    /// </summary>
+    internal async Task<HttpResponseMessage> GetAsync(
+        Uri target,
+        CancellationToken cancellationToken,
+        Action<HttpRequestMessage>? configure = null
+    )
     {
         var current = target;
         for (var hop = 0; ; hop++)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, current);
+            configure?.Invoke(request);
             var response = await _client
                 .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
                 .ConfigureAwait(false);

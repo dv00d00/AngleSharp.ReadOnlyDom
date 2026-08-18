@@ -1,134 +1,63 @@
-# Streaming Hacker News reader sample
+# Hacker News reader
 
-A live page built from two streaming query plans. The server never holds a document: Hacker News HTML arrives as
-UTF-8 bytes, a compiled plan folds it into NDJSON, and each story line is flushed the moment that story's markup
-is final. Scroll, and every row unfurls the way a chat client does — the linked page's card metadata streams in
-field by field, and the download is abandoned as soon as the head ends.
+A Hacker News front end built on two streaming query plans. Nothing is buffered: list HTML is folded into NDJSON one
+story per line, and each row unfurls a link-preview card as it scrolls into view.
 
-The project targets `net11.0` and turns platform async on, so a .NET 11 SDK is required to build it.
+Needs a .NET 11 SDK (`net11.0`, platform async on).
 
 ```powershell
 dotnet run --project samples/AngleSharp.ReadOnlyDom.HackerNews -c Release
 
-# The tokenizer's own async frames join the lane with the repository's net11 switches:
+# with the library on the same async lane
 dotnet run --project samples/AngleSharp.ReadOnlyDom.HackerNews -c Release -p:Net11Lane=true -p:Net11Async=true
-
-# Then open the printed URL, or read the endpoints directly:
-curl.exe --no-buffer "http://localhost:5000/api/stories?feed=news"
-curl.exe --no-buffer "http://localhost:5000/api/preview?url=https%3A%2F%2Fexample.com%2F"
 ```
 
-## The feed: relating two rows without buffering
+## Endpoints
 
-The Hacker News list is a layout table from 2007, and it is a good test precisely because it is awkward. A story
-is one `tr.athing` row; its score, author, age, and comment count live in the *next* row's `td.subtext`. No element
-contains a whole story, so there is nothing to "select" and hand over as a unit.
+| | |
+| --- | --- |
+| `GET /api/stories?feed=news\|newest\|best\|ask\|show\|jobs` | NDJSON, one story per line |
+| `GET /api/preview?url=` | NDJSON card fields for a linked page |
+| `GET /api/image?url=` | image proxy, `image/*` only, 5 MiB cap |
 
-`StoryFeedPlan` handles that without buffering the page: the title row opens a record, the sibling subtext cell
-closes it, and the two are related by the tokenizer's lexical stack in a single pass.
+## Notes
 
-```csharp
-var story = html.Descendant("tr").Class("athing").OnStart(/* open a record */, "id");
-var titleLine = story.Descendant("span").Class("titleline");
-titleLine.Child("a").OnNormalizedText(/* title + href */, "href");   // Child: the site anchor is deeper
+**Feed.** A story is one `tr.athing`; its score, author, age and comments live in the *next* row's `td.subtext`. No
+element contains a whole story, so the record opens on the title row and closes when the subtext cell ends — one
+lexical pass, nothing buffered. `Child("a")` under `span.titleline` excludes the source link one level deeper in
+`span.sitebit`. The subline's anchors are untyped, so text decides: `215 comments` counts, `discuss` means none. Age
+is published as the tooltip's Unix time, so rows age themselves between refreshes.
 
-var subtext = html.Descendant("td").Class("subtext").OnEnd(/* publish the record */);
-subtext.Descendant("span").Class("score").OnNormalizedText(/* 459 points */);
-subtext.Descendant("span").Class("age").OnStart(/* the Unix time in the tooltip */, "title");
-```
+**Frontier.** `NdjsonPublisher` marks a line publishable only once whole, so the body always ends on a complete
+record and backpressure reaches the upstream socket. `flushThreshold: 1` instead of 16 KiB.
 
-Two details are worth stealing:
+**Preview.** `meta`/`link` keys are matched in the callback, not by one node per key. Fields carry a weight
+(`og:` 3 > `twitter:` 2 > `<title>` 1); the server drops anything that cannot improve on what it sent, the browser
+keeps the best seen. At `</head>` the card is final and reading stops — usually ~4 KB of a page weighing hundreds.
+Encoded lane, so transport charset wins, then BOM or `meta`.
 
-- `Child("a")` under `span.titleline` matches the story link only. The source link is one level deeper inside
-  `span.sitebit`, so a descendant query would have picked up both.
-- The subline's anchors are untyped — hide, user, age, and comments all look alike — so the plan reads all of them
-  and the state decides by text: `215 comments` counts, `discuss` means none.
+**Stop by ending input, not by cancelling.** The publish loop copies a prefix, flushes, then marks it consumed;
+cancelling in between leaves those bytes on the wire while the buffer still reports them pending, and the tail goes
+out twice. `EarlyStopStream` returns 0 instead, so the tokenizer ends normally and every record publishes once.
 
-The page's ages tick between refreshes because the plan publishes the submission instant from the `title` tooltip
-rather than the phrase "9 hours ago" — a rendered string would go stale the second it arrived.
+**Caching.** A response is never fresher than the snapshot behind it, so `max-age` is the snapshot lifetime and
+`Age` is how much of it is spent — client and server copies expire together instead of stacking. Snapshot hits carry
+a strong ETag and answer 304; a live streaming response carries freshness only, since no validator exists until the
+body is done. Proxied images pass upstream `ETag`/`Last-Modified` through, forward the browser's conditional request
+and relay the 304. UI assets are not fingerprinted, so they revalidate (`private, no-cache`). Errors are `no-store`.
+The refresh button revalidates rather than reading the browser's copy.
 
-## The publication frontier
+**Outbound.** http/https on default ports, no userinfo; redirects by hand (4 hops), re-checked each time; every
+socket goes through a `ConnectCallback` that refuses private, loopback, link-local and CGNAT addresses at connect
+time, not parse time. Card images are re-served from this origin. Feeds cache 15 s, cards 10 min. Cards load three
+at a time.
 
-Both plans write through `NdjsonPublisher`, which builds a record in a scratch buffer and copies it into a
-`PublishableUtf8Buffer` only once it is whole. `ExecuteBackpressuredAsync` publishes exactly that marked prefix, so
-the response body always ends on a complete line: whatever the client has received, it can parse and render, and a
-client that stops reading applies backpressure through to the upstream socket.
+**Platform async.** `Features=runtime-async=on` is the switch; `UseRuntimeAsync` alone is a no-op and SDK
+11.0.100-preview.7 has no property for it. Restore does not flow `AdditionalProperties` across a project reference,
+so `Net11Lane`/`Net11Async` must be global `-p:` properties or restore fails NETSDK1005. Emitted state machines: 0
+vs 3 for this app (43,008 B vs 52,224 B), 0 vs 14 for the library (293,376 B vs 309,760 B). Whether it is *faster*
+is unmeasured here — earlier preview-6 runs gained 1–4% on stream shapes while the preview JIT lost 8–12% on the
+synchronous tokenizer loop.
 
-The endpoints ask for `flushThreshold: 1` instead of the 16 KiB default. Batching would be cheaper, and would also
-defeat the point, which is that row 1 renders before row 30 exists.
-
-## The preview: a card, and then stop reading
-
-`PreviewPlan` reads the head of a linked page and nothing else. `meta` and `link` keys are matched in the callback
-rather than by one query node per key — one node with three projected attributes covers a dozen spellings of the
-same four fields, and adding another costs a branch instead of a node.
-
-Fields do not arrive in order of quality, so each one is published with a weight: `og:title` (3) outranks
-`twitter:title` (2) outranks `<title>` (1). The server suppresses anything that cannot improve on what it has
-already sent, and the browser keeps the best value seen and re-renders — no buffering of the head to decide.
-
-When the head ends, the card is final and the rest of the document is worthless, so the sample stops reading. That
-is done by ending the *input stream* (`EarlyStopStream`), not by cancelling the execution — and the difference is
-load-bearing. The publishing loop copies a publishable prefix into the response, flushes it, and only then marks it
-consumed; cancel between those steps and the prefix is on the wire while the buffer still thinks it is pending, so
-the tail gets written twice. Ending the input lets the tokenizer finish normally on end-of-input, and every record
-is published exactly once. A closing `stats` record reports what the card actually cost — typically 4 KB of a page
-that weighs several hundred.
-
-Previews run through the encoded lane (`ExecuteEncodedBackpressuredAsync`): a random page on the internet is not
-necessarily UTF-8, so the transport charset wins when it names one the runtime knows, and otherwise the document's
-BOM or `meta` declaration decides.
-
-In the browser, responses are read with `TextDecoder(..., { stream: true })`, which holds the tail of a split
-multi-byte scalar across chunk boundaries — the same problem the tokenizer solves on the way in, one layer up.
-Card text is set with `textContent`, never as markup.
-
-## Platform async
-
-This sample is nothing but async I/O wrapped around a synchronous tokenizer, which makes it a fair place to put
-.NET 11's platform async to work. `Features=runtime-async=on` hands suspension to the runtime instead of having the
-compiler generate a state machine per async method.
-
-Two things are worth knowing before copying the switch:
-
-- The compiler feature flag is the switch. `UseRuntimeAsync` on its own is a silent no-op, and as of SDK
-  11.0.100-preview.7 there is no friendly MSBuild property for it — grep the SDK targets and nothing turns up.
-- Restore does not flow `AdditionalProperties` across a project reference, so the library's own net11.0 flavour
-  cannot be requested from this project file; `Net11Lane`/`Net11Async` have to arrive as global `-p:` properties or
-  restore fails with NETSDK1005. Without them the app still runs: net11.0 app against the net10.0 library.
-
-It is measurable, not assumed. Async state-machine types emitted, from the built assemblies:
-
-| Assembly | state machines | size |
-| --- | --- | --- |
-| sample, `runtime-async=on` | 0 | 43,008 B |
-| sample, feature off | 3 | 52,224 B |
-| streaming library, net11.0 async lane | 0 | 293,376 B |
-| streaming library, net10.0 | 14 | 309,760 B |
-
-Whether that is *faster* is a separate question this sample does not answer. The repository's earlier measurements on
-preview 6 had runtime-async gaining 1–4% on streaming shapes while the preview JIT lost 8–12% on the synchronous
-tokenizer loop, which swamped it. Treat the lane as something to measure per release, not as a win already banked.
-
-## Talking to someone else's server
-
-The sample fetches URLs the page chooses, so `UpstreamFetcher` is its outbound boundary:
-
-- http and https only, on their default ports, no credentials in the URL.
-- Redirects are followed by hand (four hops) and re-checked at each one.
-- Every socket is connected through a `ConnectCallback` that resolves the host and refuses private, loopback,
-  link-local, and carrier-grade-NAT addresses. Validating at connect time rather than at parse time is what keeps a
-  name that re-resolves between the two from slipping through.
-- Card images are re-served through `/api/image` behind the same boundary and capped at 5 MiB, so opening a preview
-  never dials a third party from the browser.
-
-Cards load only for rows scrolled into view, three requests at a time. Feeds are cached for 15 seconds and cards for
-10 minutes, so a refreshing tab, several tabs, and a scroll back up the list cost the upstream sites one request
-rather than one each.
-
-## What this sample is not
-
-It is not a Hacker News client, a readability implementation, or a proxy. The plans observe lexical start/end-tag
-topology rather than browser-corrected tree topology, so omitted end tags and foster parenting can differ from a
-DOM converter — use the retained DOM lanes when corrected tree semantics matter. A page that declares its card
-metadata below the head, or only from script, gets no card here.
+**Limits.** Lexical start/end-tag topology, not corrected tree topology: omitted end tags and foster parenting can
+differ from a DOM converter. A page that declares card metadata below the head, or only from script, gets no card.
