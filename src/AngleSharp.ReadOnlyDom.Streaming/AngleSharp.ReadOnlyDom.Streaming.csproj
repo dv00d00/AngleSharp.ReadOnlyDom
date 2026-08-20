@@ -5,9 +5,6 @@
     <UseRuntimeAsync Condition="'$(Net11Async)' == 'true' and '$(TargetFramework)' == 'net11.0'">true</UseRuntimeAsync>
     <Features Condition="'$(Net11Async)' == 'true' and '$(TargetFramework)' == 'net11.0'">$(Features);runtime-async=on</Features>
     <LangVersion Condition="'$(Net11Async)' == 'true' and '$(TargetFramework)' == 'net11.0'">preview</LangVersion>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>

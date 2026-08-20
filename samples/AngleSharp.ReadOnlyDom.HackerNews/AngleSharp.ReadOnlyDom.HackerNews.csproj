@@ -2,8 +2,6 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <TargetFramework Condition="'$(Net11Lane)' == 'true'">net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <UseRuntimeAsync Condition="'$(Net11Async)' == 'true' and '$(TargetFramework)' == 'net11.0'">true</UseRuntimeAsync>
     <LangVersion Condition="'$(Net11Async)' == 'true' and '$(TargetFramework)' == 'net11.0'">preview</LangVersion>
     <Features Condition="'$(Net11Async)' == 'true' and '$(TargetFramework)' == 'net11.0'">$(Features);runtime-async=on</Features>
