@@ -24,7 +24,7 @@ $metadata = @(
     "- Runtime: ``$(dotnet --version)``"
     "- GC: Server GC (enforced by the benchmark executable and BenchmarkDotNet job)"
     "- Job: BenchmarkDotNet Default, LaunchCount=1, out-of-process (no in-process emit toolchain)"
-    "- Corpus: checked-in snapshots under tests/AngleSharp.ReadOnlyDom.Tests/temp"
+    "- Corpus: checked-in snapshots under tests/AngleSharp.ReadOnlyDom.Tests/TestData/corpus"
     "- Hardware counters: $hardwareCounterNote"
     "- Note: a single launch cannot separate per-process variance from a real effect; allocation results remain the primary micro gate."
 )

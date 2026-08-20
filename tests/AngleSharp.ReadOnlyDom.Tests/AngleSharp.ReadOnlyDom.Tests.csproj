@@ -26,7 +26,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="TestData\html5lib-tokenizer\**\*" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="temp\*.html" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="TestData\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

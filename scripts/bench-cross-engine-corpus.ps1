@@ -10,7 +10,7 @@
       codeproject) each contain one <a href> inside a <noscript> element, which this engine
       extracts and lol-html does not: <noscript> is raw text only with scripting enabled, and
       lol-html hardcodes that while this engine follows the scripting-disabled default. Over
-      47 documents a throwing guard just aborts the run, so those rows are marked instead and
+      a full-corpus run a throwing guard just aborts the run, so those rows are marked instead and
       left out of every aggregate.
     - It runs several independent passes and reports run-to-run drift, because a single pass
       cannot distinguish a structural delta from machine state.
@@ -56,7 +56,7 @@ $ErrorActionPreference = "Stop"
 $culture = [Globalization.CultureInfo]::InvariantCulture
 $root = Split-Path -Parent $PSScriptRoot
 $angleProject = Join-Path $root "benchmarks/ProductComparison/AngleSharp.NativeConsole/AngleSharp.NativeConsole.csproj"
-$corpusRoot = Join-Path $root "tests/AngleSharp.ReadOnlyDom.Tests/temp"
+$corpusRoot = Join-Path $root "tests/AngleSharp.ReadOnlyDom.Tests/TestData/corpus"
 $extension = if ($IsWindows) { ".exe" } else { "" }
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $outputDirectory = Join-Path $root "artifacts/benchmarks/$timestamp-cross-engine-corpus"

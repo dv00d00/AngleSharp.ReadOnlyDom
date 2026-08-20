@@ -126,7 +126,7 @@ and be removed after the decision.
 
 ## Workload notes
 
-`CorpusBenchmark` uses checked-in snapshots under `tests/AngleSharp.ReadOnlyDom.Tests/temp`. `small` selects five
+`CorpusBenchmark` uses checked-in snapshots under `tests/AngleSharp.ReadOnlyDom.Tests/TestData/corpus`. `small` selects five
 representative pages; `full` runs the complete corpus.
 
 `LongSyntheticConstructionBenchmark` generates a deterministic 1.96 MB page with 5,000 irrelevant attribute-heavy
