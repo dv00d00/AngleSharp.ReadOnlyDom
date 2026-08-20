@@ -6,9 +6,8 @@ using AngleSharp.Text;
 
 namespace AngleSharp.ReadOnlyDom;
 
-internal interface IReadOnlyConstructionFactory : IDomConstructionElementFactory<ReadOnlyDocument, ReadOnlyHtmlElement>;
-
-internal sealed class ReadOnlyDomConstructionFactory : IReadOnlyConstructionFactory
+internal sealed class ReadOnlyDomConstructionFactory
+    : IDomConstructionElementFactory<ReadOnlyDocument, ReadOnlyHtmlElement>
 {
     private readonly ReadOnlyMetadataProfile _profile;
 

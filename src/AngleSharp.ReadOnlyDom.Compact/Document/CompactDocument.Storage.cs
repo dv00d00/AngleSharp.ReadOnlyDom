@@ -118,23 +118,6 @@ public sealed partial class CompactDocument
         return true;
     }
 
-    internal bool TryGetAttribute(int handle, ushort nameId, out CompactAttribute attribute, ref int inspected)
-    {
-        if (nameId != ushort.MaxValue && TryGetAttributeRange(handle, out var first, out var count))
-            for (var index = first; index < first + count; index++)
-            {
-                inspected++;
-                if (AttributeNameIdAt(index) == nameId)
-                {
-                    attribute = GetAttribute(index);
-                    return true;
-                }
-            }
-
-        attribute = default;
-        return false;
-    }
-
     internal ReadOnlySpan<char> GetValue(int start, int length)
     {
         if (length == 0)
