@@ -1,0 +1,47 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out ReadOnlyDom
+        uses: actions/checkout@v7.0.1
+        with:
+          path: AngleSharp.ReadOnlyDom
+
+      - name: Check out the matching AngleSharp source
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: dv00d00/AngleSharp
+          ref: devel
+          path: AngleSharp
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore AngleSharp.ReadOnlyDom.slnx --force --no-cache
+        working-directory: AngleSharp.ReadOnlyDom
+
+      - name: Build
+        run: dotnet build AngleSharp.ReadOnlyDom.slnx -c Release --no-restore -m:1
+        working-directory: AngleSharp.ReadOnlyDom
+
+      - name: Test
+        run: >-
+          dotnet test tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj
+          -c Release -f net10.0 --no-build --no-restore --
+          --minimum-expected-tests 1 --progress off
+        working-directory: AngleSharp.ReadOnlyDom
