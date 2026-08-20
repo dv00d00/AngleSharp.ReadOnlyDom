@@ -51,7 +51,13 @@ internal static class BenchmarkCorpus
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(directory.FullName, "tests", "AngleSharp.ReadOnlyDom.Tests", "temp");
+            var candidate = Path.Combine(
+                directory.FullName,
+                "tests",
+                "AngleSharp.ReadOnlyDom.Tests",
+                "TestData",
+                "corpus"
+            );
             if (Directory.Exists(candidate))
             {
                 return candidate;
@@ -61,7 +67,7 @@ internal static class BenchmarkCorpus
         }
 
         throw new DirectoryNotFoundException(
-            "Could not locate the checked-in tests/AngleSharp.ReadOnlyDom.Tests/temp corpus."
+            "Could not locate the checked-in tests/AngleSharp.ReadOnlyDom.Tests/TestData/corpus directory."
         );
     }
 }

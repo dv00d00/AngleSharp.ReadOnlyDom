@@ -48,7 +48,7 @@ $ErrorActionPreference = "Stop"
 $culture = [Globalization.CultureInfo]::InvariantCulture
 $root = Split-Path -Parent $PSScriptRoot
 $angleProject = Join-Path $root "benchmarks/ProductComparison/AngleSharp.NativeConsole/AngleSharp.NativeConsole.csproj"
-$corpusPath = Join-Path $root "tests/AngleSharp.ReadOnlyDom.Tests/temp/$Corpus"
+$corpusPath = Join-Path $root "tests/AngleSharp.ReadOnlyDom.Tests/TestData/corpus/$Corpus"
 if (-not (Test-Path $corpusPath)) { throw "Missing corpus: $corpusPath" }
 if (-not (Test-Path $BaselineDll)) { throw "Missing baseline console: $BaselineDll" }
 

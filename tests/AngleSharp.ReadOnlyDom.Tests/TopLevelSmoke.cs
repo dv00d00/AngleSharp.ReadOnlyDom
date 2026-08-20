@@ -15,7 +15,7 @@ public class TopLevelSmoke
 {
     const int MaxSize = (512 + 128) * 1024;
 
-    private static readonly string BaseDir = Path.Combine(AppContext.BaseDirectory, "temp");
+    private static readonly string BaseDir = Path.Combine(AppContext.BaseDirectory, "TestData", "corpus");
 
     private static readonly ConcurrentDictionary<string, string> FileContents = new();
     private static readonly ConcurrentDictionary<string, IHtmlDocument> ParsedMutableDocs = new();
@@ -303,7 +303,7 @@ public class TopLevelSmoke
         };
 
         id =
-            id.IsNullOrWhiteSpace()
+            String.IsNullOrWhiteSpace(id)
             || id is "19ee99feeb254bf99a88146643d1afa2" or "19ee99feeb254bf99a88146643d1afa3"
             || HasBadChar(id.AsSpan())
                 ? null
@@ -468,7 +468,7 @@ public class TopLevelSmoke
                 var doc = ParsedMutableDocs.GetOrAdd(fileName, k => parser().ParseDocument(html));
                 return doc
                     .All.Select(it => it.Id)
-                    .Where(id => !id.IsNullOrWhiteSpace() && !HasBadChar(id.AsSpan()))
+                    .Where(id => !String.IsNullOrWhiteSpace(id) && !HasBadChar(id.AsSpan()))
                     .Distinct()
                     .Take(75)
                     .Select(id => (fileName, id!));

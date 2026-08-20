@@ -24,7 +24,7 @@ $metadata = @(
     "- Runtime: ``$(dotnet --version)``"
     "- GC: Server GC (enforced by the benchmark executable and BenchmarkDotNet job)"
     "- Job: BenchmarkDotNet Default, LaunchCount=1, out-of-process (no in-process emit toolchain)"
-    "- Corpus: checked-in snapshots under tests/AngleSharp.ReadOnlyDom.Tests/temp"
+    "- Corpus: checked-in snapshots under tests/AngleSharp.ReadOnlyDom.Tests/TestData/corpus"
     "- Hardware counters: $hardwareCounterNote"
     "- Note: a single launch cannot separate per-process variance from a real effect; allocation results remain the primary micro gate."
 )
@@ -52,6 +52,7 @@ function Invoke-Benchmark([string] $filter, [string] $name, [string] $corpusTier
     }
 }
 
+if ($HardwareCounters) { $env:AS_BENCH_HARDWARE_COUNTERS = "1" }
 if ($Tier -in @("compact", "all")) {
     Invoke-Benchmark "*CompactBuildBenchmark*" "compact"
 }
@@ -67,8 +68,6 @@ if ($Tier -in @("long-streaming", "extraction", "scraping", "all")) {
 if ($Tier -in @("scraping", "extraction", "all")) {
     Invoke-Benchmark "*QqArticleScraperBenchmark*" "qq-scraper"
 }
-if ($HardwareCounters) { $env:AS_BENCH_HARDWARE_COUNTERS = "1" }
-
 if ($Tier -in @("utf8-baseline", "utf8", "all")) {
     Invoke-Benchmark "*Utf8TokenizerBaselineBenchmark*" "utf8-baseline"
     dotnet run --project $project -c Release -f net10.0 --no-build -- `

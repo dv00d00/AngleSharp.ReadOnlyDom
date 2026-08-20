@@ -10,7 +10,7 @@ namespace AngleSharp.Readonly.Tests;
 
 internal class TopLevelArenaSmoke
 {
-    private static readonly string BaseDir = Path.Combine(AppContext.BaseDirectory, "temp");
+    private static readonly string BaseDir = Path.Combine(AppContext.BaseDirectory, "TestData", "corpus");
 
     private static readonly ConcurrentDictionary<string, string> FileContents = new();
     private static readonly ConcurrentDictionary<string, IHtmlDocument> ParsedMutableDocs = new();
