@@ -69,9 +69,6 @@ internal class ReadOnlyDocument
     private static InvalidOperationException MissingDocumentElement(StringOrMemory localName) =>
         new($"No document element with local name '{localName}' was found.");
 
-    IReadOnlyNode? IReadOnlyNode.Parent => _parent as IReadOnlyNode;
-    IReadOnlyNodeList IReadOnlyNode.ChildNodes => (IReadOnlyNodeList)_ChildNodes;
-
     public void TrackError(Exception error) => _errors?.Add(error);
 
     public bool TryGetDiagnostics(out IReadOnlyDiagnostics diagnostics)

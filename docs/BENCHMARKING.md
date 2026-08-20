@@ -16,6 +16,7 @@ Run a maintained tier from the repository root:
 ./scripts/bench.ps1 query
 ./scripts/bench.ps1 utf8
 ./scripts/bench.ps1 utf8-baseline
+./scripts/bench.ps1 utf8-corpus
 ./scripts/bench.ps1 retained
 ./scripts/bench.ps1 all
 ./scripts/bench-native-console.ps1
@@ -59,6 +60,10 @@ document in the corpus and repeats the whole sweep so run-to-run stability is me
 The Rust lane must be the tuned build (`--profile release-tuned` with `RUSTFLAGS="-C target-cpu=native"`, plus LLVM PGO);
 a plain `cargo build --release` binary understates lol-html by roughly 45% and is not a bar worth publishing against.
 Pass `-LolConsole` for any other path.
+
+The default comparison set is the canonical 47 captured pages used by the readme table. The checked-in `ladder-*` and
+`synth-*` files are targeted tokenizer fixtures, so the default run excludes them; pass their names explicitly through
+`-Corpora` when investigating those shapes. The harness fails if the canonical set drifts from 47 pages.
 
 Reported rates are the median of all samples across all passes per document and lane, not the mean of per-pass medians,
 so a drifting pass does not carry the same weight as a stable one. The report also records each pass's own delta and the
@@ -116,8 +121,9 @@ manual measurements, and correctness runners live under `Support`.
 | `rows` | `ExtractionRowScaleBenchmark` | Many-rows extraction where cost scales with rows x fields rather than with locating one result |
 | `scraping` | `LongSyntheticConstructionBenchmark`, `QqArticleScraperBenchmark` | End-to-end target-near-EOF and real-page scraping |
 | `query` | `HttpClientStreamingQueryBenchmark`, `QueryWorkloadRunner` | Deterministic socket streaming plus repeated representative query workloads |
-| `utf8` | `Utf8TokenizerBaselineBenchmark`, `Utf8RodomBenchmark`, `Utf8DomProjectionBenchmark` | Validated wire-byte tokenizer, compact construction, and mutable-DOM projection paths |
+| `utf8` | `Utf8TokenizerBaselineBenchmark`, `Utf8RodomBenchmark`, `Utf8DomProjectionBenchmark`, `Utf8StreamingCorpusBenchmark` | Validated wire-byte tokenizer, compact construction, mutable-DOM projection, and contiguous versus 4 KiB push paths |
 | `utf8-baseline` | `Utf8TokenizerBaselineBenchmark`, `Utf8TokenizerBaselineRunner` | Frozen tokenizer state/pathology matrix over memory and segmented input |
+| `utf8-corpus` | `Utf8StreamingCorpusBenchmark` | Whole-corpus contiguous versus 4 KiB push execution for `a[href]` |
 | `retained` | `RetainedMemoryRunner` | Forced-GC retained size and parse allocation |
 
 The curated set intentionally excludes historical implementation probes. Add a new benchmark only when it establishes a
@@ -157,6 +163,9 @@ jitter while retaining real `HttpClient` and socket behavior.
 `Utf8TokenizerBaselineBenchmark` freezes equal-size typical, malformed, raw-text, entity-heavy, long-token, and duplicate
 attribute workloads. Memory and 4 KiB segmented inputs must consume the same bytes and produce the same chunk-insensitive
 token fingerprint.
+
+`Utf8StreamingCorpusBenchmark` runs once in the `utf8` and `all` tiers, using the full checked-in corpus. Select the
+`utf8-corpus` tier to run it alone; `AS_BENCH_CORPUS_TIER=small` remains available for direct BenchmarkDotNet runs.
 
 ## Correctness checks
 

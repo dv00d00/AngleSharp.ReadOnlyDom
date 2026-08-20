@@ -185,29 +185,7 @@ public sealed partial class CompactProjectionPlan
             if (value is null)
                 return true;
             var actual = arena.AttributeValue(attribute).Memory.Span;
-            return token ? ContainsToken(actual, value) : actual.SequenceEqual(value);
-        }
-
-        return false;
-    }
-
-    private static bool ContainsToken(ReadOnlySpan<char> values, ReadOnlySpan<char> wanted)
-    {
-        while (!values.IsEmpty)
-        {
-            var start = 0;
-            while (start < values.Length && HtmlClassToken.IsSpace(values[start]))
-                start++;
-            values = values[start..];
-            if (values.IsEmpty)
-                return false;
-
-            var end = 0;
-            while (end < values.Length && !HtmlClassToken.IsSpace(values[end]))
-                end++;
-            if (values[..end].SequenceEqual(wanted))
-                return true;
-            values = values[end..];
+            return token ? HtmlClassToken.Contains(actual, value) : actual.SequenceEqual(value);
         }
 
         return false;

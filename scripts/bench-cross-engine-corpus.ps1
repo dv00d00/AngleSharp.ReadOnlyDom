@@ -5,7 +5,9 @@
     bench-sweep.ps1 in three ways, each forced by running the full corpus rather than the
     standing fifteen documents:
 
-    - It walks every .html in the corpus directory.
+    - By default it walks the canonical 47 captured pages in the corpus directory. Synthetic
+      ladder and raw-text fixtures remain available through -Corpora but do not change the
+      published comparison set.
     - A cross-lane value mismatch is recorded, not thrown. Three documents (ebay, pinterest,
       codeproject) each contain one <a href> inside a <noscript> element, which this engine
       extracts and lol-html does not: <noscript> is raw text only with scripting enabled, and
@@ -129,6 +131,12 @@ if ($Corpora) {
     $wanted = @($Corpora | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) })
     $files = @($files | Where-Object { $wanted -contains $_.BaseName })
     if ($files.Count -ne $wanted.Count) { throw "Requested corpora not found under $corpusRoot." }
+}
+else {
+    $files = @($files | Where-Object { $_.BaseName -notlike "ladder-*" -and $_.BaseName -notlike "synth-*" })
+    if ($files.Count -ne 47) {
+        throw "Expected the canonical 47-page comparison corpus, found $($files.Count) under $corpusRoot."
+    }
 }
 
 New-Item -ItemType Directory -Force $outputDirectory | Out-Null
