@@ -14,9 +14,7 @@ internal static class StoryFeedPlan
 
     private static QueryPlan<StoryFeedBuffer> Create()
     {
-        var html = StreamQuery
-            .For<StoryFeedBuffer>("html")
-            .OnEnd(static (ref output) => output.CompleteDocument());
+        var html = StreamQuery.For<StoryFeedBuffer>("html").OnEnd(static (ref output) => output.CompleteDocument());
 
         var story = html.Descendant("tr")
             .Class("athing")

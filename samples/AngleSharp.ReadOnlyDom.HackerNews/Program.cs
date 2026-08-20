@@ -58,7 +58,8 @@ app.MapGet(
 
         if (cache.TryGet($"feed:{name}", feedLifetime, out var snapshot, out var age))
         {
-            await ResponseCaching.Snapshot(context, snapshot, age, feedLifetime, NdjsonContentType)
+            await ResponseCaching
+                .Snapshot(context, snapshot, age, feedLifetime, NdjsonContentType)
                 .ExecuteAsync(context);
             return;
         }
@@ -131,7 +132,8 @@ app.MapGet(
         var key = $"preview:{target.AbsoluteUri}";
         if (cache.TryGet(key, previewLifetime, out var cached, out var cachedAge))
         {
-            await ResponseCaching.Snapshot(context, cached, cachedAge, previewLifetime, NdjsonContentType)
+            await ResponseCaching
+                .Snapshot(context, cached, cachedAge, previewLifetime, NdjsonContentType)
                 .ExecuteAsync(context);
             return;
         }

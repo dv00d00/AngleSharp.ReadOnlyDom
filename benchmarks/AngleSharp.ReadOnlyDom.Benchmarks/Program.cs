@@ -10,7 +10,6 @@ using AngleSharp.ReadOnlyDom.Benchmarks.Suites.Extraction;
 using AngleSharp.ReadOnlyDom.Benchmarks.Suites.Utf8;
 #endif
 
-
 namespace AngleSharp.ReadOnlyDom.Benchmarks
 {
     static class Program

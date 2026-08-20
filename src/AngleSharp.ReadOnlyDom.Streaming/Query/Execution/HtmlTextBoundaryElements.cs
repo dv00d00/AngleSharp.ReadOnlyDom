@@ -15,22 +15,61 @@ internal static class HtmlTextBoundaryElements
     private static readonly FrozenSet<ulong> Keys = new[]
     {
         // Flow content
-        "address", "article", "aside", "blockquote", "center", "details",
-        "dialog", "dir", "div", "dl", "fieldset", "figcaption", "figure",
-        "footer", "form", "header", "hgroup", "hr", "main", "menu", "nav",
-        "ol", "p", "pre", "section", "summary", "ul",
+        "address",
+        "article",
+        "aside",
+        "blockquote",
+        "center",
+        "details",
+        "dialog",
+        "dir",
+        "div",
+        "dl",
+        "fieldset",
+        "figcaption",
+        "figure",
+        "footer",
+        "form",
+        "header",
+        "hgroup",
+        "hr",
+        "main",
+        "menu",
+        "nav",
+        "ol",
+        "p",
+        "pre",
+        "section",
+        "summary",
+        "ul",
         // Headings
-        "h1", "h2", "h3", "h4", "h5", "h6",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
         // List and description items
-        "dd", "dt", "li",
+        "dd",
+        "dt",
+        "li",
         // Tables
-        "caption", "col", "colgroup", "table", "tbody", "td", "tfoot",
-        "th", "thead", "tr",
+        "caption",
+        "col",
+        "colgroup",
+        "table",
+        "tbody",
+        "td",
+        "tfoot",
+        "th",
+        "thead",
+        "tr",
         // Line break and other rendered separations
-        "br", "legend", "optgroup", "option",
-    }
-        .Select(Compact)
-        .ToFrozenSet();
+        "br",
+        "legend",
+        "optgroup",
+        "option",
+    }.Select(Compact).ToFrozenSet();
 
     /// <summary>
     /// Returns true when a tag separates words in normalized text. <paramref name="identityLength"/>

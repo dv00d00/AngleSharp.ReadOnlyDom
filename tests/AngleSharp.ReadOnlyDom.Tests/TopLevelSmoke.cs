@@ -484,10 +484,12 @@ public class TopLevelSmoke
     // hand its context to another thread while the first thread's documents are still reading it -
     // reintroducing exactly the race being fixed. A pool of one per thread never does that, and costs
     // one parser per worker thread instead of one per parse.
-    private static readonly ThreadLocal<HtmlParser> ThreadParser = new(static () => new HtmlParser(
-        new HtmlParserOptions() { IsKeepingSourceReferences = true },
-        BrowsingContext.New(ReadOnlyParser.DefaultConfig)
-    ));
+    private static readonly ThreadLocal<HtmlParser> ThreadParser = new(static () =>
+        new HtmlParser(
+            new HtmlParserOptions() { IsKeepingSourceReferences = true },
+            BrowsingContext.New(ReadOnlyParser.DefaultConfig)
+        )
+    );
 
     public static HtmlParser parser() => ThreadParser.Value!;
 
