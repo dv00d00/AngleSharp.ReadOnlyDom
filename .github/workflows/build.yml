@@ -5,31 +5,78 @@ on:
     branches:
       - main
   pull_request:
+  schedule:
+    - cron: "17 4 * * 1"
 
 permissions:
   contents: read
 
+env:
+  ANGLESHARP_REVISION: 4819b43afb663ba29d37eb4f09abd072fed1966e
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: true
+
 jobs:
-  build-and-test:
+  format:
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out ReadOnlyDom
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: AngleSharp.ReadOnlyDom
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: AngleSharp.ReadOnlyDom/global.json
+
+      - name: Restore local tools
+        run: dotnet tool restore
+        working-directory: AngleSharp.ReadOnlyDom
+
+      - name: Check formatting
+        run: dotnet tool run csharpier check .
+        working-directory: AngleSharp.ReadOnlyDom
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      AngleSharpSourceRoot: ${{ github.workspace }}/AngleSharp
+
+    steps:
+      - name: Check out ReadOnlyDom
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: AngleSharp.ReadOnlyDom
 
       - name: Check out the matching AngleSharp source
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: dv00d00/AngleSharp
-          ref: devel
+          ref: ${{ env.ANGLESHARP_REVISION }}
           path: AngleSharp
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6.0.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.x
+          global-json-file: AngleSharp.ReadOnlyDom/global.json
+
+      - name: Verify the paired source reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          items="$(dotnet msbuild src/AngleSharp.ReadOnlyDom/AngleSharp.ReadOnlyDom.csproj \
+            -getItem:ProjectReference -getItem:PackageReference \
+            -p:AngleSharpSourceRoot="$AngleSharpSourceRoot" -nologo)"
+          expected="$AngleSharpSourceRoot/src/AngleSharp/AngleSharp.Core.csproj"
+          printf '%s\n' "$items"
+          grep -Fq "\"Identity\": \"$expected\"" <<< "$items"
+          if grep -Fq '"Identity": "AngleSharp"' <<< "$items"; then
+            printf 'AngleSharp still resolves as a package reference.\n' >&2
+            exit 1
+          fi
+        working-directory: AngleSharp.ReadOnlyDom
 
       - name: Restore
         run: dotnet restore AngleSharp.ReadOnlyDom.slnx --force --no-cache
@@ -43,5 +90,39 @@ jobs:
         run: >-
           dotnet test tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj
           -c Release -f net10.0 --no-build --no-restore --
-          --minimum-expected-tests 1 --progress off
+          --minimum-expected-tests 179000 --progress off
+          --results-directory TestResults --report-trx --report-trx-filename net10.0.trx
         working-directory: AngleSharp.ReadOnlyDom
+
+      - name: Upload failed test report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: net10-test-report-${{ github.run_id }}
+          path: AngleSharp.ReadOnlyDom/TestResults/**/*.trx
+          if-no-files-found: warn
+          retention-days: 14
+
+  net11-preview:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out ReadOnlyDom
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: AngleSharp.ReadOnlyDom
+
+      - name: Set up .NET 11 preview
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 11.0.x
+          dotnet-quality: preview
+
+      - name: Verify preview SDK
+        run: dotnet --version | grep -E '^11\.'
+
+      - name: Build runtime-async Hacker News sample
+        run: >-
+          dotnet build
+          AngleSharp.ReadOnlyDom/samples/AngleSharp.ReadOnlyDom.HackerNews/AngleSharp.ReadOnlyDom.HackerNews.csproj
+          -c Release -f net11.0 -p:Net11Lane=true -p:Net11Async=true

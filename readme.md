@@ -32,8 +32,8 @@ losses confined to pages dominated by large inline `<script>`/`<style>` bodies. 
 ## Build the DOM projects against the AngleSharp fork
 
 `AngleSharp.ReadOnlyDom.Streaming` and its Markdown proxy build directly with the .NET SDK. The object and compact DOM
-projects currently require the matching AngleSharp fork branch. On a fresh Windows machine, install the .NET 10 SDK and
-clone both repositories into the same parent directory:
+projects currently require the AngleSharp fork revision pinned by CI. On a fresh Windows machine, install the .NET 10
+SDK feature band selected by `global.json` and clone both repositories into the same parent directory:
 
 ```powershell
 $workspace = 'C:\src\anglesharp-work'
@@ -41,6 +41,8 @@ New-Item -ItemType Directory -Force $workspace | Out-Null
 
 git clone --branch devel https://github.com/dv00d00/AngleSharp.git "$workspace\AngleSharp"
 git clone --branch main https://github.com/dv00d00/AngleSharp.ReadOnlyDom.git "$workspace\AngleSharp.ReadOnlyDom"
+
+git -C "$workspace\AngleSharp" checkout 4819b43afb663ba29d37eb4f09abd072fed1966e
 
 Set-Location "$workspace\AngleSharp.ReadOnlyDom"
 ```
@@ -57,9 +59,11 @@ Restore after enabling or changing the source override so every target framework
 serially because the solution and the fork share AngleSharp output paths:
 
 ```powershell
+dotnet tool restore
+dotnet tool run csharpier check .
 dotnet restore AngleSharp.ReadOnlyDom.slnx --force --no-cache
 dotnet build AngleSharp.ReadOnlyDom.slnx -c Release --no-restore -m:1
-dotnet test tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj -c Release -f net10.0 --no-restore -- --minimum-expected-tests 1
+dotnet test tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj -c Release -f net10.0 --no-restore -- --minimum-expected-tests 179000 --progress off
 ```
 
 The Release build output should contain an
@@ -78,6 +82,10 @@ For Rider, make `AngleSharpSourceRoot` a persistent user variable and restart Ri
 
 `Directory.Build.targets` is part of the repository so CI, temporary worktrees, and fresh clones all use the same
 override logic. Keep machine-specific paths out of it and set `AngleSharpSourceRoot` in the environment instead.
+The CI workflow pins the paired AngleSharp commit and action revisions, verifies that the source project replaced the
+package reference, checks the repository-local CSharpier 1.3.0 manifest, runs the complete `net10.0` suite on pull
+requests, pushes, and the weekly schedule, and builds the Hacker News sample with the latest .NET 11 preview SDK and
+runtime async enabled. Update the workflow and the checkout command above together when advancing the paired revision.
 
 ## Read-only DOM
 
