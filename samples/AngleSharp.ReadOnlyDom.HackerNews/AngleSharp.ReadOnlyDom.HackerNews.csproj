@@ -4,7 +4,8 @@
     <TargetFramework Condition="'$(Net11Lane)' == 'true'">net11.0</TargetFramework>
     <UseRuntimeAsync Condition="'$(Net11Async)' == 'true' and '$(TargetFramework)' == 'net11.0'">true</UseRuntimeAsync>
     <LangVersion Condition="'$(Net11Async)' == 'true' and '$(TargetFramework)' == 'net11.0'">preview</LangVersion>
-    <Features Condition="'$(Net11Async)' == 'true' and '$(TargetFramework)' == 'net11.0'">$(Features);runtime-async=on</Features>
+    <Features Condition="'$(Net11Async)' == 'true' and '$(TargetFramework)' == 'net11.0'"
+      >$(Features);runtime-async=on</Features>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\AngleSharp.ReadOnlyDom.Streaming\AngleSharp.ReadOnlyDom.Streaming.csproj" />

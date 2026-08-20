@@ -975,7 +975,9 @@ public sealed class QueryTests
         var utf8 = Encoding.UTF8.GetBytes(Html);
         var query = StreamQuery
             .For<QueryState>("main")
-            .OnNormalizedText(static (ref QueryState state, in CompletedElement element) => state.Events.Add(element.GetText()))
+            .OnNormalizedText(
+                static (ref QueryState state, in CompletedElement element) => state.Events.Add(element.GetText())
+            )
             .Compile();
 
         for (var split = 1; split < utf8.Length; split++)

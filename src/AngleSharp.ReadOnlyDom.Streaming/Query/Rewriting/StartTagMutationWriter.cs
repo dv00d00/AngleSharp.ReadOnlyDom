@@ -66,11 +66,7 @@ internal static class StartTagMutationWriter
 
     private static bool ShouldDropSelfClosingSlash(HtmlElementMutation mutation) =>
         mutation.CanHaveContent
-        && (
-            mutation.Prepend is { Count: > 0 }
-            || mutation.Append is { Count: > 0 }
-            || mutation.SuppressInnerContent
-        );
+        && (mutation.Prepend is { Count: > 0 } || mutation.Append is { Count: > 0 } || mutation.SuppressInnerContent);
 
     private static int FindSelfClosingSlash(ReadOnlySpan<byte> source, int close)
     {

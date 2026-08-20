@@ -23,6 +23,7 @@ internal sealed class HtmlElementMutation(long sourceStart, long sourceEnd, bool
     internal long SourceEnd { get; } = sourceEnd;
     internal bool CanHaveContent { get; } = canHaveContent;
     internal bool SelfClosingSyntax { get; } = selfClosingSyntax;
+
     // Allocated on first use. A mutation typically touches one of these five, so constructing them
     // all eagerly cost five allocations per mutated element before any payload was copied.
     internal List<AttributeMutation>? Attributes { get; set; }

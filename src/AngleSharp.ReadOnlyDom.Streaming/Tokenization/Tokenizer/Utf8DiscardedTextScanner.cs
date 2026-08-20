@@ -79,17 +79,16 @@ internal static class Utf8DiscardedTextScanner
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Boolean IsStop(ReadOnlySpan<Byte> utf8, Int32 position) =>
             // A trailing '<' may complete "</" in the next chunk; the per-byte machine holds it.
-            position + 1 == utf8.Length || utf8[position + 1] == (Byte)'/';
+            position + 1
+                == utf8.Length
+            || utf8[position + 1] == (Byte)'/';
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Int32 ResumeOffset(ReadOnlySpan<Byte> utf8, Int32 position) => position + 1;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Vector256<Byte> FollowerMatches(ref Byte source, Int32 offset) =>
-            Avx2.CompareEqual(
-                Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 1)),
-                Vector256.Create((Byte)'/')
-            );
+            Avx2.CompareEqual(Vector256.LoadUnsafe(ref source, (UIntPtr)(offset + 1)), Vector256.Create((Byte)'/'));
 
         public static Boolean ConfirmSurvivors => false;
     }
@@ -129,7 +128,8 @@ internal static class Utf8DiscardedTextScanner
         public static Int32 ResumeOffset(ReadOnlySpan<Byte> utf8, Int32 position) =>
             // Reached only for a non-stop, so the follower is known: not '!' skips one byte,
             // "<!" without "--" skips the bytes already read.
-            utf8[position + 1] != (Byte)'!' ? position + 1
+            utf8[position + 1] != (Byte)'!'
+                ? position + 1
             : utf8[position + 2] != (Byte)'-' ? position + 2
             : position + 3;
 
@@ -220,9 +220,8 @@ internal static class Utf8DiscardedTextScanner
 
         while (offset <= vectorEnd)
         {
-            var candidates = (UInt64)(UInt32)Avx2.MoveMask(
-                Avx2.CompareEqual(Vector256.LoadUnsafe(ref source, (UIntPtr)offset), lessThan)
-            );
+            var candidates = (UInt64)
+                (UInt32)Avx2.MoveMask(Avx2.CompareEqual(Vector256.LoadUnsafe(ref source, (UIntPtr)offset), lessThan));
             var stop = WalkCandidates<TStop>(utf8, offset, candidates);
             if (stop >= 0)
             {
