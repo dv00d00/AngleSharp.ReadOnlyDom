@@ -3,12 +3,13 @@
 A Hacker News front end built on two streaming query plans. Nothing is buffered: list HTML is folded into NDJSON one
 story per line, and each row unfurls a link-preview card as it scrolls into view.
 
-Needs a .NET 11 SDK (`net11.0`, platform async on).
+The default lane targets `net10.0`. A .NET 11 SDK can opt into the platform-async experiment without making the
+repository's normal build depend on a preview SDK.
 
 ```powershell
 dotnet run --project samples/AngleSharp.ReadOnlyDom.HackerNews -c Release
 
-# with the library on the same async lane
+# Optional: target net11.0 and put both the app and library on the platform-async lane.
 dotnet run --project samples/AngleSharp.ReadOnlyDom.HackerNews -c Release -p:Net11Lane=true -p:Net11Async=true
 ```
 
@@ -52,12 +53,10 @@ socket goes through a `ConnectCallback` that refuses private, loopback, link-loc
 time, not parse time. Card images are re-served from this origin. Feeds cache 15 s, cards 10 min. Cards load three
 at a time.
 
-**Platform async.** `Features=runtime-async=on` is the switch; `UseRuntimeAsync` alone is a no-op and SDK
-11.0.100-preview.7 has no property for it. Restore does not flow `AdditionalProperties` across a project reference,
-so `Net11Lane`/`Net11Async` must be global `-p:` properties or restore fails NETSDK1005. Emitted state machines: 0
-vs 3 for this app (43,008 B vs 52,224 B), 0 vs 14 for the library (293,376 B vs 309,760 B). Whether it is *faster*
-is unmeasured here — earlier preview-6 runs gained 1–4% on stream shapes while the preview JIT lost 8–12% on the
-synchronous tokenizer loop.
+**Platform async.** The checked-in default is the supported `net10.0` lane. Passing both `Net11Lane=true` and
+`Net11Async=true` targets `net11.0` and adds `Features=runtime-async=on`; the properties must be global `-p:` values so
+restore also applies them to the streaming project reference. The experiment previously emitted 0 compiler-generated
+state machines versus 3 for this app, and 0 versus 14 for the library. Whether it is *faster* remains unmeasured here.
 
 **Limits.** Lexical start/end-tag topology, not corrected tree topology: omitted end tags and foster parenting can
 differ from a DOM converter. A page that declares card metadata below the head, or only from script, gets no card.
