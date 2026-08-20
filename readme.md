@@ -59,7 +59,7 @@ serially because the solution and the fork share AngleSharp output paths:
 ```powershell
 dotnet restore AngleSharp.ReadOnlyDom.slnx --force --no-cache
 dotnet build AngleSharp.ReadOnlyDom.slnx -c Release --no-restore -m:1
-dotnet test tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj -c Release -f net10.0 --no-restore
+dotnet test tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj -c Release -f net10.0 --no-restore -- --minimum-expected-tests 1
 ```
 
 The Release build output should contain an
@@ -345,12 +345,14 @@ dotnet run --project samples/AngleSharp.ReadOnlyDom.MarkdownProxy -c Release
 ```
 
 The Hacker News reader folds a live list page into NDJSON one story at a time and unfurls a link-preview card per row
-on scroll, abandoning each linked page's download at `</head>`. Targets `net11.0` with platform async, so it needs a
-.NET 11 SDK:
+on scroll, abandoning each linked page's download at `</head>`. It builds on the default .NET 10 lane:
 
 ```powershell
 dotnet run --project samples/AngleSharp.ReadOnlyDom.HackerNews -c Release
 ```
+
+With a .NET 11 SDK, pass `-p:Net11Lane=true -p:Net11Async=true` to opt the sample and streaming library into the
+platform-async experiment.
 
 Opinionated text/Markdown projections and safe local Markdown navigation remain runnable examples rather than library
 surface:
@@ -360,10 +362,11 @@ dotnet run --project samples/AngleSharp.ReadOnlyDom.ExtractionExamples -c Releas
 dotnet run --project samples/AngleSharp.ReadOnlyDom.MarkdownNavigation -c Release
 ```
 
-Run the test suite from the repository root:
+Run the test suite from the repository root. The minimum count guard prevents a broken test-host configuration from
+reporting success after discovering no tests:
 
 ```powershell
-dotnet test AngleSharp.ReadOnlyDom.slnx -c Release
+dotnet test tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj -c Release -f net10.0 -- --minimum-expected-tests 1
 ```
 
 ## Repository layout

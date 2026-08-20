@@ -2,16 +2,16 @@
   <PropertyGroup>
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <TargetFrameworks Condition="'$(Net11Lane)' == 'true'">net8.0;net10.0;net11.0</TargetFrameworks>
-    <UseRuntimeAsync Condition="'$(Net11Async)' == 'true'">true</UseRuntimeAsync>
-    <Features Condition="'$(Net11Async)' == 'true'">$(Features);runtime-async=on</Features>
-    <LangVersion Condition="'$(Net11Async)' == 'true'">preview</LangVersion>
+    <UseRuntimeAsync Condition="'$(Net11Async)' == 'true' and '$(TargetFramework)' == 'net11.0'">true</UseRuntimeAsync>
+    <Features Condition="'$(Net11Async)' == 'true' and '$(TargetFramework)' == 'net11.0'">$(Features);runtime-async=on</Features>
+    <LangVersion Condition="'$(Net11Async)' == 'true' and '$(TargetFramework)' == 'net11.0'">preview</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.IO.Pipelines" />
+    <PackageReference Include="System.IO.Pipelines" Condition="'$(TargetFramework)' == 'net8.0'" />
   </ItemGroup>
 
   <ItemGroup>
