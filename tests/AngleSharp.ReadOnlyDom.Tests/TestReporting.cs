@@ -13,7 +13,7 @@ internal static class TestReporting
 
     private static void DefaultToDisabled(string variable)
     {
-        if (Environment.GetEnvironmentVariable(variable).IsNullOrWhiteSpace())
+        if (String.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(variable)))
         {
             Environment.SetEnvironmentVariable(variable, "true");
         }

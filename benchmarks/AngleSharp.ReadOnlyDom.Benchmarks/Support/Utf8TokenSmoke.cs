@@ -16,7 +16,8 @@ internal static class Utf8TokenSmoke
         Directory.CreateDirectory(directory);
         var failures = 0;
         long totalBytes = 0;
-        foreach (var document in BenchmarkCorpus.Load("full"))
+        var documents = BenchmarkCorpus.Load("full");
+        foreach (var document in documents)
         {
             var utf8 = Encoding.UTF8.GetBytes(document.Html);
             totalBytes += utf8.Length;
@@ -48,7 +49,7 @@ internal static class Utf8TokenSmoke
                 Console.WriteLine($"FAIL {document.Name}: {difference}");
             }
         }
-        Console.WriteLine($"Checked 47 documents / {totalBytes:N0} UTF-8 bytes; failures: {failures}.");
+        Console.WriteLine($"Checked {documents.Count} documents / {totalBytes:N0} UTF-8 bytes; failures: {failures}.");
         Console.WriteLine($"Traces: {directory}");
         return failures == 0 ? 0 : 1;
     }

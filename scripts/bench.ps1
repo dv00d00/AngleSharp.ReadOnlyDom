@@ -52,6 +52,7 @@ function Invoke-Benchmark([string] $filter, [string] $name, [string] $corpusTier
     }
 }
 
+if ($HardwareCounters) { $env:AS_BENCH_HARDWARE_COUNTERS = "1" }
 if ($Tier -in @("compact", "all")) {
     Invoke-Benchmark "*CompactBuildBenchmark*" "compact"
 }
@@ -67,8 +68,6 @@ if ($Tier -in @("long-streaming", "extraction", "scraping", "all")) {
 if ($Tier -in @("scraping", "extraction", "all")) {
     Invoke-Benchmark "*QqArticleScraperBenchmark*" "qq-scraper"
 }
-if ($HardwareCounters) { $env:AS_BENCH_HARDWARE_COUNTERS = "1" }
-
 if ($Tier -in @("utf8-baseline", "utf8", "all")) {
     Invoke-Benchmark "*Utf8TokenizerBaselineBenchmark*" "utf8-baseline"
     dotnet run --project $project -c Release -f net10.0 --no-build -- `

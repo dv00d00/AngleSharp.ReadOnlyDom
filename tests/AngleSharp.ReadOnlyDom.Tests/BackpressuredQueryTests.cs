@@ -126,7 +126,6 @@ public sealed class BackpressuredQueryTests
 
         var firstRead = await output.Reader.ReadAsync();
         await Assert.That(execution.IsCompleted).IsFalse();
-        await Task.Delay(10);
 
         var received = new ArrayBufferWriter<byte>();
         Copy(firstRead.Buffer, received);
