@@ -1,21 +1,21 @@
 # Canonical tag metadata
 
-`src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs` is deterministic checked-in code generated from the exact AngleSharp
-package referenced by `Directory.Packages.props`. The generator reflects AngleSharp's internal `HtmlElementFactory`, creates
-every public `TagNames` entry, and records its effective `NodeFlags`. This makes the package's runtime construction behavior
-the canonical source instead of maintaining a second handwritten table.
+`src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs` is deterministic checked-in code generated from the
+paired AngleSharp source revision selected by the repository build. The generator reflects AngleSharp's internal
+`HtmlElementFactory`, creates every public `TagNames` entry, and records its effective `NodeFlags`. This makes the paired
+runtime construction behavior the canonical source instead of maintaining a second handwritten table.
 
 `src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs` is the same table emitted into the
 `AngleSharp.ReadOnlyDom.Compact` namespace, so the compact parser owns its copy instead of depending on the
 `AngleSharp.ReadOnlyDom` project for it. `--namespace` selects the emitted namespace; both files must be regenerated
 together.
 
-Regenerate after changing the AngleSharp package version:
+Regenerate after advancing the paired AngleSharp revision:
 
 ```powershell
 dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs
 dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --namespace AngleSharp.ReadOnlyDom.Compact src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
-csharpier format src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
+dotnet tool run csharpier format src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
 ```
 
 Verify that checked-in output is current:
@@ -30,7 +30,7 @@ earlier hyphen fast path. `GeneratedTagMetadataTests` independently compares eve
 AngleSharp factory, and focused tests preserve the read-only specialized form, template, script, and meta types.
 
 The generator targets .NET 10 because it is a repository tool. Generated library code builds on every supported library
-target. The project currently verifies tests on `net10.0` and `net472`, matching issue #5's full-framework target.
+target. CI runs the complete tests on `net10.0`; its solution build also compiles the `net472` test target.
 
 ## Performance gate
 

@@ -14,7 +14,7 @@ namespace AngleSharp.ReadOnlyDom.Benchmarks.Suites.Utf8;
 /// <c>a[href]</c> counted through OnStart - so numbers here are comparable with the cross-engine runs.
 ///
 /// The GC mode is whatever the host process was launched with; run under both and report which.
-/// Set ANGLE_STREAM_CORPUS_TIER to "small" for a quick pass, "full" (default) for everything.
+/// Set AS_BENCH_CORPUS_TIER to "small" for a quick pass, "full" (default) for everything.
 /// </summary>
 [BenchmarkCategory("Utf8")]
 [MemoryDiagnoser]
@@ -29,7 +29,7 @@ public class Utf8StreamingCorpusBenchmark
 
     public static IEnumerable<string> Documents()
     {
-        var tier = Environment.GetEnvironmentVariable("ANGLE_STREAM_CORPUS_TIER");
+        var tier = Environment.GetEnvironmentVariable("AS_BENCH_CORPUS_TIER");
         return BenchmarkCorpus
             .Load(string.IsNullOrWhiteSpace(tier) ? "full" : tier)
             .Select(static document => document.Name)
@@ -40,7 +40,7 @@ public class Utf8StreamingCorpusBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        var tier = Environment.GetEnvironmentVariable("ANGLE_STREAM_CORPUS_TIER");
+        var tier = Environment.GetEnvironmentVariable("AS_BENCH_CORPUS_TIER");
         var source = BenchmarkCorpus
             .Load(string.IsNullOrWhiteSpace(tier) ? "full" : tier)
             .Single(document => document.Name == Document);

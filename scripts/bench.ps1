@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateSet("small", "full", "retained", "compact", "compact-stages", "query", "extraction", "scraping", "utf8", "utf8-baseline", "rows", "long-streaming", "utf8-rodom", "utf8-dom", "all")]
+    [ValidateSet("small", "full", "retained", "compact", "compact-stages", "query", "extraction", "scraping", "utf8", "utf8-baseline", "utf8-corpus", "rows", "long-streaming", "utf8-rodom", "utf8-dom", "all")]
     [string] $Tier = "all",
     [switch] $HardwareCounters
 )
@@ -80,11 +80,14 @@ if ($Tier -in @("utf8-rodom", "utf8", "all")) {
 if ($Tier -in @("utf8-dom", "utf8", "all")) {
     Invoke-Benchmark "*Utf8DomProjectionBenchmark*" "utf8-dom"
 }
+if ($Tier -in @("utf8-corpus", "utf8", "all")) {
+    Invoke-Benchmark "*Suites.Utf8.Utf8StreamingCorpusBenchmark*" "utf8-corpus" "full"
+}
 if ($Tier -in @("small", "all")) {
-    Invoke-Benchmark "*CorpusBenchmark*" "corpus-small" "small"
+    Invoke-Benchmark "*Suites.Parsing.CorpusBenchmark*" "corpus-small" "small"
 }
 if ($Tier -eq "full" -or $Tier -eq "all") {
-    Invoke-Benchmark "*CorpusBenchmark*" "corpus-full" "full"
+    Invoke-Benchmark "*Suites.Parsing.CorpusBenchmark*" "corpus-full" "full"
 }
 if ($Tier -in @("retained", "all")) {
     dotnet run --project $project -c Release -f net10.0 --no-build -- `
