@@ -49,7 +49,7 @@ $ErrorActionPreference = "Stop"
 $culture = [Globalization.CultureInfo]::InvariantCulture
 $root = Split-Path -Parent $PSScriptRoot
 $angleProject = Join-Path $root "benchmarks/ProductComparison/AngleSharp.NativeConsole/AngleSharp.NativeConsole.csproj"
-$corpusRoot = Join-Path $root "tests/AngleSharp.ReadOnlyDom.Tests/temp"
+$corpusRoot = Join-Path $root "dom/tests/AngleSharp.ReadOnlyDom.Tests/temp"
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $reportPath = Join-Path $root "artifacts/benchmarks/$timestamp-sweep/report.md"
 

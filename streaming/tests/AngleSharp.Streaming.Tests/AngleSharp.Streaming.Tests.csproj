@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AngleSharp.Readonly.Tests</RootNamespace>
+    <EnableTUnitPolyfills>false</EnableTUnitPolyfills>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TUnit" />
+    <PackageReference Include="AngleSharp" />
+    <PackageReference Include="FsCheck" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\AngleSharp.ReadOnlyDom.Streaming\AngleSharp.ReadOnlyDom.Streaming.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="TestData\html5lib-tokenizer\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

@@ -1,4 +1,4 @@
-# AngleSharp.ReadOnlyDom
+# AngleSharp.ReadOnlyDom workspace
 
 Parse HTML without paying for a fully mutable DOM when the result is only going to be read, queried, or folded into
 another shape.
@@ -29,11 +29,18 @@ losses confined to pages dominated by large inline `<script>`/`<style>` bodies. 
 > Publishing those DOM packages is parked until that dependency has a clean upstream version. See
 > [the upstream notes](docs/UPSTREAM_ANGLESHARP_NOTES.md).
 
+The workspace is split into two independent product roots in preparation for separate repositories:
+
+- `dom/` contains the AngleSharp-dependent object and compact DOM libraries, their tests, samples, and generator;
+- `streaming/` contains the standalone streaming library, its focused tests, generators, and runnable examples.
+
+Neither solution references a project from the other product root. Cross-product performance tooling remains at the
+workspace root and is intentionally outside both solutions.
+
 ## Build the DOM projects against the AngleSharp fork
 
-`AngleSharp.ReadOnlyDom.Streaming` and its Markdown proxy build directly with the .NET SDK. The object and compact DOM
-projects currently require the matching AngleSharp fork branch. On a fresh Windows machine, install the .NET 10 SDK and
-clone both repositories into the same parent directory:
+The object and compact DOM projects currently require the matching AngleSharp fork branch. On a fresh Windows machine,
+install the .NET 10 SDK and clone both repositories into the same parent directory:
 
 ```powershell
 $workspace = 'C:\src\anglesharp-work'
@@ -45,9 +52,9 @@ git clone --branch main https://github.com/dv00d00/AngleSharp.ReadOnlyDom.git "$
 Set-Location "$workspace\AngleSharp.ReadOnlyDom"
 ```
 
-The tracked targets file replaces explicit AngleSharp package references with the fork's `AngleSharp.Core.csproj`; it
-does not inject the fork into the standalone streaming or Markdown projects. Sibling clones named `AngleSharp` and
-`AngleSharp.ReadOnlyDom` are detected automatically. For any other layout, set the source root before restoring:
+The tracked DOM targets file replaces explicit AngleSharp package references with the fork's
+`AngleSharp.Core.csproj`. A sibling clone named `AngleSharp` is detected automatically both before and after extracting
+`dom/` into its own repository. For any other layout, set the source root before restoring:
 
 ```powershell
 $env:AngleSharpSourceRoot = (Resolve-Path 'D:\src\AngleSharp').Path
@@ -57,9 +64,9 @@ Restore after enabling or changing the source override so every target framework
 serially because the solution and the fork share AngleSharp output paths:
 
 ```powershell
-dotnet restore AngleSharp.ReadOnlyDom.slnx --force --no-cache
-dotnet build AngleSharp.ReadOnlyDom.slnx -c Release --no-restore -m:1
-dotnet test tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj -c Release -f net10.0 --no-restore
+dotnet restore dom/AngleSharp.ReadOnlyDom.slnx --force --no-cache --disable-parallel -p:RestoreUseStaticGraphEvaluation=false -m:1
+dotnet build dom/AngleSharp.ReadOnlyDom.slnx -c Release --no-restore -m:1
+dotnet run --project dom/tests/AngleSharp.ReadOnlyDom.Tests -c Release -f net10.0 --no-restore -- --minimum-expected-tests 1
 ```
 
 The Release build output should contain an
@@ -76,8 +83,17 @@ For Rider, make `AngleSharpSourceRoot` a persistent user variable and restart Ri
 )
 ```
 
-`Directory.Build.targets` is part of the repository so CI, temporary worktrees, and fresh clones all use the same
+`dom/Directory.Build.targets` is part of the product root so CI, temporary worktrees, and fresh clones all use the same
 override logic. Keep machine-specific paths out of it and set `AngleSharpSourceRoot` in the environment instead.
+
+The streaming product is intentionally independent of the source override. Its tests use the released AngleSharp
+package only as a differential oracle:
+
+```powershell
+dotnet restore streaming/AngleSharp.Streaming.slnx
+dotnet build streaming/AngleSharp.Streaming.slnx -c Release --no-restore
+dotnet run --project streaming/tests/AngleSharp.Streaming.Tests -c Release --no-restore -- --minimum-expected-tests 1
+```
 
 ## Read-only DOM
 
@@ -335,46 +351,47 @@ history beside the wins. The table above is reproduced by:
 The sample project walks through all representation lanes:
 
 ```powershell
-dotnet run --project samples/AngleSharp.ReadOnlyDom.Samples -c Release
+dotnet run --project dom/samples/AngleSharp.ReadOnlyDom.Samples -c Release
 ```
 
 The Markdown proxy is an intentionally visible end-to-end demonstration of streaming HTML transformation:
 
 ```powershell
-dotnet run --project samples/AngleSharp.ReadOnlyDom.MarkdownProxy -c Release
+dotnet run --project streaming/samples/AngleSharp.ReadOnlyDom.MarkdownProxy -c Release
 ```
 
 Opinionated text/Markdown projections and safe local Markdown navigation remain runnable examples rather than library
 surface:
 
 ```powershell
-dotnet run --project samples/AngleSharp.ReadOnlyDom.ExtractionExamples -c Release
-dotnet run --project samples/AngleSharp.ReadOnlyDom.MarkdownNavigation -c Release
+dotnet run --project dom/samples/AngleSharp.ReadOnlyDom.ExtractionExamples -c Release
+dotnet run --project streaming/samples/AngleSharp.Streaming.ExtractionExamples -c Release
+dotnet run --project streaming/samples/AngleSharp.ReadOnlyDom.MarkdownNavigation -c Release
 ```
 
-Run the test suite from the repository root:
+Run both test applications from the repository root:
 
 ```powershell
-dotnet test AngleSharp.ReadOnlyDom.slnx -c Release
+dotnet run --project dom/tests/AngleSharp.ReadOnlyDom.Tests -c Release -f net10.0 -- --minimum-expected-tests 1
+dotnet run --project streaming/tests/AngleSharp.Streaming.Tests -c Release -- --minimum-expected-tests 1
 ```
 
 ## Repository layout
 
 ```text
-src/          library projects
-tests/        correctness, compatibility, and html5lib coverage
+dom/          AngleSharp-dependent DOM solution, source, tests, samples, and tools
+streaming/    standalone streaming solution, source, tests, samples, and generators
 benchmarks/   BenchmarkDotNet suites and corpus runners
-samples/      runnable usage and integration examples
-tools/        deterministic source generators
 scripts/      repeatable benchmark entry points
 docs/         architecture decisions, performance evidence, and upstream notes
 ```
 
 Start with:
 
-- [Samples](samples/AngleSharp.ReadOnlyDom.Samples/README.md)
-- [Text and Markdown extraction examples](samples/AngleSharp.ReadOnlyDom.ExtractionExamples/README.md)
-- [Streaming HTML-to-Markdown navigation](samples/AngleSharp.ReadOnlyDom.MarkdownNavigation/README.md)
+- [DOM samples](dom/samples/AngleSharp.ReadOnlyDom.Samples/README.md)
+- [Compact text and Markdown extraction examples](dom/samples/AngleSharp.ReadOnlyDom.ExtractionExamples/README.md)
+- [Streaming samples](streaming/samples/AngleSharp.Streaming.Samples/README.md)
+- [Streaming HTML-to-Markdown navigation](streaming/samples/AngleSharp.ReadOnlyDom.MarkdownNavigation/README.md)
 - [Benchmark methodology and current results](docs/BENCHMARKING.md)
 - [Compact DOM design](docs/COMPACT_DOM_DECISION.md)
 - [Query-directed engine direction](docs/QUERY_DIRECTED_ENGINE_DIRECTION.md)

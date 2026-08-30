@@ -15,7 +15,7 @@ $root = Split-Path -Parent $PSScriptRoot
 if (-not $CandidateDll) {
     $CandidateDll = Join-Path $root "benchmarks/ProductComparison/AngleSharp.NativeConsole/bin/Release/net10.0/AngleSharp.NativeConsole.dll"
 }
-$corpDir = Join-Path $root "tests/AngleSharp.ReadOnlyDom.Tests/temp"
+$corpDir = Join-Path $root "dom/tests/AngleSharp.ReadOnlyDom.Tests/temp"
 if (-not $ResultsFile) {
     $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $ResultsFile = Join-Path $root "artifacts/benchmarks/$timestamp-ab-corpus/results.jsonl"
