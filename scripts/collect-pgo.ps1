@@ -57,7 +57,7 @@ $env:DOTNET_TC_QuickJitForLoops = "1"
 $env:DOTNET_JitCollect64BitCounts = "1"
 try {
     foreach ($corpus in $Corpora) {
-        $corpusPath = Join-Path $root "tests/AngleSharp.ReadOnlyDom.Tests/TestData/corpus/$corpus"
+        $corpusPath = Join-Path $root "dom/tests/AngleSharp.ReadOnlyDom.Tests/TestData/corpus/$corpus"
         if (-not (Test-Path $corpusPath)) { throw "Missing corpus: $corpusPath" }
         foreach ($workload in $Workloads) {
             $stem = "$($corpus -replace '\.html$', '')-$workload"

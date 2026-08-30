@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net10.0;net472</TargetFrameworks>
+    <RootNamespace>AngleSharp.Readonly.Tests</RootNamespace>
+    <EnableTUnitPolyfills>false</EnableTUnitPolyfills>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TUnit" />
+    <PackageReference Include="AngleSharp" />
+    <PackageReference Include="FsCheck" />
+    <PackageReference Include="Polyfill" Condition="'$(TargetFramework)' == 'net472'" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference
+      Include="..\..\src\AngleSharp.ReadOnlyDom.Compact\AngleSharp.ReadOnlyDom.Compact.csproj"
+      Condition="'$(TargetFramework)' == 'net10.0'"
+    />
+    <ProjectReference Include="..\..\src\AngleSharp.ReadOnlyDom\AngleSharp.ReadOnlyDom.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="TestData\corpus\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

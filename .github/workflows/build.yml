@@ -39,7 +39,7 @@ jobs:
         run: dotnet tool run csharpier check .
         working-directory: AngleSharp.ReadOnlyDom
 
-  build-and-test:
+  dom-build-and-test:
     runs-on: ubuntu-latest
     env:
       AngleSharpSourceRoot: ${{ github.workspace }}/AngleSharp
@@ -60,7 +60,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          global-json-file: AngleSharp.ReadOnlyDom/global.json
+          global-json-file: AngleSharp.ReadOnlyDom/dom/global.json
 
       - name: Verify the paired source reference
         shell: bash
@@ -76,15 +76,15 @@ jobs:
             printf 'AngleSharp still resolves as a package reference.\n' >&2
             exit 1
           fi
-        working-directory: AngleSharp.ReadOnlyDom
+        working-directory: AngleSharp.ReadOnlyDom/dom
 
       - name: Restore
         run: dotnet restore AngleSharp.ReadOnlyDom.slnx --force --no-cache
-        working-directory: AngleSharp.ReadOnlyDom
+        working-directory: AngleSharp.ReadOnlyDom/dom
 
       - name: Build
         run: dotnet build AngleSharp.ReadOnlyDom.slnx -c Release --no-restore -m:1
-        working-directory: AngleSharp.ReadOnlyDom
+        working-directory: AngleSharp.ReadOnlyDom/dom
 
       - name: Test
         run: >-
@@ -92,14 +92,53 @@ jobs:
           -c Release -f net10.0 --no-build --no-restore --
           --minimum-expected-tests 179000 --progress off
           --results-directory TestResults --report-trx --report-trx-filename net10.0.trx
-        working-directory: AngleSharp.ReadOnlyDom
+        working-directory: AngleSharp.ReadOnlyDom/dom
 
       - name: Upload failed test report
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: net10-test-report-${{ github.run_id }}
-          path: AngleSharp.ReadOnlyDom/TestResults/**/*.trx
+          name: dom-net10-test-report-${{ github.run_id }}
+          path: AngleSharp.ReadOnlyDom/dom/TestResults/**/*.trx
+          if-no-files-found: warn
+          retention-days: 14
+
+  streaming-build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out ReadOnlyDom
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: AngleSharp.ReadOnlyDom
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: AngleSharp.ReadOnlyDom/streaming/global.json
+
+      - name: Restore
+        run: dotnet restore AngleSharp.Streaming.slnx --force --no-cache
+        working-directory: AngleSharp.ReadOnlyDom/streaming
+
+      - name: Build
+        run: dotnet build AngleSharp.Streaming.slnx -c Release --no-restore -m:1
+        working-directory: AngleSharp.ReadOnlyDom/streaming
+
+      - name: Test
+        run: >-
+          dotnet test tests/AngleSharp.Streaming.Tests/AngleSharp.Streaming.Tests.csproj
+          -c Release --no-build --no-restore --
+          --minimum-expected-tests 300 --progress off
+          --results-directory TestResults --report-trx --report-trx-filename net10.0.trx
+        working-directory: AngleSharp.ReadOnlyDom/streaming
+
+      - name: Upload failed test report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: streaming-net10-test-report-${{ github.run_id }}
+          path: AngleSharp.ReadOnlyDom/streaming/TestResults/**/*.trx
           if-no-files-found: warn
           retention-days: 14
 
@@ -124,5 +163,5 @@ jobs:
       - name: Build runtime-async Hacker News sample
         run: >-
           dotnet build
-          AngleSharp.ReadOnlyDom/samples/AngleSharp.ReadOnlyDom.HackerNews/AngleSharp.ReadOnlyDom.HackerNews.csproj
+          AngleSharp.ReadOnlyDom/streaming/samples/AngleSharp.ReadOnlyDom.HackerNews/AngleSharp.ReadOnlyDom.HackerNews.csproj
           -c Release -f net11.0 -p:Net11Lane=true -p:Net11Async=true

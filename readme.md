@@ -29,6 +29,16 @@ losses confined to pages dominated by large inline `<script>`/`<style>` bodies. 
 > Publishing those DOM packages is parked until that dependency has a clean upstream version. See
 > [the upstream notes](docs/UPSTREAM_ANGLESHARP_NOTES.md).
 
+## Product roots
+
+The repository is arranged as two future repository roots:
+
+- `dom/` contains the AngleSharp-dependent object and compact DOM libraries, tests, samples, and generator.
+- `streaming/` contains the standalone streaming library, tests, generators, and streaming-only samples.
+
+The cross-product benchmark suite remains in `benchmarks/` at the repository root because it intentionally compares
+both products.
+
 ## Build the DOM projects against the AngleSharp fork
 
 `AngleSharp.ReadOnlyDom.Streaming` and its Markdown proxy build directly with the .NET SDK. The object and compact DOM
@@ -61,9 +71,13 @@ serially because the solution and the fork share AngleSharp output paths:
 ```powershell
 dotnet tool restore
 dotnet tool run csharpier check .
-dotnet restore AngleSharp.ReadOnlyDom.slnx --force --no-cache
-dotnet build AngleSharp.ReadOnlyDom.slnx -c Release --no-restore -m:1
-dotnet test tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj -c Release -f net10.0 --no-restore -- --minimum-expected-tests 179000 --progress off
+dotnet restore dom/AngleSharp.ReadOnlyDom.slnx --force --no-cache
+dotnet build dom/AngleSharp.ReadOnlyDom.slnx -c Release --no-restore -m:1
+dotnet test dom/tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj -c Release -f net10.0 --no-restore -- --minimum-expected-tests 179000 --progress off
+
+dotnet restore streaming/AngleSharp.Streaming.slnx
+dotnet build streaming/AngleSharp.Streaming.slnx -c Release --no-restore
+dotnet test streaming/tests/AngleSharp.Streaming.Tests/AngleSharp.Streaming.Tests.csproj -c Release --no-restore
 ```
 
 The Release build output should contain an
@@ -340,23 +354,23 @@ history beside the wins. The table above is reproduced by:
 
 ## Run it
 
-The sample project walks through all representation lanes:
+The DOM sample walks through both retained representations:
 
 ```powershell
-dotnet run --project samples/AngleSharp.ReadOnlyDom.Samples -c Release
+dotnet run --project dom/samples/AngleSharp.ReadOnlyDom.Samples -c Release
 ```
 
 The Markdown proxy is an intentionally visible end-to-end demonstration of streaming HTML transformation:
 
 ```powershell
-dotnet run --project samples/AngleSharp.ReadOnlyDom.MarkdownProxy -c Release
+dotnet run --project streaming/samples/AngleSharp.ReadOnlyDom.MarkdownProxy -c Release
 ```
 
 The Hacker News reader folds a live list page into NDJSON one story at a time and unfurls a link-preview card per row
 on scroll, abandoning each linked page's download at `</head>`. It builds on the default .NET 10 lane:
 
 ```powershell
-dotnet run --project samples/AngleSharp.ReadOnlyDom.HackerNews -c Release
+dotnet run --project streaming/samples/AngleSharp.ReadOnlyDom.HackerNews -c Release
 ```
 
 With a .NET 11 SDK, pass `-p:Net11Lane=true -p:Net11Async=true` to opt the sample and streaming library into the
@@ -366,35 +380,36 @@ Opinionated text/Markdown projections and safe local Markdown navigation remain 
 surface:
 
 ```powershell
-dotnet run --project samples/AngleSharp.ReadOnlyDom.ExtractionExamples -c Release
-dotnet run --project samples/AngleSharp.ReadOnlyDom.MarkdownNavigation -c Release
+dotnet run --project dom/samples/AngleSharp.ReadOnlyDom.ExtractionExamples -c Release
+dotnet run --project streaming/samples/AngleSharp.Streaming.ExtractionExamples -c Release
+dotnet run --project streaming/samples/AngleSharp.ReadOnlyDom.MarkdownNavigation -c Release
 ```
 
 Run the test suite from the repository root. The minimum count guard prevents a broken test-host configuration from
 reporting success after discovering no tests:
 
 ```powershell
-dotnet test tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj -c Release -f net10.0 -- --minimum-expected-tests 1
+dotnet test dom/tests/AngleSharp.ReadOnlyDom.Tests/AngleSharp.ReadOnlyDom.Tests.csproj -c Release -f net10.0 -- --minimum-expected-tests 1
+dotnet test streaming/tests/AngleSharp.Streaming.Tests/AngleSharp.Streaming.Tests.csproj -c Release -- --minimum-expected-tests 1
 ```
 
 ## Repository layout
 
 ```text
-src/          library projects
-tests/        correctness, compatibility, and html5lib coverage
+dom/          AngleSharp-dependent DOM product root
+streaming/    standalone streaming product root
 benchmarks/   BenchmarkDotNet suites and corpus runners
-samples/      runnable usage and integration examples
-tools/        deterministic source generators
 scripts/      repeatable benchmark entry points
 docs/         architecture decisions, performance evidence, and upstream notes
 ```
 
 Start with:
 
-- [Samples](samples/AngleSharp.ReadOnlyDom.Samples/README.md)
-- [Streaming Hacker News reader](samples/AngleSharp.ReadOnlyDom.HackerNews/README.md)
-- [Text and Markdown extraction examples](samples/AngleSharp.ReadOnlyDom.ExtractionExamples/README.md)
-- [Streaming HTML-to-Markdown navigation](samples/AngleSharp.ReadOnlyDom.MarkdownNavigation/README.md)
+- [DOM samples](dom/samples/AngleSharp.ReadOnlyDom.Samples/README.md)
+- [Streaming Hacker News reader](streaming/samples/AngleSharp.ReadOnlyDom.HackerNews/README.md)
+- [DOM extraction examples](dom/samples/AngleSharp.ReadOnlyDom.ExtractionExamples/README.md)
+- [Streaming extraction example](streaming/samples/AngleSharp.Streaming.ExtractionExamples/README.md)
+- [Streaming HTML-to-Markdown navigation](streaming/samples/AngleSharp.ReadOnlyDom.MarkdownNavigation/README.md)
 - [Benchmark methodology and current results](docs/BENCHMARKING.md)
 - [Compact DOM design](docs/COMPACT_DOM_DECISION.md)
 - [Query-directed engine direction](docs/QUERY_DIRECTED_ENGINE_DIRECTION.md)

@@ -53,6 +53,7 @@ internal static class BenchmarkCorpus
         {
             var candidate = Path.Combine(
                 directory.FullName,
+                "dom",
                 "tests",
                 "AngleSharp.ReadOnlyDom.Tests",
                 "TestData",
@@ -67,7 +68,7 @@ internal static class BenchmarkCorpus
         }
 
         throw new DirectoryNotFoundException(
-            "Could not locate the checked-in tests/AngleSharp.ReadOnlyDom.Tests/TestData/corpus directory."
+            "Could not locate the checked-in dom/tests/AngleSharp.ReadOnlyDom.Tests/TestData/corpus directory."
         );
     }
 }

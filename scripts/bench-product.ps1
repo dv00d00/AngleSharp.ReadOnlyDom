@@ -12,7 +12,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $rustManifest = Join-Path $root "benchmarks/ProductComparison/lol-html-server/Cargo.toml"
 $angleProject = Join-Path $root "benchmarks/ProductComparison/AngleSharp.NativeServer/AngleSharp.NativeServer.csproj"
 $runnerProject = Join-Path $root "benchmarks/ProductComparison/LoadRunner/LoadRunner.csproj"
-$corpus = Join-Path $root "tests/AngleSharp.ReadOnlyDom.Tests/TestData/corpus/qq.html"
+$corpus = Join-Path $root "dom/tests/AngleSharp.ReadOnlyDom.Tests/TestData/corpus/qq.html"
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $output = Join-Path $root "artifacts/benchmarks/$timestamp-product-comparison/report.md"
 

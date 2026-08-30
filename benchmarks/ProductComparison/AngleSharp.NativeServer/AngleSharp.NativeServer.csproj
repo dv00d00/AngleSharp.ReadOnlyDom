@@ -8,6 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../../src/AngleSharp.ReadOnlyDom.Streaming/AngleSharp.ReadOnlyDom.Streaming.csproj" />
+    <ProjectReference Include="../../../streaming/src/AngleSharp.ReadOnlyDom.Streaming/AngleSharp.ReadOnlyDom.Streaming.csproj" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/Source/">
+    <Project Path="src/AngleSharp.ReadOnlyDom.Streaming/AngleSharp.ReadOnlyDom.Streaming.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="tests/AngleSharp.Streaming.Tests/AngleSharp.Streaming.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Samples/">
+    <Project Path="samples/AngleSharp.Streaming.ExtractionExamples/AngleSharp.Streaming.ExtractionExamples.csproj" />
+    <Project Path="samples/AngleSharp.Streaming.Samples/AngleSharp.Streaming.Samples.csproj" />
+    <Project Path="samples/AngleSharp.ReadOnlyDom.HackerNews/AngleSharp.ReadOnlyDom.HackerNews.csproj" />
+    <Project Path="samples/AngleSharp.ReadOnlyDom.MarkdownNavigation/AngleSharp.ReadOnlyDom.MarkdownNavigation.csproj" />
+    <Project Path="samples/AngleSharp.ReadOnlyDom.MarkdownProxy/AngleSharp.ReadOnlyDom.MarkdownProxy.csproj" />
+  </Folder>
+</Solution>

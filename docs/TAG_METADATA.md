@@ -1,11 +1,11 @@
 # Canonical tag metadata
 
-`src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs` is deterministic checked-in code generated from the
+`dom/src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs` is deterministic checked-in code generated from the
 paired AngleSharp source revision selected by the repository build. The generator reflects AngleSharp's internal
 `HtmlElementFactory`, creates every public `TagNames` entry, and records its effective `NodeFlags`. This makes the paired
 runtime construction behavior the canonical source instead of maintaining a second handwritten table.
 
-`src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs` is the same table emitted into the
+`dom/src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs` is the same table emitted into the
 `AngleSharp.ReadOnlyDom.Compact` namespace, so the compact parser owns its copy instead of depending on the
 `AngleSharp.ReadOnlyDom` project for it. `--namespace` selects the emitted namespace; both files must be regenerated
 together.
@@ -13,16 +13,16 @@ together.
 Regenerate after advancing the paired AngleSharp revision:
 
 ```powershell
-dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs
-dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --namespace AngleSharp.ReadOnlyDom.Compact src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
-dotnet tool run csharpier format src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
+dotnet run --project dom/tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- dom/src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs
+dotnet run --project dom/tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --namespace AngleSharp.ReadOnlyDom.Compact dom/src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
+dotnet tool run csharpier format dom/src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs dom/src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
 ```
 
 Verify that checked-in output is current:
 
 ```powershell
-dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --check src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs
-dotnet run --project tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --check --namespace AngleSharp.ReadOnlyDom.Compact src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
+dotnet run --project dom/tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --check dom/src/AngleSharp.ReadOnlyDom/Generated/GeneratedTagMetadata.g.cs
+dotnet run --project dom/tools/AngleSharp.ReadOnlyDom.TagGenerator -c Release -- --check --namespace AngleSharp.ReadOnlyDom.Compact dom/src/AngleSharp.ReadOnlyDom.Compact/GeneratedTagMetadata.g.cs
 ```
 
 The output uses a length switch and orders high-frequency corpus tags first within each length. Custom elements retain an
